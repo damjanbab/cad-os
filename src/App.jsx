@@ -17,7 +17,26 @@ export default function App() {
   const [mesh, setMesh] = useState(null);
   const [projections, setProjections] = useState(null);
   const [validationErrors, setValidationErrors] = useState([]);
-  const [activeTab, setActiveTab] = useState('3d'); // Add tab state ('3d' or 'technical')
+  const [activeTab, setActiveTab] = useState('3d');
+  const [controlsExpanded, setControlsExpanded] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // Detect mobile devices
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+      // Auto-collapse controls on mobile
+      if (window.innerWidth < 768) {
+        setControlsExpanded(false);
+      } else {
+        setControlsExpanded(true);
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   
   useEffect(() => {
     setValidationErrors([]);
@@ -68,8 +87,8 @@ export default function App() {
     const newModel = e.target.value;
     setSelectedModel(newModel);
     setParams(createDefaultParams(modelRegistry[newModel]));
-    setExplosionFactor(0); // Reset explosion factor when changing models
-    setProjections(null); // Reset projections for new model
+    setExplosionFactor(0);
+    setProjections(null);
   };
   
   const handleParamChange = (paramName, value) => {
@@ -83,47 +102,72 @@ export default function App() {
     setExplosionFactor(parseFloat(e.target.value));
   };
   
+  const toggleControls = () => {
+    setControlsExpanded(!controlsExpanded);
+  };
+  
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+    <div style={{ 
+      height: "100vh", 
+      display: "flex", 
+      flexDirection: "column",
+      overflow: "hidden"
+    }}>
       <div style={{ 
-        padding: "10px", 
+        padding: isMobile ? "8px" : "10px", 
         borderBottom: "1px solid #eee", 
         backgroundColor: "#f8f8f8",
-        fontSize: "12px"
+        fontSize: isMobile ? "11px" : "12px"
       }}>
         <div style={{
           display: "flex",
-          alignItems: "center",
-          marginBottom: "10px"
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "flex-start" : "center",
+          marginBottom: "10px",
+          gap: isMobile ? "8px" : "0"
         }}>
-          <span style={{ marginRight: "5px", fontWeight: "bold" }}>Model:</span>
-          <select 
-            value={selectedModel} 
-            onChange={handleModelChange}
-            style={{ marginRight: "10px", height: "24px", fontSize: "12px" }}
-          >
-            {Object.keys(modelRegistry).map(model => (
-              <option key={model} value={model}>{model}</option>
-            ))}
-          </select>
+          <div style={{ 
+            display: "flex",
+            alignItems: "center",
+            width: isMobile ? "100%" : "auto"
+          }}>
+            <span style={{ marginRight: "5px", fontWeight: "bold" }}>Model:</span>
+            <select 
+              value={selectedModel} 
+              onChange={handleModelChange}
+              style={{ 
+                marginRight: "10px", 
+                height: isMobile ? "30px" : "24px", 
+                fontSize: isMobile ? "14px" : "12px",
+                flex: isMobile ? "1" : "auto"
+              }}
+            >
+              {Object.keys(modelRegistry).map(model => (
+                <option key={model} value={model}>{model}</option>
+              ))}
+            </select>
+          </div>
           
           {/* View tabs */}
           <div style={{ 
             display: "flex", 
-            marginLeft: "20px", 
+            marginLeft: isMobile ? "0" : "20px", 
             borderRadius: "4px", 
             overflow: "hidden", 
-            border: "1px solid #ccc" 
+            border: "1px solid #ccc",
+            width: isMobile ? "100%" : "auto"
           }}>
             <button 
               onClick={() => setActiveTab('3d')} 
               style={{
-                padding: "4px 12px",
+                padding: isMobile ? "8px 12px" : "4px 12px",
                 border: "none",
                 background: activeTab === '3d' ? "#4a90e2" : "#f0f0f0",
                 color: activeTab === '3d' ? "white" : "#333",
                 cursor: "pointer",
-                fontWeight: activeTab === '3d' ? "bold" : "normal"
+                fontWeight: activeTab === '3d' ? "bold" : "normal",
+                flex: isMobile ? "1" : "auto",
+                fontSize: isMobile ? "14px" : "inherit"
               }}
             >
               3D View
@@ -131,29 +175,58 @@ export default function App() {
             <button 
               onClick={() => setActiveTab('technical')} 
               style={{
-                padding: "4px 12px",
+                padding: isMobile ? "8px 12px" : "4px 12px",
                 border: "none",
                 background: activeTab === 'technical' ? "#4a90e2" : "#f0f0f0",
                 color: activeTab === 'technical' ? "white" : "#333",
                 cursor: "pointer",
-                fontWeight: activeTab === 'technical' ? "bold" : "normal"
+                fontWeight: activeTab === 'technical' ? "bold" : "normal",
+                flex: isMobile ? "1" : "auto",
+                fontSize: isMobile ? "14px" : "inherit"
               }}
             >
               Technical Drawing
             </button>
           </div>
           
+          {/* Toggle controls button (mobile only) */}
+          {isMobile && (
+            <div style={{ 
+              width: "100%", 
+              display: "flex", 
+              justifyContent: "center", 
+              marginTop: "4px" 
+            }}>
+              <button 
+                onClick={toggleControls}
+                style={{
+                  padding: "8px 16px",
+                  background: "#eee",
+                  border: "1px solid #ccc",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  cursor: "pointer",
+                  width: "100%"
+                }}
+              >
+                {controlsExpanded ? "Hide Parameters ▲" : "Show Parameters ▼"}
+              </button>
+            </div>
+          )}
+          
           {/* Explosion factor slider - only show in 3D view */}
           {activeTab === '3d' && modelRegistry[selectedModel].hasExplosion && (
             <div style={{ 
               display: "flex", 
               alignItems: "center", 
-              marginLeft: "15px",
+              marginLeft: isMobile ? "0" : "15px",
               backgroundColor: "#e6f7ff",
               padding: "5px 10px",
-              borderRadius: "4px"
+              borderRadius: "4px",
+              width: isMobile ? "100%" : "auto",
+              marginTop: isMobile ? "4px" : "0"
             }}>
-              <span style={{ marginRight: "8px", fontWeight: "bold" }}>Explosion View:</span>
+              <span style={{ marginRight: "8px", fontWeight: "bold" }}>Explosion:</span>
               <input
                 type="range"
                 min="0"
@@ -161,7 +234,10 @@ export default function App() {
                 step="0.01"
                 value={explosionFactor}
                 onChange={handleExplosionChange}
-                style={{ width: "150px" }}
+                style={{ 
+                  width: isMobile ? "calc(100% - 100px)" : "150px",
+                  height: isMobile ? "24px" : "auto"
+                }}
               />
               <span style={{ marginLeft: "5px", minWidth: "40px" }}>
                 {Math.round(explosionFactor * 100)}%
@@ -170,8 +246,9 @@ export default function App() {
           )}
         </div>
         
+        {/* Parameters section - collapsible on mobile */}
         <div style={{ 
-          display: "flex", 
+          display: controlsExpanded ? "flex" : "none",
           flexWrap: "wrap", 
           gap: "10px"
         }}>
@@ -190,13 +267,15 @@ export default function App() {
                 alignItems: "center",
                 backgroundColor: "#fff",
                 border: "1px solid #ccc",
-                padding: "5px 8px",
-                borderRadius: "4px"
+                padding: isMobile ? "8px" : "5px 8px",
+                borderRadius: "4px",
+                width: isMobile ? "calc(50% - 5px)" : "auto"
               }}>
                 <span style={{ 
                   marginRight: "8px", 
                   fontWeight: "bold",
-                  color: "#333"
+                  color: "#333",
+                  fontSize: isMobile ? "13px" : "inherit"
                 }}>
                   {name}:
                 </span>
@@ -207,6 +286,10 @@ export default function App() {
                     type="checkbox"
                     checked={value}
                     onChange={(e) => handleParamChange(name, e.target.checked)}
+                    style={{
+                      width: isMobile ? "20px" : "auto",
+                      height: isMobile ? "20px" : "auto",
+                    }}
                   />
                 ) : (
                   <input
@@ -214,7 +297,12 @@ export default function App() {
                     type="number"
                     value={value}
                     onChange={(e) => handleParamChange(name, parseFloat(e.target.value))}
-                    style={{ width: "60px", height: "20px", fontSize: "12px" }}
+                    style={{ 
+                      width: isMobile ? "calc(100% - 50px)" : "60px", 
+                      height: isMobile ? "30px" : "20px", 
+                      fontSize: isMobile ? "14px" : "12px",
+                      flex: isMobile ? "1" : "none"
+                    }}
                   />
                 )}
               </div>
@@ -229,7 +317,7 @@ export default function App() {
             backgroundColor: "#f8d7da",
             color: "#721c24",
             borderRadius: "4px",
-            fontSize: "12px"
+            fontSize: isMobile ? "13px" : "12px"
           }}>
             <div style={{ fontWeight: "bold", marginBottom: "4px" }}>Invalid parameters:</div>
             <ul style={{ margin: "0", paddingLeft: "20px" }}>
@@ -241,15 +329,17 @@ export default function App() {
         )}
       </div>
       
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, position: "relative" }}>
         {validationErrors.length > 0 ? (
           <div style={{ 
             height: "100%", 
             display: "flex", 
             alignItems: "center", 
             justifyContent: "center",
-            fontSize: "12px",
-            color: "#999"
+            fontSize: isMobile ? "14px" : "12px",
+            color: "#999",
+            padding: "0 20px",
+            textAlign: "center"
           }}>
             Fix parameters to see model
           </div>
@@ -269,14 +359,17 @@ export default function App() {
             {/* Technical Drawing View */}
             {activeTab === 'technical' ? (
               projections ? (
-                <TechnicalDrawingView projections={projections} />
+                <TechnicalDrawingView 
+                  projections={projections} 
+                  isMobile={isMobile}
+                />
               ) : (
                 <div style={{ 
                   height: "100%", 
                   display: "flex", 
                   alignItems: "center", 
                   justifyContent: "center",
-                  fontSize: "12px",
+                  fontSize: isMobile ? "14px" : "12px",
                   color: "#999"
                 }}>
                   Loading technical drawings...

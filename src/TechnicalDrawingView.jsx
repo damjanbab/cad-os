@@ -148,7 +148,7 @@ function PartView({ part, index }) {
   );
 }
 
-export default function TechnicalDrawingView({ projections }) {
+export default function TechnicalDrawingView({ projections, isMobile }) {
   if (!projections) return <div>Loading projections...</div>;
   
   const containerRef = useRef(null);
@@ -232,6 +232,33 @@ export default function TechnicalDrawingView({ projections }) {
     setIsDragging(false);
   };
   
+  // Touch event handlers
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      setIsDragging(true);
+      setDragStart({ x: touch.clientX, y: touch.clientY });
+      setDragStartOffset({ ...panOffset });
+    }
+  };
+  
+  const handleTouchMove = (e) => {
+    if (!isDragging || e.touches.length !== 1) return;
+    
+    const touch = e.touches[0];
+    const dx = touch.clientX - dragStart.x;
+    const dy = touch.clientY - dragStart.y;
+    
+    setPanOffset({
+      x: dragStartOffset.x + dx,
+      y: dragStartOffset.y + dy
+    });
+  };
+  
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+  
   // Reset zoom and pan
   const resetView = () => {
     setZoomLevel(1);
@@ -251,28 +278,38 @@ export default function TechnicalDrawingView({ projections }) {
         position: 'relative', 
         backgroundColor: '#f0f0f0',
         overflow: 'hidden',
-        cursor: isDragging ? 'grabbing' : 'grab'
+        cursor: isDragging ? 'grabbing' : 'grab',
+        touchAction: 'none'
       }}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
     >
       {/* Zoom controls */}
       <div style={{
         position: 'absolute',
-        top: '10px',
-        right: '10px',
+        top: isMobile ? '8px' : '10px',
+        right: isMobile ? '8px' : '10px',
         zIndex: 100,
         display: 'flex',
         alignItems: 'center',
         backgroundColor: 'rgba(255,255,255,0.7)',
-        padding: '5px',
+        padding: isMobile ? '8px' : '5px',
         borderRadius: '4px'
       }}>
         <button 
-          style={{ margin: '0 5px', padding: '2px 8px', cursor: 'pointer' }}
+          style={{ 
+            margin: '0 5px', 
+            padding: isMobile ? '5px 12px' : '2px 8px', 
+            cursor: 'pointer',
+            fontSize: isMobile ? '16px' : 'inherit' 
+          }}
           onClick={() => {
             const newZoom = Math.max(0.5, zoomLevel - 0.1);
             // Zoom toward center when using buttons
@@ -289,11 +326,19 @@ export default function TechnicalDrawingView({ projections }) {
         >
           −
         </button>
-        <span style={{ margin: '0 5px', fontSize: '12px' }}>
+        <span style={{ 
+          margin: '0 5px', 
+          fontSize: isMobile ? '14px' : '12px' 
+        }}>
           {Math.round(zoomLevel * 100)}%
         </span>
         <button 
-          style={{ margin: '0 5px', padding: '2px 8px', cursor: 'pointer' }}
+          style={{ 
+            margin: '0 5px', 
+            padding: isMobile ? '5px 12px' : '2px 8px', 
+            cursor: 'pointer',
+            fontSize: isMobile ? '16px' : 'inherit'  
+          }}
           onClick={() => {
             const newZoom = Math.min(5, zoomLevel + 0.1);
             // Zoom toward center when using buttons
@@ -311,7 +356,12 @@ export default function TechnicalDrawingView({ projections }) {
           +
         </button>
         <button 
-          style={{ margin: '0 5px', padding: '2px 8px', cursor: 'pointer' }}
+          style={{ 
+            margin: '0 5px', 
+            padding: isMobile ? '5px 12px' : '2px 8px', 
+            cursor: 'pointer',
+            fontSize: isMobile ? '14px' : 'inherit'  
+          }}
           onClick={resetView}
         >
           Reset

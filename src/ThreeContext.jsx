@@ -62,6 +62,7 @@ export default function ThreeContext({ children }) {
           width: "100%",
           height: "100%",
           backgroundColor: "#f5f5f5",
+          touchAction: "none"
         }}
         dpr={dpr}
         frameloop="demand"
@@ -83,7 +84,14 @@ export default function ThreeContext({ children }) {
             MIDDLE: THREE.MOUSE.DOLLY,
             RIGHT: THREE.MOUSE.PAN
           }}
+          touches={{
+            ONE: THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_PAN
+          }}
           zoomToCursor={true}
+          rotateSpeed={0.7}
+          panSpeed={0.5}
+          zoomSpeed={1.2}
         />
         <ambientLight intensity={4} />
         <pointLight position={[100, 100, 100]} />
