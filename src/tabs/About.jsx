@@ -44,7 +44,7 @@ export default function About() {
       {/* Expertise Section */}
       <div style={{ 
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+        gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
         gap: "2rem",
         marginBottom: "4rem"
       }}>
@@ -100,7 +100,7 @@ export default function About() {
 
         <div style={{ 
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
           gap: "2rem"
         }}>
           <TechItem 
@@ -353,10 +353,10 @@ export default function About() {
         </p>
 
         <div style={{ 
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", // Reduced min width
-          gap: "1.5rem", // Reduced gap
-          maxWidth: "800px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "1.5rem",
+          maxWidth: "700px",
           margin: "0 auto"
         }}>
           <div style={{
