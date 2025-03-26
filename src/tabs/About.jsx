@@ -8,6 +8,7 @@ export default function About() {
       padding: "2rem",
       color: "#1E293B"
     }}>
+      {/* Professional Profile Section */}
       <div style={{ marginBottom: "4rem" }}>
         <div style={{ 
           display: "flex", 
@@ -21,27 +22,25 @@ export default function About() {
             backgroundColor: "#2563EB", 
             borderRadius: "2px" 
           }}></div>
-          <h1 style={{ fontSize: "2.25rem", fontWeight: "800", margin: 0 }}>About CAD-OS</h1>
+          <h1 style={{ fontSize: "2.25rem", fontWeight: "800", margin: 0 }}>About Me</h1>
         </div>
 
-        <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569", marginBottom: "1.5rem" }}>
-          CAD-OS is a parametric CAD application built with modern web technologies to provide accessible, 
-          powerful 3D modeling capabilities right in your browser. Our goal is to make complex CAD features 
-          available to everyone without requiring specialized software installation.
-        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569" }}>
+            I'm a 31-year-old Croatian professional with a background in Marine Engineering and over a decade of experience in 3D modeling using commercial software. My expertise lies in parametric and programmatic CAD solutions that deliver precise, adaptable models for engineering and manufacturing applications.
+          </p>
 
-        <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569", marginBottom: "1.5rem" }}>
-          Built on the foundation of the Replicad framework, CAD-OS leverages the OpenCascade geometry kernel
-          for robust solid modeling operations. Combined with React for the user interface and Three.js for
-          visualization, CAD-OS delivers a seamless experience for creating and manipulating 3D models.
-        </p>
+          <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569" }}>
+            Through self-study, I've developed strong programming skills in JavaScript, Python, Clojure, and various frontend technologies, allowing me to create custom solutions that merge engineering precision with modern web technologies. This combination enables me to offer unique, cost-effective services that traditional CAD approaches can't match.
+          </p>
 
-        <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569" }}>
-          Whether you're designing mechanical parts, creating architectural models, or exploring geometric 
-          concepts, CAD-OS offers the tools you need with a simple, intuitive interface.
-        </p>
+          <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569" }}>
+            This site serves as my professional portfolio, showcasing the capabilities of my parametric CAD services while demonstrating the technical implementation through interactive demos that potential clients can explore.
+          </p>
+        </div>
       </div>
 
+      {/* Expertise Section */}
       <div style={{ 
         display: "grid",
         gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
@@ -60,17 +59,18 @@ export default function About() {
             marginBottom: "1rem" 
           }}>
             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M7 10v12"></path>
-              <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"></path>
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
             </svg>
           </div>
           <h3 style={{ 
             fontSize: "1.25rem", 
             fontWeight: "700", 
             marginBottom: "0.75rem" 
-          }}>Open Source</h3>
+          }}>
+            Engineering Background
+          </h3>
           <p style={{ color: "#475569" }}>
-            CAD-OS is completely open source and free to use. We believe in the power of community-driven development and welcome contributions from developers of all skill levels.
+            With a formal education in Marine Engineering, I bring a strong technical foundation to every project. This background ensures that all models meet rigorous engineering standards and real-world functionality requirements.
           </p>
         </div>
 
@@ -86,18 +86,20 @@ export default function About() {
             marginBottom: "1rem" 
           }}>
             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"></path>
-              <path d="M9 10h9a2 2 0 0 1 2 2v1"></path>
-              <path d="m18 11 3-3-3-3"></path>
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
             </svg>
           </div>
           <h3 style={{ 
             fontSize: "1.25rem", 
             fontWeight: "700", 
             marginBottom: "0.75rem" 
-          }}>Browser-Based</h3>
+          }}>
+            3D Modeling Expertise
+          </h3>
           <p style={{ color: "#475569" }}>
-            Run complex CAD operations directly in your browser without installing any software. CAD-OS works on any device with a modern web browser, including tablets and mobile devices.
+            Over 10 years of experience with commercial 3D modeling software has given me proficiency in creating complex models across various industries. I specialize in parametric design that allows for rapid iterations and modifications.
           </p>
         </div>
 
@@ -113,20 +115,24 @@ export default function About() {
             marginBottom: "1rem" 
           }}>
             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path>
+              <path d="M18 10h-4V4h-4v6H6l6 6 6-6z"></path>
+              <path d="M8 18h8"></path>
             </svg>
           </div>
           <h3 style={{ 
             fontSize: "1.25rem", 
             fontWeight: "700", 
             marginBottom: "0.75rem" 
-          }}>Powerful Engine</h3>
+          }}>
+            Programming Skills
+          </h3>
           <p style={{ color: "#475569" }}>
-            Based on the industry-standard OpenCascade geometry kernel, CAD-OS provides robust solid modeling operations with the reliability expected from professional CAD software.
+            Self-taught programming knowledge in JavaScript, Python, Clojure, and frontend technologies enables me to create custom parametric solutions that bridge the gap between traditional CAD and modern web applications.
           </p>
         </div>
       </div>
 
+      {/* Technology Stack */}
       <div style={{ 
         backgroundColor: "#F8FAFC", 
         padding: "3rem",
@@ -138,7 +144,9 @@ export default function About() {
           fontWeight: "700", 
           marginBottom: "2rem",
           textAlign: "center"
-        }}>Technology Stack</h2>
+        }}>
+          Technology Stack
+        </h2>
 
         <div style={{ 
           display: "grid",
@@ -147,33 +155,78 @@ export default function About() {
         }}>
           <TechItem 
             name="Replicad" 
-            description="JavaScript CAD framework based on OpenCascade geometry kernel"
+            description="JavaScript CAD framework based on OpenCascade geometry kernel, enabling powerful programmatic 3D modeling"
             link="https://replicad.xyz/"
           />
           <TechItem 
-            name="React & React DOM" 
-            description="Library for building user interfaces with component-based architecture"
-            link="https://react.dev/"
-          />
-          <TechItem 
             name="Three.js" 
-            description="3D graphics library for rendering complex geometry in the browser"
+            description="3D graphics library for rendering complex geometry in the browser with high performance"
             link="https://threejs.org/"
           />
           <TechItem 
             name="React Three Fiber" 
-            description="React renderer for Three.js, making 3D graphics declarative"
+            description="React renderer for Three.js, making 3D graphics declarative and easier to work with"
             link="https://docs.pmnd.rs/react-three-fiber"
           />
           <TechItem 
-            name="Web Workers" 
-            description="Background processing for performance-intensive CAD operations"
-            link="https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API"
+            name="Web-Based Production" 
+            description="Client-side rendering and processing for secure, real-time collaboration and feedback"
+            link="#"
           />
           <TechItem 
-            name="Vite" 
-            description="Modern build tool and development server for fast iteration"
-            link="https://vitejs.dev/"
+            name="Parametric Design" 
+            description="Custom parametric approach allowing for instant model updates based on changing parameters"
+            link="#"
+          />
+          <TechItem 
+            name="Open Source Core" 
+            description="Built on open-source technologies to provide cost-effective solutions without compromising quality"
+            link="#"
+          />
+        </div>
+      </div>
+
+      {/* Service Process */}
+      <div style={{ marginBottom: "4rem" }}>
+        <h2 style={{ fontSize: "1.75rem", fontWeight: "700", marginBottom: "2rem" }}>
+          My Service Process
+        </h2>
+        
+        <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+          <ProcessStep 
+            number="01"
+            title="Client Consultation"
+            description="We begin with a detailed discussion about your project needs, including technical requirements, use cases, and design parameters. This consultation ensures I fully understand your vision."
+          />
+          
+          <ProcessStep 
+            number="02"
+            title="Parametric Model Development"
+            description="I create a parametric model framework that captures the essential components and relationships of your design, making it easy to adjust and refine throughout the development process."
+          />
+          
+          <ProcessStep 
+            number="03"
+            title="Interactive Collaboration"
+            description="You'll receive secure access to view your model's development in real-time, allowing you to provide feedback and request adjustments as the work progresses."
+          />
+          
+          <ProcessStep 
+            number="04"
+            title="Technical Drawing Generation"
+            description="Once the 3D model meets your requirements, I generate detailed technical drawings suitable for manufacturing, including dimensions, tolerances, and material specifications."
+          />
+          
+          <ProcessStep 
+            number="05"
+            title="Rendering & Visualization"
+            description="High-quality renders and visualizations bring your design to life, perfect for presentations, marketing materials, or assembly instructions."
+          />
+          
+          <ProcessStep 
+            number="06"
+            title="Delivery & Support"
+            description="You receive all files in your preferred formats, along with documentation and continued support to ensure the models meet your needs as they move into production."
           />
         </div>
       </div>
@@ -191,7 +244,9 @@ export default function About() {
           fontWeight: "700", 
           marginBottom: "1.5rem",
           textAlign: "center"
-        }}>Contact Us</h2>
+        }}>
+          Let's Work Together
+        </h2>
         
         <p style={{ 
           textAlign: "center", 
@@ -200,13 +255,12 @@ export default function About() {
           marginBottom: "2.5rem",
           color: "#CBD5E1"
         }}>
-          Have questions, suggestions, or want to contribute to CAD-OS? We'd love to hear from you!
-          Reach out to our team using any of the methods below.
+          Have a project in mind or need a custom 3D modeling solution? I'd love to hear about your requirements and discuss how my services can bring your ideas to reality.
         </p>
 
         <div style={{ 
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
           gap: "2rem",
           maxWidth: "900px",
           margin: "0 auto"
@@ -219,8 +273,8 @@ export default function About() {
               </svg>
             }
             title="Email"
-            content="contact@cad-os.example.com"
-            link="mailto:contact@cad-os.example.com"
+            content="contact@example.com"
+            link="mailto:contact@example.com"
           />
           
           <ContactItem 
@@ -230,30 +284,21 @@ export default function About() {
               </svg>
             }
             title="GitHub"
-            content="github.com/cad-os"
+            content="github.com/username"
             link="https://github.com/"
           />
           
           <ContactItem 
             icon={
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 4.01c-1 .49-1.98.689-3 .99-1.121-1.265-2.783-1.335-4.38-.737S11.977 6.323 12 8v1c-3.245.083-6.135-1.395-8-4 0 0-4.182 7.433 4 11-1.872 1.247-3.739 2.088-6 2 3.308 1.803 6.913 2.423 10.034 1.517 3.58-1.04 6.522-3.723 7.651-7.742a13.84 13.84 0 0 0 .497-3.753C20.18 7.773 21.692 5.25 22 4.009z"></path>
+                <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
+                <rect x="2" y="9" width="4" height="12"></rect>
+                <circle cx="4" cy="4" r="2"></circle>
               </svg>
             }
-            title="Twitter"
-            content="@cad_os"
-            link="https://twitter.com/"
-          />
-          
-          <ContactItem 
-            icon={
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-              </svg>
-            }
-            title="Discord"
-            content="discord.gg/cad-os"
-            link="https://discord.com/"
+            title="LinkedIn"
+            content="linkedin.com/in/username"
+            link="https://linkedin.com/"
           />
         </div>
         
@@ -270,14 +315,6 @@ export default function About() {
               </svg>
             }
             link="https://github.com/"
-          />
-          <SocialIcon 
-            icon={
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 4.01c-1 .49-1.98.689-3 .99-1.121-1.265-2.783-1.335-4.38-.737S11.977 6.323 12 8v1c-3.245.083-6.135-1.395-8-4 0 0-4.182 7.433 4 11-1.872 1.247-3.739 2.088-6 2 3.308 1.803 6.913 2.423 10.034 1.517 3.58-1.04 6.522-3.723 7.651-7.742a13.84 13.84 0 0 0 .497-3.753C20.18 7.773 21.692 5.25 22 4.009z"></path>
-              </svg>
-            }
-            link="https://twitter.com/"
           />
           <SocialIcon 
             icon={
@@ -299,14 +336,6 @@ export default function About() {
             }
             link="https://instagram.com/"
           />
-          <SocialIcon 
-            icon={
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-              </svg>
-            }
-            link="https://discord.com/"
-          />
         </div>
       </div>
 
@@ -320,7 +349,7 @@ export default function About() {
           © {new Date().getFullYear()} CAD-OS. All rights reserved.
         </p>
         <p style={{ fontSize: "0.875rem" }}>
-          Released under the MIT License. Built with React, Three.js, and Replicad.
+          Built with React, Three.js, and Replicad.
         </p>
       </footer>
     </div>
@@ -346,26 +375,64 @@ function TechItem({ name, description, link }) {
       <p style={{ color: "#64748B", fontSize: "0.875rem", marginBottom: "1rem", flex: "1" }}>
         {description}
       </p>
-      <a 
-        href={link} 
-        target="_blank" 
-        rel="noopener noreferrer"
-        style={{
-          color: "#2563EB",
-          textDecoration: "none",
-          fontWeight: "600",
-          fontSize: "0.875rem",
-          display: "inline-flex",
-          alignItems: "center",
-          marginTop: "auto"
-        }}
-      >
-        Learn more
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "0.25rem" }}>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-          <polyline points="12 5 19 12 12 19"></polyline>
-        </svg>
-      </a>
+      {link !== "#" && (
+        <a 
+          href={link} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          style={{
+            color: "#2563EB",
+            textDecoration: "none",
+            fontWeight: "600",
+            fontSize: "0.875rem",
+            display: "inline-flex",
+            alignItems: "center",
+            marginTop: "auto"
+          }}
+        >
+          Learn more
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "0.25rem" }}>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </a>
+      )}
+    </div>
+  );
+}
+
+// Helper component for process steps
+function ProcessStep({ number, title, description }) {
+  return (
+    <div style={{
+      display: "flex",
+      gap: "1.5rem"
+    }}>
+      <div style={{
+        fontSize: "2rem",
+        fontWeight: "800",
+        color: "#2563EB",
+        lineHeight: "1",
+        flexShrink: 0
+      }}>
+        {number}
+      </div>
+      <div>
+        <h3 style={{ 
+          fontSize: "1.25rem", 
+          fontWeight: "700", 
+          marginBottom: "0.5rem" 
+        }}>
+          {title}
+        </h3>
+        <p style={{ 
+          color: "#475569", 
+          fontSize: "1rem", 
+          lineHeight: "1.6" 
+        }}>
+          {description}
+        </p>
+      </div>
     </div>
   );
 }
