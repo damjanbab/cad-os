@@ -17,16 +17,16 @@ import { withValidation } from "../validator.js";
 import { modelSchemas } from "../modelValidation.js";
 
 
-// Export model functions with validation
+// Export model functions with validation - now passing the model name as the third parameter
 export const modelFunctions = {
-  "Cuboid": withValidation(createCuboid, modelSchemas["Cuboid"]),
-  "Sphere": withValidation(createSphere, modelSchemas["Sphere"]),
-  "Cylinder": withValidation(createCylinder, modelSchemas["Cylinder"]),
-  "Ellipsoid": withValidation(createEllipsoid, modelSchemas["Ellipsoid"]),
-  "DiagonalCuboidPattern": withValidation(createLinearCuboidPattern, modelSchemas["DiagonalCuboidPattern"]),
-  "RectangularCuboidGrid": withValidation(createRectangularCuboidGrid, modelSchemas["RectangularCuboidGrid"]),
-  "LProfile": withValidation(createLProfile, modelSchemas["LProfile"]),
-  "Frustum": withValidation(createFrustum, modelSchemas["Frustum"]),
-  "HelperCuboid": withValidation(createHelperCuboid, modelSchemas["HelperCuboid"]),
-  "Drill": withValidation(createDrill, modelSchemas["Drill"])
+  "Cuboid": withValidation(createCuboid, modelSchemas["Cuboid"], "Cuboid"),
+  "Sphere": withValidation(createSphere, modelSchemas["Sphere"], "Sphere"),
+  "Cylinder": withValidation(createCylinder, modelSchemas["Cylinder"], "Cylinder"),
+  "Ellipsoid": withValidation(createEllipsoid, modelSchemas["Ellipsoid"], "Ellipsoid"),
+  "DiagonalCuboidPattern": withValidation(createLinearCuboidPattern, modelSchemas["DiagonalCuboidPattern"], "DiagonalCuboidPattern"),
+  "RectangularCuboidGrid": withValidation(createRectangularCuboidGrid, modelSchemas["RectangularCuboidGrid"], "RectangularCuboidGrid"),
+  "LProfile": withValidation(createLProfile, modelSchemas["LProfile"], "LProfile"),
+  "Frustum": withValidation(createFrustum, modelSchemas["Frustum"], "Frustum"),
+  "HelperCuboid": withValidation(createHelperCuboid, modelSchemas["HelperCuboid"], "HelperCuboid"),
+  "Drill": withValidation(createDrill, modelSchemas["Drill"], "Drill")
 };
