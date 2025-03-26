@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Home from "./tabs/Home.jsx";
 import CadApp from "./tabs/CadApp.jsx";
 import About from "./tabs/About.jsx";
@@ -11,12 +11,26 @@ export default function Layout() {
     setActiveTab(tab);
   };
 
+  // Listen for events from child components
+  useEffect(() => {
+    const handleSwitchToTab = (event) => {
+      if (event.detail) {
+        switchTab(event.detail);
+      }
+    };
+
+    window.addEventListener('switchToTab', handleSwitchToTab);
+    return () => window.removeEventListener('switchToTab', handleSwitchToTab);
+  }, []);
+
   return (
     <div style={{ 
       height: "100vh", 
       display: "flex", 
       flexDirection: "column",
-      overflow: "hidden"
+      overflow: "hidden",
+      margin: 0,
+      padding: 0
     }}>
       {/* Navigation Bar */}
       <nav style={{
@@ -26,7 +40,9 @@ export default function Layout() {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+        margin: 0,
+        flexShrink: 0
       }}>
         <div style={{ 
           display: "flex", 
@@ -106,15 +122,18 @@ export default function Layout() {
         </div>
       </nav>
 
-      {/* Content Area */}
-      <div style={{ 
-        flex: "1", 
-        overflow: "auto" 
-      }}>
-        {activeTab === "home" && <Home />}
-        {activeTab === "app" && <CadApp />}
-        {activeTab === "about" && <About />}
-      </div>
+      {/* Content Area - Direct render without wrapper div */}
+      {activeTab === "home" && (
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <Home />
+        </div>
+      )}
+      {activeTab === "app" && <CadApp />}
+      {activeTab === "about" && (
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <About />
+        </div>
+      )}
     </div>
   );
 }

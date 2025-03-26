@@ -108,17 +108,15 @@ export default function CadApp() {
   };
   
   return (
-    <div style={{ 
-      height: "100%", 
-      display: "flex", 
-      flexDirection: "column",
-      overflow: "hidden"
-    }}>
+    <>
+      {/* Control Panel - DIRECT CHILD with no parent div for spacing */}
       <div style={{ 
         padding: isMobile ? "8px" : "10px", 
         borderBottom: "1px solid #eee", 
         backgroundColor: "#f8f8f8",
-        fontSize: isMobile ? "11px" : "12px"
+        fontSize: isMobile ? "11px" : "12px",
+        margin: 0,
+        flexShrink: 0 // Prevent flex container from squeezing this
       }}>
         <div style={{
           display: "flex",
@@ -266,7 +264,9 @@ export default function CadApp() {
         <div style={{ 
           display: controlsExpanded ? "flex" : "none",
           flexWrap: "wrap", 
-          gap: "10px"
+          gap: "10px",
+          margin: 0,
+          padding: 0
         }}>
           {modelRegistry[selectedModel].params.map(paramDef => {
             const { name, defaultValue } = paramDef;
@@ -345,10 +345,19 @@ export default function CadApp() {
         )}
       </div>
       
-      <div style={{ flex: 1, position: "relative" }}>
+      {/* Visualization Area - Second DIRECT CHILD with explicit flex styling */}
+      <div style={{ 
+        flex: 1, 
+        position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        margin: 0,
+        padding: 0
+      }}>
         {validationErrors.length > 0 ? (
           <div style={{ 
             height: "100%", 
+            width: "100%",
             display: "flex", 
             alignItems: "center", 
             justifyContent: "center",
@@ -381,7 +390,8 @@ export default function CadApp() {
                 />
               ) : (
                 <div style={{ 
-                  height: "100%", 
+                  height: "100%",
+                  width: "100%", 
                   display: "flex", 
                   alignItems: "center", 
                   justifyContent: "center",
@@ -402,7 +412,8 @@ export default function CadApp() {
                 />
               ) : (
                 <div style={{ 
-                  height: "100%", 
+                  height: "100%",
+                  width: "100%", 
                   display: "flex", 
                   alignItems: "center", 
                   justifyContent: "center",
@@ -416,6 +427,6 @@ export default function CadApp() {
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }

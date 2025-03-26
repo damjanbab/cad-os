@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom";
 import App from "./App.jsx";
+import "./styles.css";
 
 // This is here to compensate for a bug in vite
 import "replicad-opencascadejs/src/replicad_single.wasm?url";
