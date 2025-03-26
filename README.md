@@ -1,35 +1,43 @@
-# A sample app built with replicad!
+# CAD-OS
 
-This module is here to show how to integrate replicad in a React app with
-react-three-fiber.
+A parametric CAD application built with Replicad, React, and Three.js. This project allows interactive 3D model creation and visualization with support for technical drawings and exploded views.
 
-You can visit this page at <https://sample-app.replicad.xyz>
+## Features
 
-This is a basic integration that aims to show how the different pieces can
-stick together:
+-   Interactive 3D model visualization with Three.js
+-   Parametric model creation and modification
+-   Technical drawing generation with orthographic projections
+-   Explosion view for assembly visualization
+-   Multiple pre-built model types:
+    -   Basic shapes (Cuboid, Sphere, Cylinder, Ellipsoid)
+    -   Compound shapes (L-Profile, Frustum, Drill)
+    -   Pattern generation (Linear and Grid arrangements)
+    -   Complex assemblies with helper spaces
 
-- The replicad code can be just a javascript function
-- It should live, with the opencascade loading in a webworker (ideally with
-  functions exposed via comlink).
-- Your main app can be just a react app (with react-three-fiber for instance)
-- The `replicad-three-helper` helps you synchronise the data out of a meshed
-  replicad shape to
+## Technology Stack
 
-This sample app uses vitejs, as a create react app setup does not play nice with
-webassembly and webworkers. This allowed me to keep the code simple and nice.
+-   [Replicad](https://replicad.xyz/): JavaScript CAD framework based on OpenCascade geometry kernel
+-   React and React DOM for UI
+-   Three.js with React Three Fiber for 3D visualization
+-   Web Workers with Comlink for background processing
+-   Vite for building and development
 
-## How to run locally
+## Getting Started
 
-I do not advice to just clone the multirepo and then run from packages (it
-needs some magic with the multi repo logic, this is not great).
+### Running Locally
 
-What I would advice you do to is copy the sample app out of the multirepo and
-then install and run. So something in that spirit:
 
-```sh
-git clone git@github.com:sgenoud/replicad.git
-cp -r replicad/packages/replicad-app-example .
-cd replicad-app-example
 npm install
+
 npm start
-```
+
+The application will be available at [http://localhost:4444](http://localhost:4444)
+
+## Structure
+
+The application is structured with:
+
+-   **3D View**: Interactive model visualization with pan, rotate and zoom
+-   **Technical Drawing View**: 2D orthographic projections with front, top, and side views
+-   **Parameter Controls**: UI for modifying model dimensions and properties
+-   **Model Selection**: Choose from various model types
