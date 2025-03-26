@@ -1,25 +1,22 @@
+// models/drill.js
 import { makeCylinder } from "replicad";
 import { createFrustum } from './frustum.js';
+import { isPositive } from "../validators.js";
 
 /**
  * Creates a drill shape consisting of a frustum (truncated cone) with a cylinder on top
- * @param {number} bottomRadius - Radius of the bottom of the frustum
- * @param {number} topRadius - Radius of the top of the frustum and the cylinder
- * @param {number} frustumHeight - Height of the frustum
- * @param {number} cylinderHeight - Height of the cylinder
- * @returns {Object} Drill shape solid
  */
-export function createDrill(
+export function createDrill({
   bottomRadius = 50,
   topRadius = 25,
   frustumHeight = 80,
   cylinderHeight = 40
-) {
-  return createFrustum(
+}) {
+  return createFrustum({
     bottomRadius,
     topRadius,
-    frustumHeight
-  ).fuse(
+    height: frustumHeight
+  }).fuse(
     makeCylinder(
       topRadius, 
       cylinderHeight, 
@@ -28,3 +25,16 @@ export function createDrill(
     )
   );
 }
+
+// Model definition
+export const drillModel = {
+  name: "Drill",
+  create: createDrill,
+  params: [
+    { name: "bottomRadius", defaultValue: 50, validators: [isPositive] },
+    { name: "topRadius", defaultValue: 25, validators: [isPositive] },
+    { name: "frustumHeight", defaultValue: 80, validators: [isPositive] },
+    { name: "cylinderHeight", defaultValue: 40, validators: [isPositive] }
+  ],
+  hasExplosion: false
+};

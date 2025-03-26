@@ -9,30 +9,36 @@ import { createLProfile } from './lProfile.js';
 import { createCylinder } from './cylinder.js';
 import { compoundShapes } from "replicad";
 import { Vector } from "replicad";
+import { isPositive } from "../validators.js";
 
 /**
  * Creates a model with a helper cuboid space and drill holes in all four corners
  * Plus two L-profiles on the bottom edges with holes in the bottom face
  * Distributes the models in a linear pattern within the helper space
- * @param {number} width - Width of the helper cuboid
- * @param {number} depth - Depth of the helper cuboid
- * @param {number} height - Height of the helper cuboid
- * @param {boolean} showHelper - Whether to show the helper space
- * @param {number} explosionFactor - Factor for exploded view (0-1)
- * @returns {Object} Model with helper space
  */
-export function createHelperCuboid(width = 50, depth = 100, height = 200, showHelper = true, explosionFactor = 0) {
+export function createHelperCuboid({
+  width = 50, 
+  depth = 100, 
+  height = 200, 
+  showHelper = true, 
+  explosionFactor = 0
+}) {
   // Create base model components separately (without fusing)
   const createBaseModel = () => {
     // Create main model (thin cuboid)
-    const mainModel = createCuboid(width-1, 20, 0.5);
+    const mainModel = createCuboid({ width: width-1, depth: 20, height: 0.5 });
     const mainCenter = mainModel.boundingBox.center;
     
     // Create and position first drill
     const drill = constraintModelsByPoints(
       mainModel, 
       { type: 'face', element: FACES.TOP, params: { u: 1.5 / (width-1), v: 2.25 / 20 } },
-      createDrill(1.2, 0.8, 0.5 * 0.8, 0.5 * 0.2)
+      createDrill({
+        bottomRadius: 1.2, 
+        topRadius: 0.8, 
+        frustumHeight: 0.5 * 0.8, 
+        cylinderHeight: 0.5 * 0.2
+      })
     );
     
     // Cut holes in the main model
@@ -43,14 +49,19 @@ export function createHelperCuboid(width = 50, depth = 100, height = 200, showHe
       .cut(mirror(mirror(drill, "XZ", mainCenter, true), "YZ", mainCenter, true));
     
     // Create L-profile
-    const lProfile = createLProfile(20, 4.5, 4.5, 0.5);
+    const lProfile = createLProfile({
+      depth: 20, 
+      flangeXLenght: 4.5, 
+      flangeYLenght: 4.5, 
+      thickness: 0.5
+    });
     const profileCenter = lProfile.boundingBox.center;
     
     // Create and position hole for L-profile
     const holeDrill = constraintModelsByPoints(
       lProfile,
       { type: 'face', element: FACES.BOTTOM, params: { u: 1.5 / 4.5, v: 2.25 / 20 } },
-      createCylinder(0.800001, 0.5)
+      createCylinder({ radius: 0.800001, height: 0.5 })
     );
     
     // Drill both holes in L-profile
@@ -78,14 +89,14 @@ export function createHelperCuboid(width = 50, depth = 100, height = 200, showHe
   };
   
   // Create helper space
-  const helperSpace = createCuboid(width, depth, height);
+  const helperSpace = createCuboid({ width, depth, height });
   
   // Calculate number of models based on height
   const n_models = Math.round(height / 17.5) - 1;
   
   // If we end up with no models (small height), just return the helper space
   if (n_models <= 0) {
-    const helperSpace = createCuboid(width, depth, height);
+    const helperSpace = createCuboid({ width, depth, height });
     return modelWithHelpers(compoundShapes([]), showHelper ? [helperSpace] : []);
   }
   
@@ -145,7 +156,7 @@ export function createHelperCuboid(width = 50, depth = 100, height = 200, showHe
   }
   
   // Create a new cuboid with the specified dimensions
-  const newCuboid = createCuboid(600, 20, 0.5);
+  const newCuboid = createCuboid({ width: 600, depth: 20, height: 0.5 });
   
   // Calculate xDir from the translation vectors used in the model placement
   // We'll use the direction defined by the change in Y and Z coordinates
@@ -194,3 +205,17 @@ export function createHelperCuboid(width = 50, depth = 100, height = 200, showHe
   // Return model with optional helper space
   return modelWithHelpers(finalModel, showHelper ? [helperSpace] : []);
 }
+
+// Model definition
+export const helperCuboidModel = {
+  name: "HelperCuboid",
+  create: createHelperCuboid,
+  params: [
+    { name: "width", defaultValue: 50, validators: [isPositive] },
+    { name: "depth", defaultValue: 100, validators: [isPositive] },
+    { name: "height", defaultValue: 200, validators: [isPositive] },
+    { name: "showHelper", defaultValue: true, validators: [] },
+    { name: "explosionFactor", defaultValue: 0, validators: [] }
+  ],
+  hasExplosion: true
+};

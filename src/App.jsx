@@ -6,26 +6,13 @@ import ReplicadMesh from "./ReplicadMesh.jsx";
 import TechnicalDrawingView from "./TechnicalDrawingView.jsx";
 
 import cadWorker from "./worker.js?worker";
-import { modelFunctions } from "./models";
-import { modelMetadata } from "./models/metadata.js"; // Import the metadata
+import { modelRegistry, createDefaultParams } from "./models";
 
 const cad = wrap(new cadWorker());
 
-// Initialize modelInfo using imported metadata instead of function introspection
-const modelInfo = {};
-Object.entries(modelMetadata).forEach(([name, metadata]) => {
-  modelInfo[name] = {
-    params: metadata.params.reduce((obj, param) => {
-      obj[param.name] = param.defaultValue;
-      return obj;
-    }, {}),
-    hasExplosion: metadata.hasExplosion
-  };
-});
-
 export default function App() {
-  const [selectedModel, setSelectedModel] = useState(Object.keys(modelFunctions)[0]);
-  const [params, setParams] = useState(modelInfo[selectedModel].params);
+  const [selectedModel, setSelectedModel] = useState(Object.keys(modelRegistry)[0]);
+  const [params, setParams] = useState(createDefaultParams(modelRegistry[selectedModel]));
   const [explosionFactor, setExplosionFactor] = useState(0);
   const [mesh, setMesh] = useState(null);
   const [projections, setProjections] = useState(null);
@@ -39,7 +26,7 @@ export default function App() {
     
     // If model supports explosion and we have an explosion factor, include it
     const modelParams = { ...params };
-    if (modelInfo[selectedModel].hasExplosion) {
+    if (modelRegistry[selectedModel].hasExplosion) {
       modelParams.explosionFactor = explosionFactor;
     }
     
@@ -67,7 +54,7 @@ export default function App() {
   useEffect(() => {
     if (activeTab === 'technical' && mesh && !projections) {
       const modelParams = { ...params };
-      if (modelInfo[selectedModel].hasExplosion) {
+      if (modelRegistry[selectedModel].hasExplosion) {
         modelParams.explosionFactor = explosionFactor;
       }
       
@@ -80,7 +67,7 @@ export default function App() {
   const handleModelChange = (e) => {
     const newModel = e.target.value;
     setSelectedModel(newModel);
-    setParams(modelInfo[newModel].params);
+    setParams(createDefaultParams(modelRegistry[newModel]));
     setExplosionFactor(0); // Reset explosion factor when changing models
     setProjections(null); // Reset projections for new model
   };
@@ -115,7 +102,7 @@ export default function App() {
             onChange={handleModelChange}
             style={{ marginRight: "10px", height: "24px", fontSize: "12px" }}
           >
-            {Object.keys(modelFunctions).map(model => (
+            {Object.keys(modelRegistry).map(model => (
               <option key={model} value={model}>{model}</option>
             ))}
           </select>
@@ -157,7 +144,7 @@ export default function App() {
           </div>
           
           {/* Explosion factor slider - only show in 3D view */}
-          {activeTab === '3d' && modelInfo[selectedModel].hasExplosion && (
+          {activeTab === '3d' && modelRegistry[selectedModel].hasExplosion && (
             <div style={{ 
               display: "flex", 
               alignItems: "center", 
@@ -188,14 +175,17 @@ export default function App() {
           flexWrap: "wrap", 
           gap: "10px"
         }}>
-          {Object.entries(params).map(([paramName, value]) => {
-            // Skip explosionFactor as we handle it separately
-            if (paramName === 'explosionFactor') return null;
+          {modelRegistry[selectedModel].params.map(paramDef => {
+            const { name, defaultValue } = paramDef;
             
-            const isBoolean = typeof value === 'boolean';
+            // Skip explosionFactor as we handle it separately
+            if (name === 'explosionFactor') return null;
+            
+            const value = params[name];
+            const isBoolean = typeof defaultValue === 'boolean';
             
             return (
-              <div key={paramName} style={{ 
+              <div key={name} style={{ 
                 display: "flex", 
                 alignItems: "center",
                 backgroundColor: "#fff",
@@ -208,22 +198,22 @@ export default function App() {
                   fontWeight: "bold",
                   color: "#333"
                 }}>
-                  {paramName}:
+                  {name}:
                 </span>
                 
                 {isBoolean ? (
                   <input
-                    id={`param-${paramName}`}
+                    id={`param-${name}`}
                     type="checkbox"
                     checked={value}
-                    onChange={(e) => handleParamChange(paramName, e.target.checked)}
+                    onChange={(e) => handleParamChange(name, e.target.checked)}
                   />
                 ) : (
                   <input
-                    id={`param-${paramName}`}
+                    id={`param-${name}`}
                     type="number"
                     value={value}
-                    onChange={(e) => handleParamChange(paramName, parseFloat(e.target.value))}
+                    onChange={(e) => handleParamChange(name, parseFloat(e.target.value))}
                     style={{ width: "60px", height: "20px", fontSize: "12px" }}
                   />
                 )}

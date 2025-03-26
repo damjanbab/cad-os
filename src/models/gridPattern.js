@@ -4,31 +4,12 @@ import { createCuboid } from './cuboid.js';
 import { centerSelector } from '../helpers/selectors.js';
 import { placeModelsAtPoints } from '../helpers/positioning.js';
 import { createRectangularGrid } from '../helpers/pattern.js';
+import { isPositive } from "../validators.js";
 
 /**
  * Creates a rectangular grid of cuboids
- * @param {number} originX - X component of grid origin
- * @param {number} originY - Y component of grid origin
- * @param {number} originZ - Z component of grid origin
- * @param {number} directionX - X component of grid x-direction
- * @param {number} directionY - Y component of grid x-direction
- * @param {number} directionZ - Z component of grid x-direction
- * @param {number} normalX - X component of grid normal
- * @param {number} normalY - Y component of grid normal
- * @param {number} normalZ - Z component of grid normal
- * @param {number} rowCount - Number of rows
- * @param {number} colCount - Number of columns
- * @param {number} xSpacing - Spacing between columns
- * @param {number} ySpacing - Spacing between rows
- * @param {number} boxWidth - Width of each cuboid
- * @param {number} boxDepth - Depth of each cuboid
- * @param {number} boxHeight - Height of each cuboid
- * @param {number} orientationX - X component of orientation vector
- * @param {number} orientationY - Y component of orientation vector
- * @param {number} orientationZ - Z component of orientation vector
- * @returns {Object} Combined solid of all cuboids
  */
-export function createRectangularCuboidGrid(
+export function createRectangularCuboidGrid({
   originX = 0,
   originY = 0,
   originZ = 0,
@@ -48,10 +29,10 @@ export function createRectangularCuboidGrid(
   orientationX = 0,
   orientationY = 0,
   orientationZ = 1
-) {
+}) {
   return compoundShapes(
     placeModelsAtPoints(
-      () => createCuboid(boxWidth, boxDepth, boxHeight),
+      () => createCuboid({ width: boxWidth, depth: boxDepth, height: boxHeight }),
       centerSelector,
       createRectangularGrid(
         {
@@ -70,3 +51,31 @@ export function createRectangularCuboidGrid(
     )
   );
 }
+
+// Model definition
+export const rectangularCuboidGridModel = {
+  name: "RectangularCuboidGrid",
+  create: createRectangularCuboidGrid,
+  params: [
+    { name: "originX", defaultValue: 0, validators: [] },
+    { name: "originY", defaultValue: 0, validators: [] },
+    { name: "originZ", defaultValue: 0, validators: [] },
+    { name: "directionX", defaultValue: 1, validators: [] },
+    { name: "directionY", defaultValue: 0, validators: [] },
+    { name: "directionZ", defaultValue: 0, validators: [] },
+    { name: "normalX", defaultValue: 0, validators: [] },
+    { name: "normalY", defaultValue: 0, validators: [] },
+    { name: "normalZ", defaultValue: 1, validators: [] },
+    { name: "rowCount", defaultValue: 3, validators: [isPositive] },
+    { name: "colCount", defaultValue: 3, validators: [isPositive] },
+    { name: "xSpacing", defaultValue: 30, validators: [isPositive] },
+    { name: "ySpacing", defaultValue: 30, validators: [isPositive] },
+    { name: "boxWidth", defaultValue: 10, validators: [isPositive] },
+    { name: "boxDepth", defaultValue: 10, validators: [isPositive] },
+    { name: "boxHeight", defaultValue: 10, validators: [isPositive] },
+    { name: "orientationX", defaultValue: 0, validators: [] },
+    { name: "orientationY", defaultValue: 0, validators: [] },
+    { name: "orientationZ", defaultValue: 1, validators: [] }
+  ],
+  hasExplosion: false
+};

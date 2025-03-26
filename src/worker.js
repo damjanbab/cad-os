@@ -3,9 +3,8 @@ import opencascadeWasm from "replicad-opencascadejs/src/replicad_single.wasm?url
 import { setOC } from "replicad";
 import { expose } from "comlink";
 
-// Import our model functions from the models folder
-import { modelFunctions } from "./models";
-import { modelMetadata } from "./models/metadata.js"; // Import the metadata
+// Import our model registry
+import { modelRegistry, createModelWithValidation } from "./models";
 import { createOrthographicProjections, processProjectionsForRendering } from "./helpers/technicalDrawing.js";
 
 // Initialize OpenCascade
@@ -24,30 +23,18 @@ const init = async () => {
 };
 const started = init();
 
-// Get function arguments in the correct order based on metadata
-function getOrderedArguments(modelName, params) {
-  // Get parameter order from metadata
-  const paramOrder = modelMetadata[modelName].params.map(p => p.name);
-  // Return arguments in the correct order
-  return paramOrder.map(paramName => params[paramName]);
-}
-
 // Generic function to create a mesh for any model
 function createMesh(modelName, params) {
   console.time(`[PERF] Total ${modelName} creation`);
   
   return started.then(() => {
-    // Get the model creation function
-    const modelFn = modelFunctions[modelName];
-    
     console.time(`[PERF] ${modelName} model function`);
-    // Call the function with ordered parameter values
-    const orderedArgs = getOrderedArguments(modelName, params);
-    const result = modelFn(...orderedArgs);
+    // Use the new validation and creation function
+    const result = createModelWithValidation(modelName, params);
     console.timeEnd(`[PERF] ${modelName} model function`);
     
     // Check if validation failed
-    if (result && result.validationErrors) {
+    if (result && result.error) {
       return {
         error: true,
         validationErrors: result.validationErrors
@@ -93,10 +80,10 @@ function createMesh(modelName, params) {
     }
     
     // Regular case - just a single model
-    // Apply universal tessellation parameters to all models instead of just for specific ones
+    // Apply universal tessellation parameters
     const meshOptions = { 
-      tolerance: 0.1,          // Maximum distance between real surface and its triangulation
-      angularTolerance: 15     // Maximum angle between adjacent segments (in degrees)
+      tolerance: 0.1,
+      angularTolerance: 15
     };
     
     // Generate and time mesh operations
@@ -127,15 +114,11 @@ function createProjections(modelName, params) {
   console.time(`[PERF] Total ${modelName} projections creation`);
   
   return started.then(() => {
-    // Get the model creation function
-    const modelFn = modelFunctions[modelName];
-    
-    // Call the function with ordered parameter values
-    const orderedArgs = getOrderedArguments(modelName, params);
-    const result = modelFn(...orderedArgs);
+    // Use the new validation and creation function
+    const result = createModelWithValidation(modelName, params);
     
     // Check if validation failed
-    if (result && result.validationErrors) {
+    if (result && result.error) {
       return {
         error: true,
         validationErrors: result.validationErrors
