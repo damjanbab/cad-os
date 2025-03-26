@@ -7,39 +7,19 @@ import TechnicalDrawingView from "./TechnicalDrawingView.jsx";
 
 import cadWorker from "./worker.js?worker";
 import { modelFunctions } from "./models";
+import { modelMetadata } from "./models/metadata.js"; // Import the metadata
 
 const cad = wrap(new cadWorker());
 
-function getParamNames(fn) {
-  const str = fn.toString();
-  const paramStart = str.indexOf('(') + 1;
-  const paramEnd = str.indexOf(')');
-  const params = str.substring(paramStart, paramEnd).split(',');
-  
-  return params.map(p => {
-    const [name, defaultValue] = p.trim().split('=');
-    return {
-      name: name.trim(), 
-      defaultValue: eval(defaultValue?.trim())
-    };
-  });
-}
-
+// Initialize modelInfo using imported metadata instead of function introspection
 const modelInfo = {};
-Object.entries(modelFunctions).forEach(([name, fn]) => {
-  // Get the original function (before validation wrapper)
-  const originalFn = fn.original || fn;
-  const params = getParamNames(originalFn);
-  
-  // Check if the model supports explosion
-  const hasExplosion = params.some(param => param.name === 'explosionFactor');
-  
+Object.entries(modelMetadata).forEach(([name, metadata]) => {
   modelInfo[name] = {
-    params: params.reduce((obj, param) => {
+    params: metadata.params.reduce((obj, param) => {
       obj[param.name] = param.defaultValue;
       return obj;
     }, {}),
-    hasExplosion // Flag for showing explosion slider
+    hasExplosion: metadata.hasExplosion
   };
 });
 

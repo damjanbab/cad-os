@@ -5,6 +5,7 @@ import { expose } from "comlink";
 
 // Import our model functions from the models folder
 import { modelFunctions } from "./models";
+import { modelMetadata } from "./models/metadata.js"; // Import the metadata
 import { createOrthographicProjections, processProjectionsForRendering } from "./helpers/technicalDrawing.js";
 
 // Initialize OpenCascade
@@ -23,6 +24,14 @@ const init = async () => {
 };
 const started = init();
 
+// Get function arguments in the correct order based on metadata
+function getOrderedArguments(modelName, params) {
+  // Get parameter order from metadata
+  const paramOrder = modelMetadata[modelName].params.map(p => p.name);
+  // Return arguments in the correct order
+  return paramOrder.map(paramName => params[paramName]);
+}
+
 // Generic function to create a mesh for any model
 function createMesh(modelName, params) {
   console.time(`[PERF] Total ${modelName} creation`);
@@ -32,8 +41,9 @@ function createMesh(modelName, params) {
     const modelFn = modelFunctions[modelName];
     
     console.time(`[PERF] ${modelName} model function`);
-    // Call the function with the parameter values
-    const result = modelFn(...Object.values(params));
+    // Call the function with ordered parameter values
+    const orderedArgs = getOrderedArguments(modelName, params);
+    const result = modelFn(...orderedArgs);
     console.timeEnd(`[PERF] ${modelName} model function`);
     
     // Check if validation failed
@@ -120,8 +130,9 @@ function createProjections(modelName, params) {
     // Get the model creation function
     const modelFn = modelFunctions[modelName];
     
-    // Call the function with the parameter values
-    const result = modelFn(...Object.values(params));
+    // Call the function with ordered parameter values
+    const orderedArgs = getOrderedArguments(modelName, params);
+    const result = modelFn(...orderedArgs);
     
     // Check if validation failed
     if (result && result.validationErrors) {
