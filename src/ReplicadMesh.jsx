@@ -7,7 +7,7 @@ import {
   syncLinesFromFaces,
 } from "replicad-threejs-helper";
 
-export default React.memo(function ShapeMeshes({ faces, edges, helperSpaces = [] }) {
+export default React.memo(function ShapeMeshes({ faces, edges, helperSpaces = [], highQuality = false }) {
   const { invalidate } = useThree();
   const [helperGeometries, setHelperGeometries] = useState([]);
   
@@ -89,26 +89,52 @@ export default React.memo(function ShapeMeshes({ faces, edges, helperSpaces = []
     };
   }, [helperGeometries]);
 
+  // Enhanced material settings for high quality rendering
+  const bodyMaterial = highQuality ? {
+    color: "#6a92a6",
+    metalness: 0.4,
+    roughness: 0.3,
+    envMapIntensity: 0.8,
+    flatShading: false,
+    polygonOffset: true,
+    polygonOffsetFactor: 2.0,
+    polygonOffsetUnits: 1.0,
+    castShadow: true,
+    receiveShadow: true
+  } : {
+    color: "#5a8296",
+    polygonOffset: true,
+    polygonOffsetFactor: 2.0,
+    polygonOffsetUnits: 1.0
+  };
+
+  // Enhanced line material for high quality
+  const lineMaterial = highQuality ? {
+    color: "#304352",
+    linewidth: 1.5
+  } : {
+    color: "#3c5a6e"
+  };
+
   return (
     <group>
       {/* Main model */}
-      <mesh geometry={body.current}>
-        <meshStandardMaterial
-          color="#5a8296"
-          polygonOffset
-          polygonOffsetFactor={2.0}
-          polygonOffsetUnits={1.0}
-        />
+      <mesh geometry={body.current} castShadow receiveShadow>
+        {highQuality ? (
+          <meshStandardMaterial {...bodyMaterial} />
+        ) : (
+          <meshStandardMaterial {...bodyMaterial} />
+        )}
       </mesh>
       <lineSegments geometry={lines.current}>
-        <lineBasicMaterial color="#3c5a6e" />
+        <lineBasicMaterial {...lineMaterial} />
       </lineSegments>
 
       {/* Helper spaces - only render if geometries are available */}
       {helperGeometries.length === helperSpaces.length && 
         helperGeometries.map((geo, index) => (
           <group key={`helper-${index}`}>
-            <mesh geometry={geo.body}>
+            <mesh geometry={geo.body} castShadow>
               <meshStandardMaterial
                 color="#ff0000"
                 transparent={true}
@@ -117,10 +143,12 @@ export default React.memo(function ShapeMeshes({ faces, edges, helperSpaces = []
                 polygonOffset
                 polygonOffsetFactor={1.0}
                 polygonOffsetUnits={1.0}
+                roughness={0.7}
+                metalness={0.0}
               />
             </mesh>
             <lineSegments geometry={geo.lines}>
-              <lineBasicMaterial color="#ff0000" />
+              <lineBasicMaterial color="#ff3333" />
             </lineSegments>
           </group>
         ))

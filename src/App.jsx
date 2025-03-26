@@ -4,6 +4,7 @@ import { wrap } from "comlink";
 import ThreeContext from "./ThreeContext.jsx";
 import ReplicadMesh from "./ReplicadMesh.jsx";
 import TechnicalDrawingView from "./TechnicalDrawingView.jsx";
+import RenderingView from "./RenderingView.jsx";
 
 import cadWorker from "./worker.js?worker";
 import { modelRegistry, createDefaultParams } from "./models";
@@ -186,6 +187,21 @@ export default function App() {
               }}
             >
               Technical Drawing
+            </button>
+            <button 
+              onClick={() => setActiveTab('rendering')} 
+              style={{
+                padding: isMobile ? "8px 12px" : "4px 12px",
+                border: "none",
+                background: activeTab === 'rendering' ? "#4a90e2" : "#f0f0f0",
+                color: activeTab === 'rendering' ? "white" : "#333",
+                cursor: "pointer",
+                fontWeight: activeTab === 'rendering' ? "bold" : "normal",
+                flex: isMobile ? "1" : "auto",
+                fontSize: isMobile ? "14px" : "inherit"
+              }}
+            >
+              360° Rendering
             </button>
           </div>
           
@@ -373,6 +389,27 @@ export default function App() {
                   color: "#999"
                 }}>
                   Loading technical drawings...
+                </div>
+              )
+            ) : null}
+            
+            {/* 360° Rendering View */}
+            {activeTab === 'rendering' ? (
+              mesh ? (
+                <RenderingView 
+                  mesh={mesh} 
+                  isMobile={isMobile}
+                />
+              ) : (
+                <div style={{ 
+                  height: "100%", 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center",
+                  fontSize: isMobile ? "14px" : "12px",
+                  color: "#999"
+                }}>
+                  Loading 360° rendering...
                 </div>
               )
             ) : null}
