@@ -1,6 +1,6 @@
 // models/frustum.js
 import { sketchCircle } from "replicad";
-import { isPositive } from "../validators.js";
+import { isPositive, validateAll } from "../validators.js";
 
 /**
  * Creates a frustum (truncated cone)
@@ -27,9 +27,12 @@ export const frustumModel = {
   name: "Frustum",
   create: createFrustum,
   params: [
-    { name: "bottomRadius", defaultValue: 50, validators: [isPositive] },
-    { name: "topRadius", defaultValue: 25, validators: [isPositive] },
-    { name: "height", defaultValue: 100, validators: [isPositive] }
+    { name: "bottomRadius", defaultValue: 50 },
+    { name: "topRadius", defaultValue: 25 },
+    { name: "height", defaultValue: 100 }
+  ],
+  validators: [
+    validateAll(isPositive, ["bottomRadius", "topRadius", "height"])
   ],
   hasExplosion: false
 };

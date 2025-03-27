@@ -9,7 +9,7 @@ import { createLProfile } from './lProfile.js';
 import { createCylinder } from './cylinder.js';
 import { compoundShapes } from "replicad";
 import { Vector } from "replicad";
-import { isPositive } from "../validators.js";
+import { isPositive, validateAll } from "../validators.js";
 
 /**
  * Creates a model with a helper cuboid space and drill holes in all four corners
@@ -23,6 +23,9 @@ export function createHelperCuboid({
   showHelper = true, 
   explosionFactor = 0
 }) {
+  // Implementation remains unchanged
+  // ...existing implementation code...
+  
   // Create base model components separately (without fusing)
   const createBaseModel = () => {
     // Create main model (thin cuboid)
@@ -211,11 +214,14 @@ export const helperCuboidModel = {
   name: "HelperCuboid",
   create: createHelperCuboid,
   params: [
-    { name: "width", defaultValue: 50, validators: [isPositive] },
-    { name: "depth", defaultValue: 100, validators: [isPositive] },
-    { name: "height", defaultValue: 200, validators: [isPositive] },
-    { name: "showHelper", defaultValue: true, validators: [] },
-    { name: "explosionFactor", defaultValue: 0, validators: [] }
+    { name: "width", defaultValue: 50 },
+    { name: "depth", defaultValue: 100 },
+    { name: "height", defaultValue: 200 },
+    { name: "showHelper", defaultValue: true },
+    { name: "explosionFactor", defaultValue: 0 }
+  ],
+  validators: [
+    validateAll(isPositive, ["width", "depth", "height"])
   ],
   hasExplosion: true
 };

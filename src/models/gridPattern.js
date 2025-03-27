@@ -4,7 +4,7 @@ import { createCuboid } from './cuboid.js';
 import { centerSelector } from '../helpers/selectors.js';
 import { placeModelsAtPoints } from '../helpers/positioning.js';
 import { createRectangularGrid } from '../helpers/pattern.js';
-import { isPositive } from "../validators.js";
+import { isPositive, validateAll } from "../validators.js";
 
 /**
  * Creates a rectangular grid of cuboids
@@ -57,25 +57,28 @@ export const rectangularCuboidGridModel = {
   name: "RectangularCuboidGrid",
   create: createRectangularCuboidGrid,
   params: [
-    { name: "originX", defaultValue: 0, validators: [] },
-    { name: "originY", defaultValue: 0, validators: [] },
-    { name: "originZ", defaultValue: 0, validators: [] },
-    { name: "directionX", defaultValue: 1, validators: [] },
-    { name: "directionY", defaultValue: 0, validators: [] },
-    { name: "directionZ", defaultValue: 0, validators: [] },
-    { name: "normalX", defaultValue: 0, validators: [] },
-    { name: "normalY", defaultValue: 0, validators: [] },
-    { name: "normalZ", defaultValue: 1, validators: [] },
-    { name: "rowCount", defaultValue: 3, validators: [isPositive] },
-    { name: "colCount", defaultValue: 3, validators: [isPositive] },
-    { name: "xSpacing", defaultValue: 30, validators: [isPositive] },
-    { name: "ySpacing", defaultValue: 30, validators: [isPositive] },
-    { name: "boxWidth", defaultValue: 10, validators: [isPositive] },
-    { name: "boxDepth", defaultValue: 10, validators: [isPositive] },
-    { name: "boxHeight", defaultValue: 10, validators: [isPositive] },
-    { name: "orientationX", defaultValue: 0, validators: [] },
-    { name: "orientationY", defaultValue: 0, validators: [] },
-    { name: "orientationZ", defaultValue: 1, validators: [] }
+    { name: "originX", defaultValue: 0 },
+    { name: "originY", defaultValue: 0 },
+    { name: "originZ", defaultValue: 0 },
+    { name: "directionX", defaultValue: 1 },
+    { name: "directionY", defaultValue: 0 },
+    { name: "directionZ", defaultValue: 0 },
+    { name: "normalX", defaultValue: 0 },
+    { name: "normalY", defaultValue: 0 },
+    { name: "normalZ", defaultValue: 1 },
+    { name: "rowCount", defaultValue: 3 },
+    { name: "colCount", defaultValue: 3 },
+    { name: "xSpacing", defaultValue: 30 },
+    { name: "ySpacing", defaultValue: 30 },
+    { name: "boxWidth", defaultValue: 10 },
+    { name: "boxDepth", defaultValue: 10 },
+    { name: "boxHeight", defaultValue: 10 },
+    { name: "orientationX", defaultValue: 0 },
+    { name: "orientationY", defaultValue: 0 },
+    { name: "orientationZ", defaultValue: 1 }
+  ],
+  validators: [
+    validateAll(isPositive, ["rowCount", "colCount", "xSpacing", "ySpacing", "boxWidth", "boxDepth", "boxHeight"])
   ],
   hasExplosion: false
 };

@@ -1,6 +1,6 @@
 // models/lProfile.js
 import { makeBox } from "replicad";
-import { isPositive, lessThan } from "../validators.js";
+import { isPositive, validateAll, validateLessThan } from "../validators.js";
 
 /**
  * Creates an L-profile (angle profile)
@@ -29,37 +29,20 @@ export function createLProfile({
   return lProfile;
 }
 
-// Custom validator for L-profile
-function validateLProfileThickness(params) {
-  // Check that thickness is less than flange dimensions
-  if (params.thickness >= params.flangeXLenght) {
-    return {
-      valid: false,
-      message: `Thickness (${params.thickness}) must be less than flangeXLenght (${params.flangeXLenght})`
-    };
-  }
-  
-  if (params.thickness >= params.flangeYLenght) {
-    return {
-      valid: false,
-      message: `Thickness (${params.thickness}) must be less than flangeYLenght (${params.flangeYLenght})`
-    };
-  }
-  
-  return { valid: true };
-}
-
 // Model definition
 export const lProfileModel = {
   name: "LProfile",
   create: createLProfile,
   params: [
-    { name: "depth", defaultValue: 100, validators: [isPositive] },
-    { name: "flangeXLenght", defaultValue: 50, validators: [isPositive] },
-    { name: "flangeYLenght", defaultValue: 50, validators: [isPositive] },
-    { name: "thickness", defaultValue: 5, validators: [isPositive] }
+    { name: "depth", defaultValue: 100 },
+    { name: "flangeXLenght", defaultValue: 50 },
+    { name: "flangeYLenght", defaultValue: 50 },
+    { name: "thickness", defaultValue: 5 }
   ],
-  // Add custom validator to check thickness against flange dimensions
-  validators: [validateLProfileThickness],
+  validators: [
+    validateAll(isPositive, ["depth", "flangeXLenght", "flangeYLenght", "thickness"]),
+    validateLessThan("thickness", "flangeXLenght"),
+    validateLessThan("thickness", "flangeYLenght")
+  ],
   hasExplosion: false
 };

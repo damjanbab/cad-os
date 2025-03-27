@@ -4,7 +4,7 @@ import { createCuboid } from './cuboid.js';
 import { centerSelector } from '../helpers/selectors.js';
 import { placeModelsAtPoints } from '../helpers/positioning.js';
 import { createLinearPattern } from '../helpers/pattern.js';
-import { isPositive } from "../validators.js";
+import { isPositive, validateAll } from "../validators.js";
 
 /**
  * Create a linear pattern of cuboids along a specified vector
@@ -45,19 +45,22 @@ export const linearCuboidPatternModel = {
   name: "DiagonalCuboidPattern",
   create: createLinearCuboidPattern,
   params: [
-    { name: "count", defaultValue: 5, validators: [isPositive] },
-    { name: "vectorX", defaultValue: 0, validators: [] },
-    { name: "vectorY", defaultValue: 50, validators: [] },
-    { name: "vectorZ", defaultValue: 50, validators: [] },
-    { name: "originX", defaultValue: 0, validators: [] },
-    { name: "originY", defaultValue: 0, validators: [] },
-    { name: "originZ", defaultValue: 0, validators: [] },
-    { name: "boxWidth", defaultValue: 10, validators: [isPositive] },
-    { name: "boxDepth", defaultValue: 10, validators: [isPositive] },
-    { name: "boxHeight", defaultValue: 10, validators: [isPositive] },
-    { name: "orientationX", defaultValue: 0, validators: [] },
-    { name: "orientationY", defaultValue: 0, validators: [] },
-    { name: "orientationZ", defaultValue: 1, validators: [] }
+    { name: "count", defaultValue: 5 },
+    { name: "vectorX", defaultValue: 0 },
+    { name: "vectorY", defaultValue: 50 },
+    { name: "vectorZ", defaultValue: 50 },
+    { name: "originX", defaultValue: 0 },
+    { name: "originY", defaultValue: 0 },
+    { name: "originZ", defaultValue: 0 },
+    { name: "boxWidth", defaultValue: 10 },
+    { name: "boxDepth", defaultValue: 10 },
+    { name: "boxHeight", defaultValue: 10 },
+    { name: "orientationX", defaultValue: 0 },
+    { name: "orientationY", defaultValue: 0 },
+    { name: "orientationZ", defaultValue: 1 }
+  ],
+  validators: [
+    validateAll(isPositive, ["count", "boxWidth", "boxDepth", "boxHeight"])
   ],
   hasExplosion: false
 };

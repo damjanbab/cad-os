@@ -1,6 +1,6 @@
 // models/cuboid.js
 import { makeBox } from "replicad";
-import { isPositive } from "../validators.js";
+import { isPositive, validateAll } from "../validators.js";
 
 // Create a cuboid with its bottom center at the origin
 export function createCuboid({ width = 100, depth = 100, height = 100 }) {
@@ -27,9 +27,12 @@ export const cuboidModel = {
   name: "Cuboid",
   create: createCuboid,
   params: [
-    { name: "width", defaultValue: 100, validators: [isPositive] },
-    { name: "depth", defaultValue: 100, validators: [isPositive] },
-    { name: "height", defaultValue: 100, validators: [isPositive] }
+    { name: "width", defaultValue: 100 },
+    { name: "depth", defaultValue: 100 },
+    { name: "height", defaultValue: 100 }
+  ],
+  validators: [
+    validateAll(isPositive, ["width", "depth", "height"])
   ],
   hasExplosion: false
 };

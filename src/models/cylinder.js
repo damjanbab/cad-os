@@ -1,6 +1,6 @@
 // models/cylinder.js
 import { makeCylinder } from "replicad";
-import { isPositive } from "../validators.js";
+import { isPositive, validateAll } from "../validators.js";
 
 // Create a cylinder
 export function createCylinder({ radius = 50, height = 100 }) {
@@ -16,8 +16,11 @@ export const cylinderModel = {
   name: "Cylinder",
   create: createCylinder,
   params: [
-    { name: "radius", defaultValue: 50, validators: [isPositive] },
-    { name: "height", defaultValue: 100, validators: [isPositive] }
+    { name: "radius", defaultValue: 50 },
+    { name: "height", defaultValue: 100 }
+  ],
+  validators: [
+    validateAll(isPositive, ["radius", "height"])
   ],
   hasExplosion: false
 };
