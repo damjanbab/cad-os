@@ -37,11 +37,29 @@ export default function About() {
             border: "4px solid #E2E8F0",
             boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
           }}>
-            {/* Note: Replace this with the actual path to profile.jpg in your project's public assets */}
+            {/* Direct reference to GitHub raw content */}
             <img 
-              src="/assets/profile.jpg" 
+              src="https://raw.githubusercontent.com/damjanbab/cad-os/main/assets/profile.jpg"
               alt="Damjan Babic" 
               style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+              onError={(e) => {
+                // Fallback options
+                const fallbackPaths = [
+                  "./assets/profile.jpg",
+                  "/cad-os/assets/profile.jpg",
+                  "https://raw.githubusercontent.com/haloedDepth/cad-os/main/assets/profile.jpg"
+                ];
+                
+                const currentSrc = e.target.src;
+                const nextPath = fallbackPaths.find(path => path !== currentSrc);
+                
+                if (nextPath) {
+                  e.target.src = nextPath;
+                } else {
+                  // If all paths fail, use a placeholder
+                  e.target.src = "https://via.placeholder.com/180x180?text=Profile";
+                }
+              }}
             />
           </div>
 
