@@ -1,5 +1,73 @@
-// TechnicalDrawingView.jsx with cursor-based zoom functionality
+// TechnicalDrawingView.jsx with enhanced SVG path referencing
 import React, { useEffect, useRef, useState } from 'react';
+
+/**
+ * Renders a single SVG path with additional reference data
+ */
+function ReferencePath({ path, stroke, strokeWidth, strokeDasharray }) {
+  if (!path) return null;
+  
+  // If path is a normalized path object with all our reference data
+  if (path && path.id) {
+    // Determine what to use as the 'd' attribute
+    let pathData;
+    if (typeof path.data === 'string') {
+      pathData = path.data;
+    } else if (path.rawPath) {
+      // Handle original array format from replicad
+      if (Array.isArray(path.rawPath)) {
+        // If it's just an array with one string, use that
+        pathData = path.rawPath[0];
+      } else {
+        // Fallback
+        pathData = String(path.rawPath);
+      }
+    } else {
+      pathData = String(path.data || '');
+    }
+    
+    return (
+      <path
+        key={path.id}
+        id={path.id}
+        d={pathData}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        fill="none"
+        strokeDasharray={strokeDasharray}
+        data-type={path.geometry?.type || "unknown"}
+        data-view={path.viewName}
+        data-visibility={path.visibility}
+        data-part={path.partName}
+        data-index={path.index}
+      />
+    );
+  }
+  
+  // Fallback for old path format (for backward compatibility)
+  if (Array.isArray(path)) {
+    return (
+      <path
+        d={path[0]}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        fill="none"
+        strokeDasharray={strokeDasharray}
+      />
+    );
+  }
+  
+  // String format
+  return (
+    <path
+      d={typeof path === 'string' ? path : String(path)}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      fill="none"
+      strokeDasharray={strokeDasharray}
+    />
+  );
+}
 
 // SVG Technical Drawing Projection component
 function ProjectionView({ projection, title, position, dimensions, transform }) {
@@ -35,16 +103,17 @@ function ProjectionView({ projection, title, position, dimensions, transform }) 
           viewBox={projection.combinedViewBox} 
           style={{ width: '100%', height: '100%' }}
           preserveAspectRatio="xMidYMid meet"
+          data-view-title={title}
         >
           {/* Visible lines */}
           <g>
             {projection.visible.paths.map((path, i) => (
-              <path 
-                key={`visible-${i}`} 
-                d={path} 
-                stroke="#000000" 
-                strokeWidth="0.5" 
-                fill="none"
+              <ReferencePath
+                key={path.id || `visible-${i}`}
+                path={path}
+                stroke="#000000"
+                strokeWidth="0.5"
+                strokeDasharray={null}
               />
             ))}
           </g>
@@ -52,12 +121,11 @@ function ProjectionView({ projection, title, position, dimensions, transform }) 
           {/* Hidden lines */}
           <g>
             {projection.hidden.paths.map((path, i) => (
-              <path 
-                key={`hidden-${i}`} 
-                d={path} 
-                stroke="#777777" 
-                strokeWidth="0.3" 
-                fill="none"
+              <ReferencePath
+                key={path.id || `hidden-${i}`}
+                path={path}
+                stroke="#777777"
+                strokeWidth="0.3"
                 strokeDasharray="2,1"
               />
             ))}
@@ -112,16 +180,18 @@ function PartView({ part, index }) {
                 viewBox={view.combinedViewBox} 
                 style={{ width: '100%', height: '100%' }}
                 preserveAspectRatio="xMidYMid meet"
+                data-part-name={part.name}
+                data-view-name={viewName}
               >
                 {/* Visible lines */}
                 <g>
                   {view.visible.paths.map((path, i) => (
-                    <path 
-                      key={`visible-${i}`} 
-                      d={path} 
-                      stroke="#000000" 
-                      strokeWidth="0.5" 
-                      fill="none"
+                    <ReferencePath
+                      key={path.id || `part-visible-${i}`}
+                      path={path}
+                      stroke="#000000"
+                      strokeWidth="0.5"
+                      strokeDasharray={null}
                     />
                   ))}
                 </g>
@@ -129,12 +199,11 @@ function PartView({ part, index }) {
                 {/* Hidden lines */}
                 <g>
                   {view.hidden.paths.map((path, i) => (
-                    <path 
-                      key={`hidden-${i}`} 
-                      d={path} 
-                      stroke="#777777" 
-                      strokeWidth="0.3" 
-                      fill="none"
+                    <ReferencePath
+                      key={path.id || `part-hidden-${i}`}
+                      path={path}
+                      stroke="#777777"
+                      strokeWidth="0.3"
                       strokeDasharray="2,1"
                     />
                   ))}
