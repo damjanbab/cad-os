@@ -1,3 +1,4 @@
+// Simple worker.js with minimal safe logging
 import opencascade from "replicad-opencascadejs/src/replicad_single.js";
 import opencascadeWasm from "replicad-opencascadejs/src/replicad_single.wasm?url";
 import { setOC } from "replicad";
@@ -22,6 +23,39 @@ const init = async () => {
   return true;
 };
 const started = init();
+
+// Function to create orthographic projections for technical drawings
+function createProjections(modelName, params) {
+  console.log(`[LOG] createProjections called for model: ${modelName}`);
+  console.time(`[PERF] Total ${modelName} projections creation`);
+  
+  return started.then(() => {
+    // Create model
+    const result = createModelWithValidation(modelName, params);
+    
+    // Check if validation failed
+    if (result && result.error) {
+      return {
+        error: true,
+        validationErrors: result.validationErrors
+      };
+    }
+    
+    // Create orthographic projections
+    console.time(`[PERF] ${modelName} projections generation`);
+    const projections = createOrthographicProjections(result);
+    console.timeEnd(`[PERF] ${modelName} projections generation`);
+    
+    // Process projections for rendering
+    console.time(`[PERF] ${modelName} projections processing`);
+    const processedProjections = processProjectionsForRendering(projections);
+    console.timeEnd(`[PERF] ${modelName} projections processing`);
+    
+    console.timeEnd(`[PERF] Total ${modelName} projections creation`);
+    
+    return processedProjections;
+  });
+}
 
 // Generic function to create a mesh for any model
 function createMesh(modelName, params) {
@@ -106,38 +140,6 @@ function createMesh(modelName, params) {
       faces: faces,
       edges: edges,
     };
-  });
-}
-
-// Function to create orthographic projections for technical drawings
-function createProjections(modelName, params) {
-  console.time(`[PERF] Total ${modelName} projections creation`);
-  
-  return started.then(() => {
-    // Use the new validation and creation function
-    const result = createModelWithValidation(modelName, params);
-    
-    // Check if validation failed
-    if (result && result.error) {
-      return {
-        error: true,
-        validationErrors: result.validationErrors
-      };
-    }
-    
-    // Create orthographic projections
-    console.time(`[PERF] ${modelName} projections generation`);
-    const projections = createOrthographicProjections(result);
-    console.timeEnd(`[PERF] ${modelName} projections generation`);
-    
-    // Process projections for rendering
-    console.time(`[PERF] ${modelName} projections processing`);
-    const processedProjections = processProjectionsForRendering(projections);
-    console.timeEnd(`[PERF] ${modelName} projections processing`);
-    
-    console.timeEnd(`[PERF] Total ${modelName} projections creation`);
-    
-    return processedProjections;
   });
 }
 
