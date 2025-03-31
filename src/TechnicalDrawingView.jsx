@@ -116,13 +116,48 @@ function PartView({ part, index, scale }) {
   if (!part || !part.views) return null;
   
   const titleHeight = 20; // Height of the title bar in pixels for part views
+  const layoutGap = 20; // Gap between views in pixels
+  
+  // Get the view data for each projection
+  const frontView = part.views.front;
+  const topView = part.views.top;
+  const rightView = part.views.right;
+  
+  // Parse viewboxes and calculate dimensions
+  let frontViewData, topViewData, rightViewData;
+  let frontWidth = 0, frontHeight = 0;
+  let topWidth = 0, topHeight = 0;
+  let rightWidth = 0, rightHeight = 0;
+  
+  if (frontView) {
+    frontViewData = parseViewBox(frontView.combinedViewBox);
+    frontWidth = frontViewData.width * scale;
+    frontHeight = frontViewData.height * scale;
+  }
+  
+  if (topView) {
+    topViewData = parseViewBox(topView.combinedViewBox);
+    topWidth = topViewData.width * scale;
+    topHeight = topViewData.height * scale;
+  }
+  
+  if (rightView) {
+    rightViewData = parseViewBox(rightView.combinedViewBox);
+    rightWidth = rightViewData.width * scale;
+    rightHeight = rightViewData.height * scale;
+  }
+  
+  // Calculate the total width and height needed for this part
+  const totalWidth = Math.max(frontWidth + rightWidth + layoutGap, topWidth);
+  const totalHeight = frontHeight + topHeight + layoutGap;
   
   return (
     <div key={index} style={{ 
       margin: '10px', 
       border: '1px solid #ccc', 
       backgroundColor: 'white',
-      display: 'inline-block'
+      display: 'inline-block',
+      width: `${totalWidth + 20}px` // Add padding
     }}>
       <h4 style={{ 
         padding: '5px', 
@@ -132,77 +167,186 @@ function PartView({ part, index, scale }) {
         {part.name}
       </h4>
       <div style={{ 
-        display: 'flex', 
-        flexWrap: 'wrap', 
-        padding: '10px' 
+        padding: '10px',
+        position: 'relative',
+        height: `${totalHeight + 20}px` // Add padding
       }}>
-        {Object.entries(part.views).map(([viewName, view], viewIndex) => {
-          // Parse viewbox to get cm dimensions
-          const viewBoxData = parseViewBox(view.combinedViewBox);
-          
-          // Calculate the required size in pixels based on scale
-          const viewWidthPx = viewBoxData.width * scale;
-          const viewHeightPx = viewBoxData.height * scale;
-          
-          return (
-            <div key={viewIndex} style={{ 
-              margin: '5px', 
-              width: `${viewWidthPx}px`,
-              height: `${viewHeightPx + titleHeight}px`,
-              border: '1px solid #ddd',
-              display: 'flex',
-              flexDirection: 'column'
+        {/* Front View */}
+        {frontView && (
+          <div style={{ 
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            width: `${frontWidth}px`,
+            height: `${frontHeight + titleHeight}px`,
+            border: '1px solid #ddd',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ 
+              padding: '3px', 
+              height: `${titleHeight}px`,
+              borderBottom: '1px solid #ddd', 
+              fontSize: '10px',
+              boxSizing: 'border-box',
+              flexShrink: 0
             }}>
-              <div style={{ 
-                padding: '3px', 
-                height: `${titleHeight}px`,
-                borderBottom: '1px solid #ddd', 
-                fontSize: '10px',
-                boxSizing: 'border-box',
-                flexShrink: 0
-              }}>
-                {viewName}
-              </div>
-              <div style={{ 
-                width: '100%', 
-                flexGrow: 1,
-                position: 'relative'
-              }}>
-                <svg 
-                  viewBox={view.combinedViewBox} 
-                  style={{ width: '100%', height: '100%' }}
-                  preserveAspectRatio="xMidYMid meet"
-                >
-                  {/* Visible lines */}
-                  <g>
-                    {view.visible.paths.map((path, i) => (
-                      <PathElement
-                        key={path.id || `part-visible-${i}`}
-                        path={path}
-                        stroke="#000000"
-                        strokeWidth="0.5"
-                        strokeDasharray={null}
-                      />
-                    ))}
-                  </g>
-                  
-                  {/* Hidden lines */}
-                  <g>
-                    {view.hidden.paths.map((path, i) => (
-                      <PathElement
-                        key={path.id || `part-hidden-${i}`}
-                        path={path}
-                        stroke="#777777"
-                        strokeWidth="0.3"
-                        strokeDasharray="2,1"
-                      />
-                    ))}
-                  </g>
-                </svg>
-              </div>
+              Front
             </div>
-          );
-        })}
+            <div style={{ 
+              width: '100%', 
+              flexGrow: 1,
+              position: 'relative'
+            }}>
+              <svg 
+                viewBox={frontView.combinedViewBox} 
+                style={{ width: '100%', height: '100%' }}
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <g>
+                  {frontView.visible.paths.map((path, i) => (
+                    <PathElement
+                      key={path.id || `part-visible-${i}`}
+                      path={path}
+                      stroke="#000000"
+                      strokeWidth="0.5"
+                      strokeDasharray={null}
+                    />
+                  ))}
+                </g>
+                <g>
+                  {frontView.hidden.paths.map((path, i) => (
+                    <PathElement
+                      key={path.id || `part-hidden-${i}`}
+                      path={path}
+                      stroke="#777777"
+                      strokeWidth="0.3"
+                      strokeDasharray="2,1"
+                    />
+                  ))}
+                </g>
+              </svg>
+            </div>
+          </div>
+        )}
+        
+        {/* Top View - positioned below Front View */}
+        {topView && (
+          <div style={{ 
+            position: 'absolute',
+            top: `${frontHeight + titleHeight + layoutGap}px`,
+            left: `${(frontWidth - topWidth) / 2}px`, // Center below front view
+            width: `${topWidth}px`,
+            height: `${topHeight + titleHeight}px`,
+            border: '1px solid #ddd',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ 
+              padding: '3px', 
+              height: `${titleHeight}px`,
+              borderBottom: '1px solid #ddd', 
+              fontSize: '10px',
+              boxSizing: 'border-box',
+              flexShrink: 0
+            }}>
+              Top
+            </div>
+            <div style={{ 
+              width: '100%', 
+              flexGrow: 1,
+              position: 'relative'
+            }}>
+              <svg 
+                viewBox={topView.combinedViewBox} 
+                style={{ width: '100%', height: '100%' }}
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <g>
+                  {topView.visible.paths.map((path, i) => (
+                    <PathElement
+                      key={path.id || `part-visible-${i}`}
+                      path={path}
+                      stroke="#000000"
+                      strokeWidth="0.5"
+                      strokeDasharray={null}
+                    />
+                  ))}
+                </g>
+                <g>
+                  {topView.hidden.paths.map((path, i) => (
+                    <PathElement
+                      key={path.id || `part-hidden-${i}`}
+                      path={path}
+                      stroke="#777777"
+                      strokeWidth="0.3"
+                      strokeDasharray="2,1"
+                    />
+                  ))}
+                </g>
+              </svg>
+            </div>
+          </div>
+        )}
+        
+        {/* Right View - positioned to the right of Front View */}
+        {rightView && (
+          <div style={{ 
+            position: 'absolute',
+            top: `${(frontHeight - rightHeight) / 2}px`, // Center vertically relative to front view
+            left: `${frontWidth + layoutGap}px`, // To the right of front view
+            width: `${rightWidth}px`,
+            height: `${rightHeight + titleHeight}px`,
+            border: '1px solid #ddd',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ 
+              padding: '3px', 
+              height: `${titleHeight}px`,
+              borderBottom: '1px solid #ddd', 
+              fontSize: '10px',
+              boxSizing: 'border-box',
+              flexShrink: 0
+            }}>
+              Right
+            </div>
+            <div style={{ 
+              width: '100%', 
+              flexGrow: 1,
+              position: 'relative'
+            }}>
+              <svg 
+                viewBox={rightView.combinedViewBox} 
+                style={{ width: '100%', height: '100%' }}
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <g>
+                  {rightView.visible.paths.map((path, i) => (
+                    <PathElement
+                      key={path.id || `part-visible-${i}`}
+                      path={path}
+                      stroke="#000000"
+                      strokeWidth="0.5"
+                      strokeDasharray={null}
+                    />
+                  ))}
+                </g>
+                <g>
+                  {rightView.hidden.paths.map((path, i) => (
+                    <PathElement
+                      key={path.id || `part-hidden-${i}`}
+                      path={path}
+                      stroke="#777777"
+                      strokeWidth="0.3"
+                      strokeDasharray="2,1"
+                    />
+                  ))}
+                </g>
+              </svg>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -346,13 +490,13 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
     }
   }
   
-  // Calculate positions - center the front view roughly in the initial viewport
+  // Calculate positions according to standard engineering drawing layout
   const initialOffsetX = 50;
-  const initialOffsetY = topHeight + layoutGap + 50; // Place front below top view space
+  const initialOffsetY = 50; // Start with front view at top
   
-  const frontPos = [initialOffsetX, initialOffsetY];
-  const topPos = [initialOffsetX + (frontWidth - topWidth) / 2, initialOffsetY - topHeight - layoutGap];
-  const rightPos = [initialOffsetX + frontWidth + layoutGap, initialOffsetY + (frontHeight - rightHeight) / 2];
+  const frontPos = [initialOffsetX, initialOffsetY]; // Front view at top
+  const topPos = [initialOffsetX + (frontWidth - topWidth) / 2, initialOffsetY + frontHeight + layoutGap]; // Top view below front view
+  const rightPos = [initialOffsetX + frontWidth + layoutGap, initialOffsetY + (frontHeight - rightHeight) / 2]; // Right view to the right of front
   
   return (
     <div 
@@ -512,7 +656,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
               />
             )}
             
-            {/* Top View */}
+            {/* Top View - now positioned below Front View */}
             {standardViews.topView && topViewData && (
               <ProjectionView
                 projection={standardViews.topView}
@@ -536,11 +680,11 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
           </>
         )}
         
-        {/* Part Projections */}
+        {/* Part Projections - position below the top view */}
         {projections.parts && projections.parts.length > 0 && (
           <div style={{
             position: 'absolute',
-            top: `${initialOffsetY + frontHeight + layoutGap * 2}px`,
+            top: `${initialOffsetY + frontHeight + topHeight + layoutGap * 3}px`,
             left: `${initialOffsetX}px`,
             width: 'max-content'
           }}>
