@@ -1,6 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 /**
+ * Helper function to parse SVG viewBox string
+ */
+function parseViewBox(viewBoxString) {
+  if (!viewBoxString || typeof viewBoxString !== 'string') {
+    return { x: 0, y: 0, width: 1, height: 1 };
+  }
+  const parts = viewBoxString.split(' ').map(parseFloat);
+  if (parts.length !== 4 || parts.some(isNaN)) {
+    return { x: 0, y: 0, width: 1, height: 1 };
+  }
+  // Ensure width and height are positive, fallback to 1 if zero or negative
+  const width = parts[2] > 0 ? parts[2] : 1;
+  const height = parts[3] > 0 ? parts[3] : 1;
+
+  return { x: parts[0], y: parts[1], width: width, height: height };
+}
+
+/**
  * Renders a single SVG path
  */
 function PathElement({ path, stroke, strokeWidth, strokeDasharray }) {
@@ -9,6 +27,7 @@ function PathElement({ path, stroke, strokeWidth, strokeDasharray }) {
   // Handle different path formats
   const pathData = path.data || (typeof path === 'string' ? path : String(path));
   
+  // Use vector-effect to keep stroke width consistent regardless of SVG scaling
   return (
     <path
       id={path.id}
@@ -17,17 +36,20 @@ function PathElement({ path, stroke, strokeWidth, strokeDasharray }) {
       strokeWidth={strokeWidth}
       fill="none"
       strokeDasharray={strokeDasharray}
+      style={{ vectorEffect: 'non-scaling-stroke' }}
     />
   );
 }
 
 // Projection View Component
-function ProjectionView({ projection, title, position, dimensions }) {
+function ProjectionView({ projection, title, position, dimensions, scale }) {
   if (!projection) return null;
   
-  // Extract dimensions
+  // Extract dimensions passed in pixels
   const { width, height } = dimensions;
   const [x, y] = position;
+
+  const titleHeight = 25; // Height of the title bar in pixels
   
   return (
     <div style={{ 
@@ -42,15 +64,17 @@ function ProjectionView({ projection, title, position, dimensions }) {
     }}>
       <div style={{ 
         padding: '5px', 
+        height: `${titleHeight}px`,
         borderBottom: '1px solid #ddd', 
         backgroundColor: '#eee', 
         fontSize: '12px', 
-        fontWeight: 'bold' 
+        fontWeight: 'bold',
+        boxSizing: 'border-box'
       }}>
         {title}
       </div>
       
-      <div style={{ width: '100%', height: 'calc(100% - 30px)', position: 'relative' }}>
+      <div style={{ width: '100%', height: `calc(100% - ${titleHeight}px)`, position: 'relative' }}>
         <svg 
           viewBox={projection.combinedViewBox} 
           style={{ width: '100%', height: '100%' }}
@@ -88,14 +112,17 @@ function ProjectionView({ projection, title, position, dimensions }) {
 }
 
 // Component to render individual part views
-function PartView({ part, index }) {
+function PartView({ part, index, scale }) {
   if (!part || !part.views) return null;
+  
+  const titleHeight = 20; // Height of the title bar in pixels for part views
   
   return (
     <div key={index} style={{ 
       margin: '10px', 
       border: '1px solid #ccc', 
-      backgroundColor: 'white' 
+      backgroundColor: 'white',
+      display: 'inline-block'
     }}>
       <h4 style={{ 
         padding: '5px', 
@@ -109,58 +136,73 @@ function PartView({ part, index }) {
         flexWrap: 'wrap', 
         padding: '10px' 
       }}>
-        {Object.entries(part.views).map(([viewName, view], viewIndex) => (
-          <div key={viewIndex} style={{ 
-            margin: '5px', 
-            width: '150px', 
-            height: '150px', 
-            border: '1px solid #ddd' 
-          }}>
-            <div style={{ 
-              padding: '3px', 
-              borderBottom: '1px solid #ddd', 
-              fontSize: '10px' 
+        {Object.entries(part.views).map(([viewName, view], viewIndex) => {
+          // Parse viewbox to get cm dimensions
+          const viewBoxData = parseViewBox(view.combinedViewBox);
+          
+          // Calculate the required size in pixels based on scale
+          const viewWidthPx = viewBoxData.width * scale;
+          const viewHeightPx = viewBoxData.height * scale;
+          
+          return (
+            <div key={viewIndex} style={{ 
+              margin: '5px', 
+              width: `${viewWidthPx}px`,
+              height: `${viewHeightPx + titleHeight}px`,
+              border: '1px solid #ddd',
+              display: 'flex',
+              flexDirection: 'column'
             }}>
-              {viewName}
+              <div style={{ 
+                padding: '3px', 
+                height: `${titleHeight}px`,
+                borderBottom: '1px solid #ddd', 
+                fontSize: '10px',
+                boxSizing: 'border-box',
+                flexShrink: 0
+              }}>
+                {viewName}
+              </div>
+              <div style={{ 
+                width: '100%', 
+                flexGrow: 1,
+                position: 'relative'
+              }}>
+                <svg 
+                  viewBox={view.combinedViewBox} 
+                  style={{ width: '100%', height: '100%' }}
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  {/* Visible lines */}
+                  <g>
+                    {view.visible.paths.map((path, i) => (
+                      <PathElement
+                        key={path.id || `part-visible-${i}`}
+                        path={path}
+                        stroke="#000000"
+                        strokeWidth="0.5"
+                        strokeDasharray={null}
+                      />
+                    ))}
+                  </g>
+                  
+                  {/* Hidden lines */}
+                  <g>
+                    {view.hidden.paths.map((path, i) => (
+                      <PathElement
+                        key={path.id || `part-hidden-${i}`}
+                        path={path}
+                        stroke="#777777"
+                        strokeWidth="0.3"
+                        strokeDasharray="2,1"
+                      />
+                    ))}
+                  </g>
+                </svg>
+              </div>
             </div>
-            <div style={{ 
-              width: '100%', 
-              height: 'calc(100% - 20px)' 
-            }}>
-              <svg 
-                viewBox={view.combinedViewBox} 
-                style={{ width: '100%', height: '100%' }}
-                preserveAspectRatio="xMidYMid meet"
-              >
-                {/* Visible lines */}
-                <g>
-                  {view.visible.paths.map((path, i) => (
-                    <PathElement
-                      key={path.id || `part-visible-${i}`}
-                      path={path}
-                      stroke="#000000"
-                      strokeWidth="0.5"
-                      strokeDasharray={null}
-                    />
-                  ))}
-                </g>
-                
-                {/* Hidden lines */}
-                <g>
-                  {view.hidden.paths.map((path, i) => (
-                    <PathElement
-                      key={path.id || `part-hidden-${i}`}
-                      path={path}
-                      stroke="#777777"
-                      strokeWidth="0.3"
-                      strokeDasharray="2,1"
-                    />
-                  ))}
-                </g>
-              </svg>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -173,6 +215,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [scale, setScale] = useState(10); // Initial scale: 10 pixels per cm
   
   // For tracking mouse position and dragging
   const [isDragging, setIsDragging] = useState(false);
@@ -197,6 +240,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
   // Mouse wheel zoom that zooms to cursor position
   const handleWheel = (e) => {
     e.preventDefault();
+    if (!containerRef.current) return;
     
     // Get container bounds
     const rect = containerRef.current.getBoundingClientRect();
@@ -211,7 +255,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
     
     // Calculate zoom delta and new zoom level
     const delta = -Math.sign(e.deltaY) * 0.1;
-    const newZoom = Math.max(0.5, Math.min(5, zoomLevel + delta));
+    const newZoom = Math.max(0.1, Math.min(10, zoomLevel + delta * zoomLevel));
     
     // Calculate new pan offset to keep cursor point stationary
     const newPanOffsetX = x - cursorXInContent * newZoom;
@@ -275,9 +319,40 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
     setPanOffset({ x: 0, y: 0 });
   };
   
-  // Calculate view layout dimensions
-  const viewWidth = containerSize.width / 2;
-  const viewHeight = containerSize.height / 2;
+  // --- Layout Calculation ---
+  const standardViews = projections.standard;
+  let frontViewData, topViewData, rightViewData;
+  let frontWidth = 0, frontHeight = 0;
+  let topWidth = 0, topHeight = 0;
+  let rightWidth = 0, rightHeight = 0;
+  const layoutGap = 20; // Gap between views in pixels
+  
+  if (standardViews) {
+    frontViewData = standardViews.frontView ? parseViewBox(standardViews.frontView.combinedViewBox) : null;
+    topViewData = standardViews.topView ? parseViewBox(standardViews.topView.combinedViewBox) : null;
+    rightViewData = standardViews.rightView ? parseViewBox(standardViews.rightView.combinedViewBox) : null;
+    
+    if (frontViewData) {
+      frontWidth = frontViewData.width * scale;
+      frontHeight = frontViewData.height * scale;
+    }
+    if (topViewData) {
+      topWidth = topViewData.width * scale;
+      topHeight = topViewData.height * scale;
+    }
+    if (rightViewData) {
+      rightWidth = rightViewData.width * scale;
+      rightHeight = rightViewData.height * scale;
+    }
+  }
+  
+  // Calculate positions - center the front view roughly in the initial viewport
+  const initialOffsetX = 50;
+  const initialOffsetY = topHeight + layoutGap + 50; // Place front below top view space
+  
+  const frontPos = [initialOffsetX, initialOffsetY];
+  const topPos = [initialOffsetX + (frontWidth - topWidth) / 2, initialOffsetY - topHeight - layoutGap];
+  const rightPos = [initialOffsetX + frontWidth + layoutGap, initialOffsetY + (frontHeight - rightHeight) / 2];
   
   return (
     <div 
@@ -286,7 +361,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
         width: '100%', 
         height: '100%', 
         position: 'relative', 
-        backgroundColor: '#f0f0f0',
+        backgroundColor: '#e0e0e0',
         overflow: 'hidden',
         cursor: isDragging ? 'grabbing' : 'grab',
         touchAction: 'none'
@@ -301,135 +376,185 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
     >
-      {/* Zoom controls */}
+      {/* Controls Overlay */}
       <div style={{
         position: 'absolute',
         top: isMobile ? '8px' : '10px',
         right: isMobile ? '8px' : '10px',
         zIndex: 100,
+        backgroundColor: 'rgba(255,255,255,0.8)',
+        padding: isMobile ? '8px' : '5px 10px',
+        borderRadius: '4px',
         display: 'flex',
-        alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.7)',
-        padding: isMobile ? '8px' : '5px',
-        borderRadius: '4px'
+        flexDirection: 'column',
+        gap: isMobile ? '8px' : '5px'
       }}>
-        <button 
-          style={{ 
+        {/* Zoom Controls */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <button
+            title="Zoom Out"
+            style={{ 
+              margin: '0 2px', 
+              padding: isMobile ? '5px 10px' : '2px 6px', 
+              cursor: 'pointer', 
+              fontSize: isMobile ? '16px' : 'inherit' 
+            }}
+            onClick={() => {
+              const newZoom = Math.max(0.1, zoomLevel - 0.1 * zoomLevel);
+              // Update zoom and pan
+              setZoomLevel(newZoom);
+              // Adjust pan to keep center focused
+              const centerX = containerSize.width / 2;
+              const centerY = containerSize.height / 2;
+              const centerXInContent = (centerX - panOffset.x) / zoomLevel;
+              const centerYInContent = (centerY - panOffset.y) / zoomLevel;
+              const newPanOffsetX = centerX - centerXInContent * newZoom;
+              const newPanOffsetY = centerY - centerYInContent * newZoom;
+              setPanOffset({ x: newPanOffsetX, y: newPanOffsetY });
+            }}
+          >
+            −
+          </button>
+          <span style={{ 
             margin: '0 5px', 
-            padding: isMobile ? '5px 12px' : '2px 8px', 
-            cursor: 'pointer',
-            fontSize: isMobile ? '16px' : 'inherit' 
-          }}
-          onClick={() => {
-            const newZoom = Math.max(0.5, zoomLevel - 0.1);
-            // Zoom toward center
-            const centerX = containerSize.width / 2;
-            const centerY = containerSize.height / 2;
-            const centerXInContent = (centerX - panOffset.x) / zoomLevel;
-            const centerYInContent = (centerY - panOffset.y) / zoomLevel;
-            const newPanOffsetX = centerX - centerXInContent * newZoom;
-            const newPanOffsetY = centerY - centerYInContent * newZoom;
-            
-            setZoomLevel(newZoom);
-            setPanOffset({ x: newPanOffsetX, y: newPanOffsetY });
-          }}
-        >
-          −
-        </button>
-        <span style={{ 
-          margin: '0 5px', 
-          fontSize: isMobile ? '14px' : '12px' 
-        }}>
-          {Math.round(zoomLevel * 100)}%
-        </span>
-        <button 
-          style={{ 
+            fontSize: isMobile ? '14px' : '12px', 
+            minWidth: '35px', 
+            textAlign: 'center' 
+          }}>
+            {Math.round(zoomLevel * 100)}%
+          </span>
+          <button
+            title="Zoom In"
+            style={{ 
+              margin: '0 2px', 
+              padding: isMobile ? '5px 10px' : '2px 6px', 
+              cursor: 'pointer', 
+              fontSize: isMobile ? '16px' : 'inherit' 
+            }}
+            onClick={() => {
+              const newZoom = Math.min(10, zoomLevel + 0.1 * zoomLevel);
+              // Update zoom and pan
+              setZoomLevel(newZoom);
+              // Adjust pan to keep center focused
+              const centerX = containerSize.width / 2;
+              const centerY = containerSize.height / 2;
+              const centerXInContent = (centerX - panOffset.x) / zoomLevel;
+              const centerYInContent = (centerY - panOffset.y) / zoomLevel;
+              const newPanOffsetX = centerX - centerXInContent * newZoom;
+              const newPanOffsetY = centerY - centerYInContent * newZoom;
+              setPanOffset({ x: newPanOffsetX, y: newPanOffsetY });
+            }}
+          >
+            +
+          </button>
+          <button
+            title="Reset View"
+            style={{ 
+              margin: '0 0 0 10px', 
+              padding: isMobile ? '5px 10px' : '2px 8px', 
+              cursor: 'pointer', 
+              fontSize: isMobile ? '14px' : 'inherit' 
+            }}
+            onClick={resetView}
+          >
+            Reset
+          </button>
+        </div>
+        
+        {/* Scale Control */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <label htmlFor="scaleSlider" style={{ fontSize: isMobile ? '12px' : '10px', marginRight: '5px' }}>
+            Scale:
+          </label>
+          <input
+            type="range"
+            id="scaleSlider"
+            min="1"
+            max="100"
+            step="1"
+            value={scale}
+            onChange={(e) => setScale(Number(e.target.value))}
+            style={{ cursor: 'pointer', width: '80px' }}
+            title={`Scale: ${scale} px/cm`}
+          />
+          <span style={{ 
             margin: '0 5px', 
-            padding: isMobile ? '5px 12px' : '2px 8px', 
-            cursor: 'pointer',
-            fontSize: isMobile ? '16px' : 'inherit'  
-          }}
-          onClick={() => {
-            const newZoom = Math.min(5, zoomLevel + 0.1);
-            // Zoom toward center
-            const centerX = containerSize.width / 2;
-            const centerY = containerSize.height / 2;
-            const centerXInContent = (centerX - panOffset.x) / zoomLevel;
-            const centerYInContent = (centerY - panOffset.y) / zoomLevel;
-            const newPanOffsetX = centerX - centerXInContent * newZoom;
-            const newPanOffsetY = centerY - centerYInContent * newZoom;
-            
-            setZoomLevel(newZoom);
-            setPanOffset({ x: newPanOffsetX, y: newPanOffsetY });
-          }}
-        >
-          +
-        </button>
-        <button 
-          style={{ 
-            margin: '0 5px', 
-            padding: isMobile ? '5px 12px' : '2px 8px', 
-            cursor: 'pointer',
-            fontSize: isMobile ? '14px' : 'inherit'  
-          }}
-          onClick={resetView}
-        >
-          Reset
-        </button>
+            fontSize: isMobile ? '12px' : '10px', 
+            minWidth: '45px', 
+            textAlign: 'right' 
+          }}>
+            {scale} px/cm
+          </span>
+        </div>
       </div>
       
-      {projections.standard && (
-        <div style={{ 
-          position: 'relative', 
-          transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
-          transformOrigin: '0 0',
-          transition: 'none'
-        }}>
-          {/* Front View - Center position */}
-          <ProjectionView 
-            projection={projections.standard.frontView} 
-            title="Front View"
-            position={[viewWidth / 2, viewHeight / 2]}
-            dimensions={{ width: viewWidth, height: viewHeight }}
-          />
-          
-          {/* Top View - Above front view */}
-          <ProjectionView 
-            projection={projections.standard.topView} 
-            title="Top View"
-            position={[viewWidth / 2, 0]}
-            dimensions={{ width: viewWidth, height: viewHeight / 2 }}
-          />
-          
-          {/* Right View - Right of front view */}
-          <ProjectionView 
-            projection={projections.standard.rightView} 
-            title="Right View"
-            position={[viewWidth * 1.5, viewHeight / 2]}
-            dimensions={{ width: viewWidth / 2, height: viewHeight }}
-          />
-        </div>
-      )}
-      
-      {/* Render individual part projections if available */}
-      {projections.parts && projections.parts.length > 0 && (
-        <div style={{ 
-          position: 'absolute', 
-          top: viewHeight * 1.2, 
-          left: 0, 
-          width: '100%',
-          transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
-          transformOrigin: '0 0',
-          transition: 'none'
-        }}>
-          <h3 style={{ padding: '10px', margin: 0 }}>Component Views</h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-            {projections.parts.map((part, index) => (
-              <PartView key={index} part={part} index={index} />
-            ))}
+      {/* Content Area with Pan/Zoom transform */}
+      <div style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: '100%',
+        height: '100%',
+        transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
+        transformOrigin: '0 0',
+      }}>
+        {/* Standard Projections */}
+        {standardViews && (
+          <>
+            {/* Front View */}
+            {standardViews.frontView && frontViewData && (
+              <ProjectionView
+                projection={standardViews.frontView}
+                title="Front View"
+                position={frontPos}
+                dimensions={{ width: frontWidth, height: frontHeight }}
+                scale={scale}
+              />
+            )}
+            
+            {/* Top View */}
+            {standardViews.topView && topViewData && (
+              <ProjectionView
+                projection={standardViews.topView}
+                title="Top View"
+                position={topPos}
+                dimensions={{ width: topWidth, height: topHeight }}
+                scale={scale}
+              />
+            )}
+            
+            {/* Right View */}
+            {standardViews.rightView && rightViewData && (
+              <ProjectionView
+                projection={standardViews.rightView}
+                title="Right View"
+                position={rightPos}
+                dimensions={{ width: rightWidth, height: rightHeight }}
+                scale={scale}
+              />
+            )}
+          </>
+        )}
+        
+        {/* Part Projections */}
+        {projections.parts && projections.parts.length > 0 && (
+          <div style={{
+            position: 'absolute',
+            top: `${initialOffsetY + frontHeight + layoutGap * 2}px`,
+            left: `${initialOffsetX}px`,
+            width: 'max-content'
+          }}>
+            <h3 style={{ padding: '0 0 5px 0', margin: 0, fontSize: '14px', fontWeight: 'bold' }}>
+              Component Views
+            </h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+              {projections.parts.map((part, index) => (
+                <PartView key={index} part={part} index={index} scale={scale} />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
