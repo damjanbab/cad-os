@@ -8,7 +8,7 @@ import { rectangularCuboidGridModel } from './gridPattern.js';
 import { lProfileModel } from './lProfile.js';
 import { frustumModel } from './frustum.js';
 import { drillModel } from './drill.js';
-import { helperCuboidModel } from './helperCuboid.js';
+import { staircaseModel } from './staircase.js';
 import { validateModelParams } from '../validators.js';
 
 // Register all models in a single place
@@ -22,7 +22,7 @@ export const modelRegistry = {
   "LProfile": lProfileModel,
   "Frustum": frustumModel,
   "Drill": drillModel,
-  "HelperCuboid": helperCuboidModel
+  "Staircase": staircaseModel
 };
 
 // Helper function to create object with default values

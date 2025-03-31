@@ -11,6 +11,36 @@ export function createOrthographicProjections(model) {
   // Extract main model (if it's a model with helpers)
   const mainModel = exportableModel(model);
   
+  // Check if model has technical drawing models
+  if (model && model.technicalDrawingModels) {
+    // Extract components that should be drawn
+    const partProjections = [];
+    
+    // Process each technical drawing model
+    Object.entries(model.technicalDrawingModels).forEach(([key, componentModel]) => {
+      // Find the corresponding component data for the name
+      const componentData = model.componentData.find(comp => 
+        comp.id === key || comp.name.toLowerCase().includes(key.toLowerCase()));
+      
+      const componentViews = {
+        front: drawProjection(componentModel, "front"),
+        top: drawProjection(componentModel, "top"),
+        right: drawProjection(componentModel, "right")
+      };
+      
+      partProjections.push({
+        name: componentData ? componentData.name : key,
+        views: componentViews
+      });
+    });
+    
+    // Return only part projections for technical drawing components
+    return {
+      parts: partProjections
+    };
+  }
+  
+  // Standard behavior for simple models
   // Create projections for standard views
   const frontView = drawProjection(mainModel, "front");
   const topView = drawProjection(mainModel, "top");
@@ -65,37 +95,39 @@ export function createOrthographicProjections(model) {
 export function processProjectionsForRendering(projections) {
   const processedViews = {};
   
-  // Process standard views
-  for (const [viewName, view] of Object.entries(projections.standard)) {
-    // Process each view to get SVG path data
-    const visiblePaths = view.visible.toSVGPaths();
-    const hiddenPaths = view.hidden.toSVGPaths();
-    
-    const visibleViewBox = view.visible.toSVGViewBox(2);
-    const hiddenViewBox = view.hidden.toSVGViewBox(2);
-    
-    const combinedViewBox = combineViewBoxes(visibleViewBox, hiddenViewBox);
-    
-    // Create MakerJS model for the view
-    const makerModel = createMakerJSModel(visiblePaths, hiddenPaths);
-    
-    processedViews[viewName] = {
-      visible: {
-        paths: normalizePaths(visiblePaths),
-        viewBox: visibleViewBox
-      },
-      hidden: {
-        paths: normalizePaths(hiddenPaths),
-        viewBox: hiddenViewBox
-      },
-      combinedViewBox,
-      makerModel
-    };
+  // Process standard views if they exist
+  if (projections.standard) {
+    for (const [viewName, view] of Object.entries(projections.standard)) {
+      // Process each view to get SVG path data
+      const visiblePaths = view.visible.toSVGPaths();
+      const hiddenPaths = view.hidden.toSVGPaths();
+      
+      const visibleViewBox = view.visible.toSVGViewBox(2);
+      const hiddenViewBox = view.hidden.toSVGViewBox(2);
+      
+      const combinedViewBox = combineViewBoxes(visibleViewBox, hiddenViewBox);
+      
+      // Create MakerJS model for the view
+      const makerModel = createMakerJSModel(visiblePaths, hiddenPaths);
+      
+      processedViews[viewName] = {
+        visible: {
+          paths: normalizePaths(visiblePaths),
+          viewBox: visibleViewBox
+        },
+        hidden: {
+          paths: normalizePaths(hiddenPaths),
+          viewBox: hiddenViewBox
+        },
+        combinedViewBox,
+        makerModel
+      };
+    }
   }
   
   // Process part views if available
   const processedParts = [];
-  for (const part of projections.parts) {
+  for (const part of projections.parts || []) {
     const views = {};
     
     for (const [viewName, view] of Object.entries(part.views)) {
@@ -129,7 +161,7 @@ export function processProjectionsForRendering(projections) {
   }
   
   return {
-    standard: processedViews,
+    standard: Object.keys(processedViews).length > 0 ? processedViews : undefined,
     parts: processedParts
   };
 }

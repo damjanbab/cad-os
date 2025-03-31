@@ -53,6 +53,19 @@ function createProjections(modelName, params) {
     
     console.timeEnd(`[PERF] Total ${modelName} projections creation`);
     
+    // Pass component data if available (for BOM)
+    if (result && result.componentData) {
+      // Filter out any non-serializable properties before passing
+      const serializedComponentData = result.componentData.map(component => ({
+        id: component.id,
+        name: component.name,
+        quantity: component.quantity,
+        dimensions: component.dimensions,
+        material: component.material
+      }));
+      processedProjections.componentData = serializedComponentData;
+    }
+    
     return processedProjections;
   });
 }
@@ -109,7 +122,8 @@ function createMesh(modelName, params) {
       return {
         faces: faces,
         edges: edges,
-        helperSpaces: helperMeshes
+        helperSpaces: helperMeshes,
+        componentData: result.componentData
       };
     }
     
@@ -139,6 +153,7 @@ function createMesh(modelName, params) {
     return {
       faces: faces,
       edges: edges,
+      componentData: result.componentData
     };
   });
 }
