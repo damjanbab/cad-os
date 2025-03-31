@@ -1,66 +1,18 @@
-// TechnicalDrawingView.jsx with enhanced SVG path referencing
 import React, { useEffect, useRef, useState } from 'react';
 
 /**
- * Renders a single SVG path with additional reference data
+ * Renders a single SVG path
  */
-function ReferencePath({ path, stroke, strokeWidth, strokeDasharray }) {
+function PathElement({ path, stroke, strokeWidth, strokeDasharray }) {
   if (!path) return null;
   
-  // If path is a normalized path object with all our reference data
-  if (path && path.id) {
-    // Determine what to use as the 'd' attribute
-    let pathData;
-    if (typeof path.data === 'string') {
-      pathData = path.data;
-    } else if (path.rawPath) {
-      // Handle original array format from replicad
-      if (Array.isArray(path.rawPath)) {
-        // If it's just an array with one string, use that
-        pathData = path.rawPath[0];
-      } else {
-        // Fallback
-        pathData = String(path.rawPath);
-      }
-    } else {
-      pathData = String(path.data || '');
-    }
-    
-    return (
-      <path
-        key={path.id}
-        id={path.id}
-        d={pathData}
-        stroke={stroke}
-        strokeWidth={strokeWidth}
-        fill="none"
-        strokeDasharray={strokeDasharray}
-        data-type={path.geometry?.type || "unknown"}
-        data-view={path.viewName}
-        data-visibility={path.visibility}
-        data-part={path.partName}
-        data-index={path.index}
-      />
-    );
-  }
+  // Handle different path formats
+  const pathData = path.data || (typeof path === 'string' ? path : String(path));
   
-  // Fallback for old path format (for backward compatibility)
-  if (Array.isArray(path)) {
-    return (
-      <path
-        d={path[0]}
-        stroke={stroke}
-        strokeWidth={strokeWidth}
-        fill="none"
-        strokeDasharray={strokeDasharray}
-      />
-    );
-  }
-  
-  // String format
   return (
     <path
-      d={typeof path === 'string' ? path : String(path)}
+      id={path.id}
+      d={pathData}
       stroke={stroke}
       strokeWidth={strokeWidth}
       fill="none"
@@ -69,8 +21,8 @@ function ReferencePath({ path, stroke, strokeWidth, strokeDasharray }) {
   );
 }
 
-// SVG Technical Drawing Projection component
-function ProjectionView({ projection, title, position, dimensions, transform }) {
+// Projection View Component
+function ProjectionView({ projection, title, position, dimensions }) {
   if (!projection) return null;
   
   // Extract dimensions
@@ -103,12 +55,11 @@ function ProjectionView({ projection, title, position, dimensions, transform }) 
           viewBox={projection.combinedViewBox} 
           style={{ width: '100%', height: '100%' }}
           preserveAspectRatio="xMidYMid meet"
-          data-view-title={title}
         >
           {/* Visible lines */}
           <g>
             {projection.visible.paths.map((path, i) => (
-              <ReferencePath
+              <PathElement
                 key={path.id || `visible-${i}`}
                 path={path}
                 stroke="#000000"
@@ -121,7 +72,7 @@ function ProjectionView({ projection, title, position, dimensions, transform }) 
           {/* Hidden lines */}
           <g>
             {projection.hidden.paths.map((path, i) => (
-              <ReferencePath
+              <PathElement
                 key={path.id || `hidden-${i}`}
                 path={path}
                 stroke="#777777"
@@ -180,13 +131,11 @@ function PartView({ part, index }) {
                 viewBox={view.combinedViewBox} 
                 style={{ width: '100%', height: '100%' }}
                 preserveAspectRatio="xMidYMid meet"
-                data-part-name={part.name}
-                data-view-name={viewName}
               >
                 {/* Visible lines */}
                 <g>
                   {view.visible.paths.map((path, i) => (
-                    <ReferencePath
+                    <PathElement
                       key={path.id || `part-visible-${i}`}
                       path={path}
                       stroke="#000000"
@@ -199,7 +148,7 @@ function PartView({ part, index }) {
                 {/* Hidden lines */}
                 <g>
                   {view.hidden.paths.map((path, i) => (
-                    <ReferencePath
+                    <PathElement
                       key={path.id || `part-hidden-${i}`}
                       path={path}
                       stroke="#777777"
@@ -273,35 +222,29 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
     setPanOffset({ x: newPanOffsetX, y: newPanOffsetY });
   };
   
-  // Mouse down handler to start dragging
+  // Mouse handlers for panning
   const handleMouseDown = (e) => {
-    // Only handle left mouse button
     if (e.button !== 0) return;
-    
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
     setDragStartOffset({ ...panOffset });
   };
   
-  // Mouse move handler for panning
   const handleMouseMove = (e) => {
     if (!isDragging) return;
-    
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
-    
     setPanOffset({
       x: dragStartOffset.x + dx,
       y: dragStartOffset.y + dy
     });
   };
   
-  // Mouse up handler to end dragging
   const handleMouseUp = () => {
     setIsDragging(false);
   };
   
-  // Touch event handlers
+  // Touch handlers for mobile panning
   const handleTouchStart = (e) => {
     if (e.touches.length === 1) {
       const touch = e.touches[0];
@@ -313,11 +256,9 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
   
   const handleTouchMove = (e) => {
     if (!isDragging || e.touches.length !== 1) return;
-    
     const touch = e.touches[0];
     const dx = touch.clientX - dragStart.x;
     const dy = touch.clientY - dragStart.y;
-    
     setPanOffset({
       x: dragStartOffset.x + dx,
       y: dragStartOffset.y + dy
@@ -381,7 +322,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
           }}
           onClick={() => {
             const newZoom = Math.max(0.5, zoomLevel - 0.1);
-            // Zoom toward center when using buttons
+            // Zoom toward center
             const centerX = containerSize.width / 2;
             const centerY = containerSize.height / 2;
             const centerXInContent = (centerX - panOffset.x) / zoomLevel;
@@ -410,7 +351,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
           }}
           onClick={() => {
             const newZoom = Math.min(5, zoomLevel + 0.1);
-            // Zoom toward center when using buttons
+            // Zoom toward center
             const centerX = containerSize.width / 2;
             const centerY = containerSize.height / 2;
             const centerXInContent = (centerX - panOffset.x) / zoomLevel;
