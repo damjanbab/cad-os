@@ -1,5 +1,4 @@
 import { drawProjection } from "replicad";
-import * as makerjs from 'makerjs';
 import { exportableModel } from '../helperUtils.js';
 
 /**
@@ -291,9 +290,6 @@ export function processProjectionsForRendering(projections) {
         const normalizedVisiblePaths = normalizePaths(visiblePaths, 'visible');
         const normalizedHiddenPaths = normalizePaths(hiddenPaths, 'hidden');
         
-        // Create MakerJS model with all paths
-        const makerModel = createMakerJSModel(visiblePaths, hiddenPaths);
-        
         processedViews[viewName] = {
           visible: {
             paths: normalizedVisiblePaths,
@@ -303,8 +299,7 @@ export function processProjectionsForRendering(projections) {
             paths: normalizedHiddenPaths,
             viewBox: hiddenViewBox
           },
-          combinedViewBox,
-          makerModel
+          combinedViewBox
         };
       } catch (err) {
         console.error(`Error processing view ${viewName}:`, err);
@@ -329,9 +324,6 @@ export function processProjectionsForRendering(projections) {
         const normalizedVisiblePaths = normalizePaths(viewVisiblePaths, `${idPrefix}_visible`);
         const normalizedHiddenPaths = normalizePaths(viewHiddenPaths, `${idPrefix}_hidden`);
         
-        // Create MakerJS model with all paths
-        const makerModel = createMakerJSModel(viewVisiblePaths, viewHiddenPaths);
-        
         // Use the normalized viewbox if available for consistent scaling
         const visibleViewBox = view.normalizedViewBox || view.visible.toSVGViewBox(5);
         const hiddenViewBox = view.normalizedViewBox || view.hidden.toSVGViewBox(5);
@@ -350,8 +342,7 @@ export function processProjectionsForRendering(projections) {
             paths: normalizedHiddenPaths,
             viewBox: hiddenViewBox
           },
-          combinedViewBox,
-          makerModel
+          combinedViewBox
         };
       }
       
@@ -454,80 +445,6 @@ function normalizePaths(paths, prefix = 'path') {
   if (!Array.isArray(paths)) return [];
   
   return paths.map((path, index) => normalizePath(path, prefix, index));
-}
-
-/**
- * Create a MakerJS model from visible and hidden paths
- * @param {Array} visiblePaths - Visible path data
- * @param {Array} hiddenPaths - Hidden path data
- * @returns {Object} MakerJS model
- */
-function createMakerJSModel(visiblePaths, hiddenPaths) {
-  const model = { models: {}, paths: {} };
-  
-  // Add paths to the model
-  if (Array.isArray(visiblePaths)) {
-    visiblePaths.forEach((path, index) => {
-      convertPathToMakerJS(path, model, `visible_${index}`);
-    });
-  }
-  
-  if (Array.isArray(hiddenPaths)) {
-    hiddenPaths.forEach((path, index) => {
-      convertPathToMakerJS(path, model, `hidden_${index}`);
-    });
-  }
-  
-  return model;
-}
-
-/**
- * Convert a path to a MakerJS path
- * @param {String|Array} path - Path data
- * @param {Object} model - MakerJS model to add the path to
- * @param {String} id - ID for the path
- */
-function convertPathToMakerJS(path, model, id) {
-  let pathData;
-  
-  // Extract path data string
-  if (typeof path === 'string') {
-    pathData = path;
-  } else if (Array.isArray(path)) {
-    pathData = path.length > 0 ? String(path[0]) : '';
-  } else if (path && typeof path === 'object' && path.d) {
-    pathData = path.d;
-  } else {
-    pathData = String(path);
-  }
-  
-  try {
-    // Try to identify the path type and convert to MakerJS path
-    if (pathData.startsWith('M') && pathData.includes('L') && !pathData.includes('A')) {
-      // Likely a line
-      const match = pathData.match(/M\s+(-?[\d.]+)\s+(-?[\d.]+)\s+L\s+(-?[\d.]+)\s+(-?[\d.]+)/);
-      if (match) {
-        const [, x1, y1, x2, y2] = match.map(parseFloat);
-        model.paths[id] = new makerjs.paths.Line([x1, y1], [x2, y2]);
-        return;
-      }
-    } else if (pathData.includes('A')) {
-      // Circle or arc
-      const arcMatch = pathData.match(/M\s+(-?[\d.]+)\s+(-?[\d.]+)\s+A\s+(-?[\d.]+)\s+(-?[\d.]+)/);
-      if (arcMatch) {
-        const [, centerX, centerY, radiusX, radiusY] = arcMatch.map(parseFloat);
-        if (Math.abs(radiusX - radiusY) < 0.001) {
-          model.paths[id] = new makerjs.paths.Circle([centerX, centerY], radiusX);
-          return;
-        }
-      }
-    }
-  } catch (e) {
-    console.error("Error converting path to MakerJS:", e);
-  }
-  
-  // Fallback: store as SVG path
-  model.paths[id] = { type: 'svgPath', d: pathData };
 }
 
 /**
