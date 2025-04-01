@@ -107,16 +107,20 @@ export function processProjectionsForRendering(projections) {
       
       const combinedViewBox = combineViewBoxes(visibleViewBox, hiddenViewBox);
       
-      // Create MakerJS model for the view
+      // Normalize paths and add unique IDs to make them identifiable/clickable
+      const normalizedVisiblePaths = normalizePaths(visiblePaths, 'visible');
+      const normalizedHiddenPaths = normalizePaths(hiddenPaths, 'hidden');
+      
+      // Create MakerJS model with all paths
       const makerModel = createMakerJSModel(visiblePaths, hiddenPaths);
       
       processedViews[viewName] = {
         visible: {
-          paths: normalizePaths(visiblePaths),
+          paths: normalizedVisiblePaths,
           viewBox: visibleViewBox
         },
         hidden: {
-          paths: normalizePaths(hiddenPaths),
+          paths: normalizedHiddenPaths,
           viewBox: hiddenViewBox
         },
         combinedViewBox,
@@ -134,16 +138,23 @@ export function processProjectionsForRendering(projections) {
       const viewVisiblePaths = view.visible.toSVGPaths();
       const viewHiddenPaths = view.hidden.toSVGPaths();
       
-      // Create MakerJS model for the part view
+      // Add component and view name to ID prefix for better organization
+      const idPrefix = `${part.name.replace(/\s+/g, '_')}_${viewName}`;
+      
+      // Normalize paths with unique IDs
+      const normalizedVisiblePaths = normalizePaths(viewVisiblePaths, `${idPrefix}_visible`);
+      const normalizedHiddenPaths = normalizePaths(viewHiddenPaths, `${idPrefix}_hidden`);
+      
+      // Create MakerJS model with all paths
       const makerModel = createMakerJSModel(viewVisiblePaths, viewHiddenPaths);
       
       views[viewName] = {
         visible: {
-          paths: normalizePaths(viewVisiblePaths),
+          paths: normalizedVisiblePaths,
           viewBox: view.visible.toSVGViewBox(2)
         },
         hidden: {
-          paths: normalizePaths(viewHiddenPaths),
+          paths: normalizedHiddenPaths,
           viewBox: view.hidden.toSVGViewBox(2)
         },
         combinedViewBox: combineViewBoxes(
@@ -164,6 +175,92 @@ export function processProjectionsForRendering(projections) {
     standard: Object.keys(processedViews).length > 0 ? processedViews : undefined,
     parts: processedParts
   };
+}
+
+/**
+ * Normalize a single path
+ * @param {String|Array|Object} path - Path to normalize
+ * @param {String} prefix - ID prefix for the path
+ * @param {Number} index - Index for unique ID generation
+ * @returns {Object} Normalized path with id and data
+ */
+function normalizePath(path, prefix, index = 0) {
+  let pathData;
+  
+  // Extract path data string
+  if (typeof path === 'string') {
+    pathData = path;
+  } else if (Array.isArray(path)) {
+    if (path.every(item => typeof item === 'string')) {
+      pathData = path.join(' ');
+    } else if (path.length > 0) {
+      pathData = String(path[0]);
+    } else {
+      pathData = '';
+    }
+  } else if (path && typeof path === 'object' && path.d) {
+    pathData = path.d;
+  } else {
+    pathData = String(path);
+  }
+  
+  // Extract geometric data for potential metadata
+  const pathGeometry = parsePathGeometry(pathData);
+  
+  return {
+    id: `${prefix}_${index}`,
+    data: pathData,
+    type: pathGeometry.type, // Optional: store type for future filtering/interaction
+    geometry: pathGeometry // Optional: store geometry info for future interactions
+  };
+}
+
+/**
+ * Parse a path to extract geometric data - useful for future interactions
+ * @param {String} pathData - SVG path data
+ * @returns {Object} Parsed path data with type and other properties
+ */
+function parsePathGeometry(pathData) {
+  if (!pathData || typeof pathData !== 'string') {
+    return { type: 'unknown', original: pathData };
+  }
+  
+  // Check for a line
+  const lineMatch = pathData.match(/M\s+(-?[\d.]+)\s+(-?[\d.]+)\s+L\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+  if (lineMatch) {
+    const [, x1, y1, x2, y2] = lineMatch.map(parseFloat);
+    return { 
+      type: 'line', 
+      endpoints: [[x1, y1], [x2, y2]],
+      length: Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1))
+    };
+  }
+  
+  // Check for a circle 
+  const circleMatch = pathData.match(/M\s+(-?[\d.]+)\s+(-?[\d.]+)\s+A\s+(-?[\d.]+)\s+(-?[\d.]+)/);
+  if (circleMatch) {
+    const [, cx, cy, rx, ry] = circleMatch.map(parseFloat);
+    return { 
+      type: 'circle', 
+      center: [cx, cy], 
+      radius: (Math.abs(rx) + Math.abs(ry)) / 2
+    };
+  }
+  
+  // Return unknown type if we can't parse it
+  return { type: 'unknown' };
+}
+
+/**
+ * Normalize paths for rendering and add unique IDs
+ * @param {Array} paths - Array of path strings or arrays
+ * @param {String} prefix - ID prefix for the paths
+ * @returns {Array} Normalized paths with IDs
+ */
+function normalizePaths(paths, prefix = 'path') {
+  if (!Array.isArray(paths)) return [];
+  
+  return paths.map((path, index) => normalizePath(path, prefix, index));
 }
 
 /**
@@ -238,41 +335,6 @@ function convertPathToMakerJS(path, model, id) {
   
   // Fallback: store as SVG path
   model.paths[id] = { type: 'svgPath', d: pathData };
-}
-
-/**
- * Normalize paths for rendering
- * @param {Array} paths - Array of path strings or arrays
- * @returns {Array} Normalized paths
- */
-function normalizePaths(paths) {
-  if (!Array.isArray(paths)) return [];
-  
-  return paths.map((path, index) => {
-    let pathData;
-    
-    // Extract path data string
-    if (typeof path === 'string') {
-      pathData = path;
-    } else if (Array.isArray(path)) {
-      if (path.every(item => typeof item === 'string')) {
-        pathData = path.join(' ');
-      } else if (path.length > 0) {
-        pathData = String(path[0]);
-      } else {
-        pathData = '';
-      }
-    } else if (path && typeof path === 'object' && path.d) {
-      pathData = path.d;
-    } else {
-      pathData = String(path);
-    }
-    
-    return {
-      id: `path_${index}`,
-      data: pathData
-    };
-  });
 }
 
 /**

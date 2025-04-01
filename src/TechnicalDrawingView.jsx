@@ -80,20 +80,7 @@ function ProjectionView({ projection, title, position, dimensions, scale }) {
           style={{ width: '100%', height: '100%' }}
           preserveAspectRatio="xMidYMid meet"
         >
-          {/* Visible lines */}
-          <g>
-            {projection.visible.paths.map((path, i) => (
-              <PathElement
-                key={path.id || `visible-${i}`}
-                path={path}
-                stroke="#000000"
-                strokeWidth="0.5"
-                strokeDasharray={null}
-              />
-            ))}
-          </g>
-          
-          {/* Hidden lines */}
+          {/* IMPORTANT: Draw hidden lines FIRST (underneath) */}
           <g>
             {projection.hidden.paths.map((path, i) => (
               <PathElement
@@ -102,6 +89,19 @@ function ProjectionView({ projection, title, position, dimensions, scale }) {
                 stroke="#777777"
                 strokeWidth="0.3"
                 strokeDasharray="2,1"
+              />
+            ))}
+          </g>
+          
+          {/* Draw visible lines SECOND (on top) so they visually override hidden lines */}
+          <g>
+            {projection.visible.paths.map((path, i) => (
+              <PathElement
+                key={path.id || `visible-${i}`}
+                path={path}
+                stroke="#000000"
+                strokeWidth="0.5"
+                strokeDasharray={null}
               />
             ))}
           </g>
@@ -203,17 +203,7 @@ function PartView({ part, index, scale }) {
                 style={{ width: '100%', height: '100%' }}
                 preserveAspectRatio="xMidYMid meet"
               >
-                <g>
-                  {frontView.visible.paths.map((path, i) => (
-                    <PathElement
-                      key={path.id || `part-visible-${i}`}
-                      path={path}
-                      stroke="#000000"
-                      strokeWidth="0.5"
-                      strokeDasharray={null}
-                    />
-                  ))}
-                </g>
+                {/* IMPORTANT: Draw hidden lines FIRST (underneath) */}
                 <g>
                   {frontView.hidden.paths.map((path, i) => (
                     <PathElement
@@ -222,6 +212,19 @@ function PartView({ part, index, scale }) {
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
+                    />
+                  ))}
+                </g>
+                
+                {/* Draw visible lines SECOND (on top) */}
+                <g>
+                  {frontView.visible.paths.map((path, i) => (
+                    <PathElement
+                      key={path.id || `part-visible-${i}`}
+                      path={path}
+                      stroke="#000000"
+                      strokeWidth="0.5"
+                      strokeDasharray={null}
                     />
                   ))}
                 </g>
@@ -262,17 +265,7 @@ function PartView({ part, index, scale }) {
                 style={{ width: '100%', height: '100%' }}
                 preserveAspectRatio="xMidYMid meet"
               >
-                <g>
-                  {topView.visible.paths.map((path, i) => (
-                    <PathElement
-                      key={path.id || `part-visible-${i}`}
-                      path={path}
-                      stroke="#000000"
-                      strokeWidth="0.5"
-                      strokeDasharray={null}
-                    />
-                  ))}
-                </g>
+                {/* IMPORTANT: Draw hidden lines FIRST (underneath) */}
                 <g>
                   {topView.hidden.paths.map((path, i) => (
                     <PathElement
@@ -281,6 +274,19 @@ function PartView({ part, index, scale }) {
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
+                    />
+                  ))}
+                </g>
+                
+                {/* Draw visible lines SECOND (on top) */}
+                <g>
+                  {topView.visible.paths.map((path, i) => (
+                    <PathElement
+                      key={path.id || `part-visible-${i}`}
+                      path={path}
+                      stroke="#000000"
+                      strokeWidth="0.5"
+                      strokeDasharray={null}
                     />
                   ))}
                 </g>
@@ -321,17 +327,7 @@ function PartView({ part, index, scale }) {
                 style={{ width: '100%', height: '100%' }}
                 preserveAspectRatio="xMidYMid meet"
               >
-                <g>
-                  {rightView.visible.paths.map((path, i) => (
-                    <PathElement
-                      key={path.id || `part-visible-${i}`}
-                      path={path}
-                      stroke="#000000"
-                      strokeWidth="0.5"
-                      strokeDasharray={null}
-                    />
-                  ))}
-                </g>
+                {/* IMPORTANT: Draw hidden lines FIRST (underneath) */}
                 <g>
                   {rightView.hidden.paths.map((path, i) => (
                     <PathElement
@@ -340,6 +336,19 @@ function PartView({ part, index, scale }) {
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
+                    />
+                  ))}
+                </g>
+                
+                {/* Draw visible lines SECOND (on top) */}
+                <g>
+                  {rightView.visible.paths.map((path, i) => (
+                    <PathElement
+                      key={path.id || `part-visible-${i}`}
+                      path={path}
+                      stroke="#000000"
+                      strokeWidth="0.5"
+                      strokeDasharray={null}
                     />
                   ))}
                 </g>
