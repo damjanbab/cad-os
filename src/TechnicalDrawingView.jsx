@@ -21,28 +21,32 @@ function parseViewBox(viewBoxString) {
 /**
  * Renders a single SVG path
  */
-function PathElement({ path, stroke, strokeWidth, strokeDasharray }) {
+function PathElement({ path, stroke, strokeWidth, strokeDasharray, isHighlighted, onClick, viewId }) {
   if (!path) return null;
   
   // Handle different path formats
   const pathData = path.data || (typeof path === 'string' ? path : String(path));
   
+  // Generate a unique identifier for this specific path in this specific view
+  const uniquePathId = `${viewId}_${path.id}`;
+  
   // Use vector-effect to keep stroke width consistent regardless of SVG scaling
   return (
     <path
-      id={path.id}
+      id={uniquePathId}
       d={pathData}
-      stroke={stroke}
+      stroke={isHighlighted ? "#FF0000" : stroke}
       strokeWidth={strokeWidth}
       fill="none"
       strokeDasharray={strokeDasharray}
-      style={{ vectorEffect: 'non-scaling-stroke' }}
+      style={{ vectorEffect: 'non-scaling-stroke', cursor: 'pointer' }}
+      onClick={() => onClick && onClick(uniquePathId, path)}
     />
   );
 }
 
 // Projection View Component
-function ProjectionView({ projection, title, position, dimensions, scale }) {
+function ProjectionView({ projection, title, position, dimensions, scale, highlightedPaths, onPathClick, viewId }) {
   if (!projection) return null;
   
   // Extract dimensions passed in pixels
@@ -84,11 +88,14 @@ function ProjectionView({ projection, title, position, dimensions, scale }) {
           <g>
             {projection.hidden.paths.map((path, i) => (
               <PathElement
-                key={path.id || `hidden-${i}`}
+                key={`${viewId}_hidden_${i}`}
                 path={path}
                 stroke="#777777"
                 strokeWidth="0.3"
                 strokeDasharray="2,1"
+                isHighlighted={highlightedPaths[`${viewId}_${path.id}`]}
+                onClick={onPathClick}
+                viewId={viewId}
               />
             ))}
           </g>
@@ -97,11 +104,14 @@ function ProjectionView({ projection, title, position, dimensions, scale }) {
           <g>
             {projection.visible.paths.map((path, i) => (
               <PathElement
-                key={path.id || `visible-${i}`}
+                key={`${viewId}_visible_${i}`}
                 path={path}
                 stroke="#000000"
                 strokeWidth="0.5"
                 strokeDasharray={null}
+                isHighlighted={highlightedPaths[`${viewId}_${path.id}`]}
+                onClick={onPathClick}
+                viewId={viewId}
               />
             ))}
           </g>
@@ -112,7 +122,7 @@ function ProjectionView({ projection, title, position, dimensions, scale }) {
 }
 
 // Component to render individual part views
-function PartView({ part, index, scale }) {
+function PartView({ part, index, scale, highlightedPaths, onPathClick }) {
   if (!part || !part.views) return null;
   
   const titleHeight = 20; // Height of the title bar in pixels for part views
@@ -122,6 +132,12 @@ function PartView({ part, index, scale }) {
   const frontView = part.views.front;
   const topView = part.views.top;
   const rightView = part.views.right;
+  
+  // Create unique view IDs for this part
+  const partId = part.name.replace(/\s+/g, '_');
+  const frontViewId = `${partId}_front`;
+  const topViewId = `${partId}_top`;
+  const rightViewId = `${partId}_right`;
   
   // Parse viewboxes and calculate dimensions
   let frontViewData, topViewData, rightViewData;
@@ -207,11 +223,14 @@ function PartView({ part, index, scale }) {
                 <g>
                   {frontView.hidden.paths.map((path, i) => (
                     <PathElement
-                      key={path.id || `part-hidden-${i}`}
+                      key={`${frontViewId}_hidden_${i}`}
                       path={path}
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
+                      isHighlighted={highlightedPaths[`${frontViewId}_${path.id}`]}
+                      onClick={onPathClick}
+                      viewId={frontViewId}
                     />
                   ))}
                 </g>
@@ -220,11 +239,14 @@ function PartView({ part, index, scale }) {
                 <g>
                   {frontView.visible.paths.map((path, i) => (
                     <PathElement
-                      key={path.id || `part-visible-${i}`}
+                      key={`${frontViewId}_visible_${i}`}
                       path={path}
                       stroke="#000000"
                       strokeWidth="0.5"
                       strokeDasharray={null}
+                      isHighlighted={highlightedPaths[`${frontViewId}_${path.id}`]}
+                      onClick={onPathClick}
+                      viewId={frontViewId}
                     />
                   ))}
                 </g>
@@ -269,11 +291,14 @@ function PartView({ part, index, scale }) {
                 <g>
                   {topView.hidden.paths.map((path, i) => (
                     <PathElement
-                      key={path.id || `part-hidden-${i}`}
+                      key={`${topViewId}_hidden_${i}`}
                       path={path}
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
+                      isHighlighted={highlightedPaths[`${topViewId}_${path.id}`]}
+                      onClick={onPathClick}
+                      viewId={topViewId}
                     />
                   ))}
                 </g>
@@ -282,11 +307,14 @@ function PartView({ part, index, scale }) {
                 <g>
                   {topView.visible.paths.map((path, i) => (
                     <PathElement
-                      key={path.id || `part-visible-${i}`}
+                      key={`${topViewId}_visible_${i}`}
                       path={path}
                       stroke="#000000"
                       strokeWidth="0.5"
                       strokeDasharray={null}
+                      isHighlighted={highlightedPaths[`${topViewId}_${path.id}`]}
+                      onClick={onPathClick}
+                      viewId={topViewId}
                     />
                   ))}
                 </g>
@@ -331,11 +359,14 @@ function PartView({ part, index, scale }) {
                 <g>
                   {rightView.hidden.paths.map((path, i) => (
                     <PathElement
-                      key={path.id || `part-hidden-${i}`}
+                      key={`${rightViewId}_hidden_${i}`}
                       path={path}
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
+                      isHighlighted={highlightedPaths[`${rightViewId}_${path.id}`]}
+                      onClick={onPathClick}
+                      viewId={rightViewId}
                     />
                   ))}
                 </g>
@@ -344,11 +375,14 @@ function PartView({ part, index, scale }) {
                 <g>
                   {rightView.visible.paths.map((path, i) => (
                     <PathElement
-                      key={path.id || `part-visible-${i}`}
+                      key={`${rightViewId}_visible_${i}`}
                       path={path}
                       stroke="#000000"
                       strokeWidth="0.5"
                       strokeDasharray={null}
+                      isHighlighted={highlightedPaths[`${rightViewId}_${path.id}`]}
+                      onClick={onPathClick}
+                      viewId={rightViewId}
                     />
                   ))}
                 </g>
@@ -361,6 +395,31 @@ function PartView({ part, index, scale }) {
   );
 }
 
+// Helper to parse SVG path data and extract actual separate path segments
+function parseSVGPathData(pathData) {
+  if (!pathData || typeof pathData !== 'string') {
+    return null;
+  }
+  
+  // Find all move commands (M or m) which start new subpaths
+  const moveCommandRegex = /[Mm][\s,]*([-\d.]+)[\s,]*([-\d.]+)/g;
+  const matches = [...pathData.matchAll(moveCommandRegex)];
+  
+  if (matches.length <= 1) {
+    return null; // No subpaths or just one path
+  }
+  
+  // Extract subpaths
+  const subpaths = [];
+  for (let i = 0; i < matches.length; i++) {
+    const startIndex = matches[i].index;
+    const endIndex = i < matches.length - 1 ? matches[i + 1].index : pathData.length;
+    subpaths.push(pathData.substring(startIndex, endIndex).trim());
+  }
+  
+  return subpaths.length > 1 ? subpaths : null;
+}
+
 export default function TechnicalDrawingView({ projections, isMobile }) {
   if (!projections) return <div>Loading projections...</div>;
   
@@ -369,11 +428,41 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(10); // Initial scale: 10 pixels per cm
+  const [highlightedPaths, setHighlightedPaths] = useState({});
   
   // For tracking mouse position and dragging
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [dragStartOffset, setDragStartOffset] = useState({ x: 0, y: 0 });
+  
+  // Handle path click - toggle highlighting and log information
+  const handlePathClick = (uniquePathId, path) => {
+    setHighlightedPaths(prevHighlighted => {
+      const newHighlighted = { ...prevHighlighted };
+      
+      if (newHighlighted[uniquePathId]) {
+        // Path is already highlighted, remove it
+        delete newHighlighted[uniquePathId];
+        console.log(`De-highlighted: ${uniquePathId}`);
+      } else {
+        // Add path to highlighted
+        newHighlighted[uniquePathId] = true;
+        
+        // Log geometric information
+        if (path.geometry) {
+          if (path.geometry.type === 'line' && path.geometry.length) {
+            console.log(`Line: ${uniquePathId}, Length: ${path.geometry.length.toFixed(2)} units`);
+          } else if (path.geometry.type === 'circle' && path.geometry.diameter) {
+            console.log(`Circle: ${uniquePathId}, Diameter: ${path.geometry.diameter.toFixed(2)} units`);
+          } else {
+            console.log(`Element: ${uniquePathId}, Type: ${path.geometry.type}`);
+          }
+        }
+      }
+      
+      return newHighlighted;
+    });
+  };
   
   useEffect(() => {
     const updateSize = () => {
@@ -470,6 +559,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
   const resetView = () => {
     setZoomLevel(1);
     setPanOffset({ x: 0, y: 0 });
+    setHighlightedPaths({});
   };
   
   // --- Layout Calculation ---
@@ -479,6 +569,11 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
   let topWidth = 0, topHeight = 0;
   let rightWidth = 0, rightHeight = 0;
   const layoutGap = 20; // Gap between views in pixels
+  
+  // Create unique view IDs for standard views
+  const standardFrontViewId = "standard_front";
+  const standardTopViewId = "standard_top";
+  const standardRightViewId = "standard_right";
   
   if (standardViews) {
     frontViewData = standardViews.frontView ? parseViewBox(standardViews.frontView.combinedViewBox) : null;
@@ -662,6 +757,9 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
                 position={frontPos}
                 dimensions={{ width: frontWidth, height: frontHeight }}
                 scale={scale}
+                highlightedPaths={highlightedPaths}
+                onPathClick={handlePathClick}
+                viewId={standardFrontViewId}
               />
             )}
             
@@ -673,6 +771,9 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
                 position={topPos}
                 dimensions={{ width: topWidth, height: topHeight }}
                 scale={scale}
+                highlightedPaths={highlightedPaths}
+                onPathClick={handlePathClick}
+                viewId={standardTopViewId}
               />
             )}
             
@@ -684,6 +785,9 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
                 position={rightPos}
                 dimensions={{ width: rightWidth, height: rightHeight }}
                 scale={scale}
+                highlightedPaths={highlightedPaths}
+                onPathClick={handlePathClick}
+                viewId={standardRightViewId}
               />
             )}
           </>
@@ -702,7 +806,14 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
             </h3>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
               {projections.parts.map((part, index) => (
-                <PartView key={index} part={part} index={index} scale={scale} />
+                <PartView 
+                  key={index} 
+                  part={part} 
+                  index={index} 
+                  scale={scale} 
+                  highlightedPaths={highlightedPaths}
+                  onPathClick={handlePathClick}
+                />
               ))}
             </div>
           </div>
