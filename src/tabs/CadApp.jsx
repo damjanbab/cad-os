@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react"; // Import useCallback
 import { wrap } from "comlink";
 
 import ThreeContext from "../ThreeContext.jsx";
@@ -23,6 +23,7 @@ export default function CadApp() {
   const [activeTab, setActiveTab] = useState('3d');
   const [controlsExpanded, setControlsExpanded] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [verifiedModels, setVerifiedModels] = useState({}); // State for verified passwords
   
   // Detect mobile devices
   useEffect(() => {
@@ -41,10 +42,12 @@ export default function CadApp() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
   
-  useEffect(() => {
+  // Use useCallback to memoize the mesh creation logic
+  // Define it *before* the useEffect that calls it
+  const createModelMesh = useCallback(async () => {
     setValidationErrors([]);
     console.time(`[PERF] worker call for ${selectedModel}`);
-    console.log(`[INFO] Creating ${selectedModel} with params:`, params);
+      console.log(`[INFO] Creating ${selectedModel} with params:`, params);
     
     // If model supports explosion and we have an explosion factor, include it
     const modelParams = { ...params };
@@ -52,24 +55,29 @@ export default function CadApp() {
       modelParams.explosionFactor = explosionFactor;
     }
 
-    // Check for password requirement before calling the worker
-    const modelDefinition = modelRegistry[selectedModel];
-    if (modelDefinition?.requiresPassword) {
-      const enteredPassword = prompt(`Enter password for ${selectedModel} model:`);
-      if (enteredPassword !== 'damjan22') { // Simple password check (NOTE: Insecure)
-        setValidationErrors(["Incorrect password"]);
-        setMesh(null);
-        setProjections(null);
-        setBomData(null);
-        console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer here on failure
-        return; // Stop execution if password is wrong
-      }
-    }
-    
-    cad.createMesh(selectedModel, modelParams).then(result => {
-      console.timeEnd(`[PERF] worker call for ${selectedModel}`);
-      
-      if (result.error && result.validationErrors) {
+      // Check for password requirement AND if not already verified
+      const modelDefinition = modelRegistry[selectedModel];
+      if (modelDefinition?.requiresPassword && !verifiedModels[selectedModel]) {
+        const enteredPassword = prompt(`Enter password for ${selectedModel} model:`);
+        if (enteredPassword !== 'damjan22') { // Simple password check (NOTE: Insecure)
+          setValidationErrors(["Incorrect password"]);
+          setMesh(null);
+          setProjections(null);
+          setBomData(null);
+          console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer here on failure
+          return; // Stop execution if password is wrong
+        } else {
+          // Password correct, mark as verified for this session
+          setVerifiedModels(prev => ({ ...prev, [selectedModel]: true }));
+        }
+      } // End of password check block
+
+      // Proceed with mesh creation if password is correct or not required
+      try {
+        const result = await cad.createMesh(selectedModel, modelParams);
+        console.timeEnd(`[PERF] worker call for ${selectedModel}`);
+
+        if (result.error && result.validationErrors) {
         setValidationErrors(result.validationErrors);
         setMesh(null);
         setProjections(null);
@@ -78,15 +86,30 @@ export default function CadApp() {
         setMesh(result);
         setBomData(result.componentData || null); // Set BoM data if available
         
-        // Also generate technical drawings for the valid model
+        // Also generate technical drawings if needed
         if (activeTab === 'technical') {
-          cad.createProjections(selectedModel, modelParams).then(projections => {
-            setProjections(projections);
-          });
+          const projectionsResult = await cad.createProjections(selectedModel, modelParams);
+          setProjections(projectionsResult);
+        } else {
+          // Clear projections if not on the technical tab
+          setProjections(null); 
         }
+      } 
+    } catch (error) { // Catch errors from cad.createMesh or cad.createProjections
+        console.error("Error creating model or projections:", error); // Updated error message
+        setValidationErrors(["An error occurred while generating the model."]);
+        setMesh(null);
+        setProjections(null);
+        setBomData(null);
+        console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer on catch
       }
-    });
-  }, [selectedModel, params, explosionFactor]);
+    }, [selectedModel, params, explosionFactor, activeTab, verifiedModels]); // Add verifiedModels to dependency array
+
+  // useEffect hook to call the memoized function when dependencies change
+  useEffect(() => {
+    // Call the memoized function
+    createModelMesh();
+  }, [createModelMesh]); // useEffect depends on the memoized function
   
   // When tab changes, generate the required view data
   useEffect(() => {
@@ -104,11 +127,13 @@ export default function CadApp() {
   
   const handleModelChange = (e) => {
     const newModel = e.target.value;
+    // const newModel = e.target.value; // Remove duplicate declaration
     setSelectedModel(newModel);
     setParams(createDefaultParams(modelRegistry[newModel]));
     setExplosionFactor(0);
     setProjections(null); // Clear projections
     setBomData(null); // Clear BoM data
+    // NOTE: We don't reset verifiedModels here. Verification is per-session, per-model.
     // Reset to 3D tab if the new model doesn't support the current tab
     if (activeTab === 'bom' && !modelRegistry[newModel]?.hasBoM) {
       setActiveTab('3d');
