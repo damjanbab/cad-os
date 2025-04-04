@@ -1,5 +1,7 @@
 import { drawProjection } from "replicad";
 import { exportableModel } from '../helperUtils.js';
+import { parseViewBox, combineViewBoxes } from '../utils/svgUtils.js'; // Updated import
+import { TOLERANCE, arePointsClose, areCollinear } from '../utils/geometryUtils.js'; // Updated import
 
 
 /**
@@ -296,8 +298,11 @@ export function processProjectionsForRendering(projections) {
         console.log(`Processed ${viewName} viewBox:`, combinedViewBox);
 
         // Normalize paths and add unique IDs to make them identifiable/clickable
-        const normalizedVisiblePaths = normalizePaths(visiblePaths, `${viewName}_visible`);
-        const normalizedHiddenPaths = normalizePaths(hiddenPaths, `${viewName}_hidden`);
+        // Use "standard_" prefix for standard views to match TechnicalDrawingCanvas viewId props
+        const prefixBase = viewName.replace('View', '').toLowerCase(); // e.g., "front", "top", "right"
+        const standardPrefix = `standard_${prefixBase}`; // e.g., "standard_front"
+        const normalizedVisiblePaths = normalizePaths(visiblePaths, `${standardPrefix}_visible`);
+        const normalizedHiddenPaths = normalizePaths(hiddenPaths, `${standardPrefix}_hidden`);
 
         processedViews[viewName] = {
           visible: {
@@ -369,43 +374,6 @@ export function processProjectionsForRendering(projections) {
     parts: processedParts
   };
 }
-
-// Tolerance for floating point comparisons
-const TOLERANCE = 1e-6;
-
-/**
- * Check if two points are close within a tolerance
- */
-function arePointsClose(p1, p2, tolerance = TOLERANCE) {
-  if (!p1 || !p2) return false;
-  return Math.sqrt(Math.pow(p1[0] - p2[0], 2) + Math.pow(p1[1] - p2[1], 2)) < tolerance;
-}
-
-/**
- * Check if three points are collinear within a tolerance
- * Uses the area of the triangle method.
- */
-function areCollinear(p1, p2, p3, tolerance = TOLERANCE) {
-  if (!p1 || !p2 || !p3) return false;
-  // Check for vertical line first to avoid division by zero or large slopes
-  if (Math.abs(p1[0] - p2[0]) < tolerance && Math.abs(p2[0] - p3[0]) < tolerance) {
-    return true;
-  }
-  // Check for horizontal line
-  if (Math.abs(p1[1] - p2[1]) < tolerance && Math.abs(p2[1] - p3[1]) < tolerance) {
-    return true;
-  }
-  // Calculate the area of the triangle formed by the three points
-  // Using a robust method less prone to floating point issues with large coordinates
-  const area = Math.abs((p2[0] - p1[0]) * (p3[1] - p1[1]) - (p3[0] - p1[0]) * (p2[1] - p1[1]));
-  // Normalize by the length of the base segment (p1 to p3) to get a relative tolerance
-  const baseLengthSq = Math.pow(p3[0] - p1[0], 2) + Math.pow(p3[1] - p1[1], 2);
-  // Avoid division by zero for coincident points
-  if (baseLengthSq < tolerance * tolerance) return true;
-  // Compare area relative to base length
-  return area / Math.sqrt(baseLengthSq) < tolerance;
-}
-
 
 /**
  * Merge two adjacent and collinear line segments
@@ -514,7 +482,8 @@ function normalizePaths(paths, prefix = 'path') {
 
         // Check if both are lines and can be merged
         // Ensure endpoints exist before checking closeness and collinearity
-        if (currentMergedSegment.type === 'line' && nextSegment.type === 'line' &&
+        if (currentMergedSegment && nextSegment && // Ensure segments are not null
+            currentMergedSegment.type === 'line' && nextSegment.type === 'line' &&
             currentMergedSegment.endpoints && nextSegment.endpoints &&
             (arePointsClose(currentMergedSegment.endpoints[1], nextSegment.endpoints[0]) || arePointsClose(currentMergedSegment.endpoints[0], nextSegment.endpoints[1]) || arePointsClose(currentMergedSegment.endpoints[0], nextSegment.endpoints[0]) || arePointsClose(currentMergedSegment.endpoints[1], nextSegment.endpoints[1])) && // Check adjacency (allow reversed segments)
             areCollinear(currentMergedSegment.endpoints[0], currentMergedSegment.endpoints[1], nextSegment.endpoints[0]) && // Check collinearity using 3 points
@@ -524,12 +493,16 @@ function normalizePaths(paths, prefix = 'path') {
           currentMergedSegment = mergeLineSegments(currentMergedSegment, nextSegment);
         } else {
           // Cannot merge, push the current (potentially merged) segment and start new
-          mergedSegments.push(currentMergedSegment);
+          if (currentMergedSegment) { // Push only if valid
+             mergedSegments.push(currentMergedSegment);
+          }
           currentMergedSegment = nextSegment;
         }
       }
       // Push the last segment (which might be merged or the only segment)
-      mergedSegments.push(currentMergedSegment);
+      if (currentMergedSegment) { // Push only if valid
+        mergedSegments.push(currentMergedSegment);
+      }
 
       // Assign final IDs to the merged/processed segments
       mergedSegments.forEach((segment, j) => {
@@ -545,6 +518,10 @@ function normalizePaths(paths, prefix = 'path') {
                 type: segment.type,
                 length: segment.length,
                 endpoints: segment.endpoints, // [[startX, startY], [endX, endY]]
+                // Add circle specific geometry if needed later
+                center: segment.type === 'circle' ? segment.center : undefined,
+                radius: segment.type === 'circle' ? segment.radius : undefined,
+                diameter: segment.type === 'circle' ? segment.radius * 2 : undefined,
               },
             });
         } else {
@@ -770,7 +747,8 @@ function decomposePathToSegments(pathData) {
             if (i + 1 < params.length) {
               const x = params[i];
               const y = params[i + 1];
-              segments.push(createLineSegment(currentX, currentY, x, y));
+              const segment = createLineSegment(currentX, currentY, x, y);
+              if (segment) segments.push(segment); // Push only if valid
               currentX = x;
               currentY = y;
             }
@@ -792,7 +770,8 @@ function decomposePathToSegments(pathData) {
             if (i + 1 < params.length) {
               const x = currentX + params[i];
               const y = currentY + params[i + 1];
-              segments.push(createLineSegment(currentX, currentY, x, y));
+              const segment = createLineSegment(currentX, currentY, x, y);
+              if (segment) segments.push(segment); // Push only if valid
               currentX = x;
               currentY = y;
             }
@@ -805,7 +784,8 @@ function decomposePathToSegments(pathData) {
           if (i + 1 < params.length) {
             const x = params[i];
             const y = params[i + 1];
-            segments.push(createLineSegment(currentX, currentY, x, y));
+            const segment = createLineSegment(currentX, currentY, x, y);
+            if (segment) segments.push(segment); // Push only if valid
             currentX = x;
             currentY = y;
           }
@@ -817,7 +797,8 @@ function decomposePathToSegments(pathData) {
           if (i + 1 < params.length) {
             const x = currentX + params[i];
             const y = currentY + params[i + 1];
-            segments.push(createLineSegment(currentX, currentY, x, y));
+            const segment = createLineSegment(currentX, currentY, x, y);
+            if (segment) segments.push(segment); // Push only if valid
             currentX = x;
             currentY = y;
           }
@@ -827,7 +808,8 @@ function decomposePathToSegments(pathData) {
       case 'H': // Horizontal line absolute
         for (let i = 0; i < params.length; i++) {
           const x = params[i];
-          segments.push(createLineSegment(currentX, currentY, x, currentY));
+          const segment = createLineSegment(currentX, currentY, x, currentY);
+          if (segment) segments.push(segment); // Push only if valid
           currentX = x;
         }
         break;
@@ -835,7 +817,8 @@ function decomposePathToSegments(pathData) {
       case 'h': // Horizontal line relative
         for (let i = 0; i < params.length; i++) {
           const x = currentX + params[i];
-          segments.push(createLineSegment(currentX, currentY, x, currentY));
+          const segment = createLineSegment(currentX, currentY, x, currentY);
+          if (segment) segments.push(segment); // Push only if valid
           currentX = x;
         }
         break;
@@ -843,7 +826,8 @@ function decomposePathToSegments(pathData) {
       case 'V': // Vertical line absolute
         for (let i = 0; i < params.length; i++) {
           const y = params[i];
-          segments.push(createLineSegment(currentX, currentY, currentX, y));
+          const segment = createLineSegment(currentX, currentY, currentX, y);
+          if (segment) segments.push(segment); // Push only if valid
           currentY = y;
         }
         break;
@@ -851,7 +835,8 @@ function decomposePathToSegments(pathData) {
       case 'v': // Vertical line relative
         for (let i = 0; i < params.length; i++) {
           const y = currentY + params[i];
-          segments.push(createLineSegment(currentX, currentY, currentX, y));
+          const segment = createLineSegment(currentX, currentY, currentX, y);
+          if (segment) segments.push(segment); // Push only if valid
           currentY = y;
         }
         break;
@@ -859,7 +844,8 @@ function decomposePathToSegments(pathData) {
       case 'Z': // Close path
       case 'z':
         if (Math.abs(currentX - startX) > TOLERANCE || Math.abs(currentY - startY) > TOLERANCE) {
-           segments.push(createLineSegment(currentX, currentY, startX, startY));
+           const segment = createLineSegment(currentX, currentY, startX, startY);
+           if (segment) segments.push(segment); // Push only if valid
         }
         currentX = startX; // Move back to the start of the subpath
         currentY = startY;
@@ -1044,65 +1030,4 @@ function getEndpointForCurve(command, params, currentX, currentY) {
   return [x, y];
 }
 
-
-/**
- * Helper function to combine two viewbox strings
- * @param {string} viewBox1 - First viewBox string
- * @param {string} viewBox2 - Second viewBox string
- * @returns {string} Combined viewBox string
- */
-function combineViewBoxes(viewBox1, viewBox2) {
-  // Default empty viewBox
-  const defaultViewBox = "0 0 100 100";
-
-  // Parse viewBox strings
-  const box1 = parseViewBox(viewBox1) || parseViewBox(defaultViewBox);
-  const box2 = parseViewBox(viewBox2) || parseViewBox(defaultViewBox);
-
-  // If both boxes are empty/invalid, return a default
-  if (!box1 && !box2) return defaultViewBox;
-  if (!box1) return viewBox2 || defaultViewBox;
-  if (!box2) return viewBox1 || defaultViewBox;
-
-  // Find the combined bounds
-  const minX = Math.min(box1.x, box2.x);
-  const minY = Math.min(box1.y, box2.y);
-  const maxX = Math.max(box1.x + box1.width, box2.x + box2.width);
-  const maxY = Math.max(box1.y + box1.height, box2.y + box2.height);
-
-  // Ensure width and height are non-negative
-  const width = Math.max(0, maxX - minX);
-  const height = Math.max(0, maxY - minY);
-
-
-  return `${minX} ${minY} ${width} ${height}`;
-}
-
-/**
- * Parse viewBox string to get dimensions
- * @param {string} viewBoxString - SVG viewBox string
- * @returns {Object|null} Parsed viewBox object or null if invalid
- */
-function parseViewBox(viewBoxString) {
-  if (!viewBoxString || typeof viewBoxString !== 'string') {
-    return null;
-  }
-
-  const parts = viewBoxString.split(/[\s,]+/).map(parseFloat); // Allow comma separation
-  if (parts.length !== 4 || parts.some(isNaN)) {
-     console.warn("Could not parse viewBox string:", viewBoxString);
-    return null;
-  }
-
-  // Ensure width and height are non-negative
-  const width = Math.max(0, parts[2]);
-  const height = Math.max(0, parts[3]);
-
-
-  return {
-    x: parts[0],
-    y: parts[1],
-    width: width,
-    height: height
-  };
-}
+// Removed duplicated functions: combineViewBoxes, parseViewBox, arePointsClose, areCollinear

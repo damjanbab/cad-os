@@ -6,7 +6,7 @@ import { expose } from "comlink";
 
 // Import our model registry
 import { modelRegistry, createModelWithValidation } from "./models";
-import { createOrthographicProjections, processProjectionsForRendering } from "./helpers/technicalDrawing.js";
+import { createOrthographicProjections, processProjectionsForRendering } from "./logic/technicalDrawingProcessor.js"; // Updated path
 
 // Initialize OpenCascade
 let loaded = false;

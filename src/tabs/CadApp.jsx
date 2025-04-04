@@ -3,7 +3,7 @@ import { wrap } from "comlink";
 
 import ThreeContext from "../ThreeContext.jsx";
 import ReplicadMesh from "../ReplicadMesh.jsx";
-import TechnicalDrawingView from "../TechnicalDrawingView.jsx";
+import TechnicalDrawingCanvas from "../components/technical-drawing/TechnicalDrawingCanvas.jsx"; // Updated import
 import RenderingView from "../RenderingView.jsx";
 
 import cadWorker from "../worker.js?worker";
@@ -384,8 +384,8 @@ export default function CadApp() {
             {/* Technical Drawing View */}
             {activeTab === 'technical' ? (
               projections ? (
-                <TechnicalDrawingView 
-                  projections={projections} 
+                <TechnicalDrawingCanvas // Updated component name
+                  projections={projections}
                   isMobile={isMobile}
                 />
               ) : (
