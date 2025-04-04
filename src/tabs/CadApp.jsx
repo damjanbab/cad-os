@@ -5,6 +5,7 @@ import ThreeContext from "../ThreeContext.jsx";
 import ReplicadMesh from "../ReplicadMesh.jsx";
 import TechnicalDrawingCanvas from "../components/technical-drawing/TechnicalDrawingCanvas.jsx"; // Updated import
 import RenderingView from "../RenderingView.jsx";
+import BillOfMaterials from "../components/bom/BillOfMaterials.jsx"; // Import BoM component
 
 import cadWorker from "../worker.js?worker";
 import { modelRegistry, createDefaultParams } from "../models";
@@ -17,6 +18,7 @@ export default function CadApp() {
   const [explosionFactor, setExplosionFactor] = useState(0);
   const [mesh, setMesh] = useState(null);
   const [projections, setProjections] = useState(null);
+  const [bomData, setBomData] = useState(null); // Add state for BoM data
   const [validationErrors, setValidationErrors] = useState([]);
   const [activeTab, setActiveTab] = useState('3d');
   const [controlsExpanded, setControlsExpanded] = useState(true);
@@ -57,8 +59,10 @@ export default function CadApp() {
         setValidationErrors(result.validationErrors);
         setMesh(null);
         setProjections(null);
+        setBomData(null); // Clear BoM data on error
       } else {
         setMesh(result);
+        setBomData(result.componentData || null); // Set BoM data if available
         
         // Also generate technical drawings for the valid model
         if (activeTab === 'technical') {
@@ -89,7 +93,12 @@ export default function CadApp() {
     setSelectedModel(newModel);
     setParams(createDefaultParams(modelRegistry[newModel]));
     setExplosionFactor(0);
-    setProjections(null);
+    setProjections(null); // Clear projections
+    setBomData(null); // Clear BoM data
+    // Reset to 3D tab if the new model doesn't support the current tab
+    if (activeTab === 'bom' && !modelRegistry[newModel]?.hasBoM) {
+      setActiveTab('3d');
+    }
   };
   
   const handleParamChange = (paramName, value) => {
@@ -201,6 +210,24 @@ export default function CadApp() {
             >
               360° Rendering
             </button>
+            {/* Conditionally render BoM tab */}
+            {modelRegistry[selectedModel]?.hasBoM && (
+              <button 
+                onClick={() => setActiveTab('bom')} 
+                style={{
+                  padding: isMobile ? "8px 12px" : "4px 12px",
+                  border: "none",
+                  background: activeTab === 'bom' ? "#4a90e2" : "#f0f0f0",
+                  color: activeTab === 'bom' ? "white" : "#333",
+                  cursor: "pointer",
+                  fontWeight: activeTab === 'bom' ? "bold" : "normal",
+                  flex: isMobile ? "1" : "auto",
+                  fontSize: isMobile ? "14px" : "inherit"
+                }}
+              >
+                Bill of Materials
+              </button>
+            )}
           </div>
           
           {/* Toggle controls button (mobile only) */}
@@ -421,6 +448,28 @@ export default function CadApp() {
                   color: "#999"
                 }}>
                   Loading 360° rendering...
+                </div>
+              )
+            ) : null}
+            
+            {/* Bill of Materials View */}
+            {activeTab === 'bom' ? (
+              bomData ? (
+                <BillOfMaterials 
+                  data={bomData} 
+                  modelName={selectedModel} 
+                />
+              ) : (
+                <div style={{ 
+                  height: "100%",
+                  width: "100%", 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center",
+                  fontSize: isMobile ? "14px" : "12px",
+                  color: "#999"
+                }}>
+                  Loading Bill of Materials...
                 </div>
               )
             ) : null}
