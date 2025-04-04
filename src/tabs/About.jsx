@@ -38,7 +38,7 @@ export default function About() {
             boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
           }}>
             <img 
-              src="./assets/company.jpg"
+              src="https://raw.githubusercontent.com/damjanbab/cad-os/main/assets/company.jpg"
               alt="CAD-OS Logo" 
               style={{ width: "100%", height: "100%", objectFit: "cover" }} 
               onError={(e) => {
