@@ -15,7 +15,7 @@ const renderMeasurementToSvg = (measurementData, geometry) => {
 
   // Styles (match MeasurementDisplay)
   const strokeColor = "#222222";
-  const strokeWidth = 0.15;
+  const strokeWidth = 0.08; // Reduced thickness for PDF
   const fontSize = 2.2;
   const arrowSize = 1.2;
   const textOffset = 1.2;
@@ -74,13 +74,13 @@ const renderMeasurementToSvg = (measurementData, geometry) => {
     const showDimLine1 = breakStartPos > arrowSize + 1e-6;
     const showDimLine2 = breakEndPos < lineLen - arrowSize - 1e-6;
 
-    // Create SVG elements
-    group.appendChild(createSvgElement('line', { x1: extLineP1Start[0], y1: extLineP1Start[1], x2: extLineP1End[0], y2: extLineP1End[1], stroke: strokeColor, 'stroke-width': strokeWidth }));
-    group.appendChild(createSvgElement('line', { x1: extLineP2Start[0], y1: extLineP2Start[1], x2: extLineP2End[0], y2: extLineP2End[1], stroke: strokeColor, 'stroke-width': strokeWidth }));
-    if (showDimLine1) group.appendChild(createSvgElement('line', { x1: dimLineP1[0], y1: dimLineP1[1], x2: dimLine1End[0], y2: dimLine1End[1], stroke: strokeColor, 'stroke-width': strokeWidth }));
-    if (showDimLine2) group.appendChild(createSvgElement('line', { x1: dimLine2Start[0], y1: dimLine2Start[1], x2: dimLineP2[0], y2: dimLineP2[1], stroke: strokeColor, 'stroke-width': strokeWidth }));
-    group.appendChild(createSvgElement('path', { d: arrow1, fill: strokeColor, stroke: 'none' }));
-    group.appendChild(createSvgElement('path', { d: arrow2, fill: strokeColor, stroke: 'none' }));
+    // Create SVG elements with line caps/joins
+    group.appendChild(createSvgElement('line', { x1: extLineP1Start[0], y1: extLineP1Start[1], x2: extLineP1End[0], y2: extLineP1End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    group.appendChild(createSvgElement('line', { x1: extLineP2Start[0], y1: extLineP2Start[1], x2: extLineP2End[0], y2: extLineP2End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    if (showDimLine1) group.appendChild(createSvgElement('line', { x1: dimLineP1[0], y1: dimLineP1[1], x2: dimLine1End[0], y2: dimLine1End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    if (showDimLine2) group.appendChild(createSvgElement('line', { x1: dimLine2Start[0], y1: dimLine2Start[1], x2: dimLineP2[0], y2: dimLineP2[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    group.appendChild(createSvgElement('path', { d: arrow1, fill: strokeColor, stroke: 'none' })); // Arrows don't need linecap/join
+    group.appendChild(createSvgElement('path', { d: arrow2, fill: strokeColor, stroke: 'none' })); // Arrows don't need linecap/join
     const textEl = createSvgElement('text', { x: textPosition.x, y: textPosition.y, 'font-size': fontSize, fill: strokeColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial, sans-serif' });
     textEl.textContent = textContent;
     group.appendChild(textEl);
@@ -102,7 +102,7 @@ const renderMeasurementToSvg = (measurementData, geometry) => {
     const leaderStart = [cx + cosA * radius, cy + sinA * radius]; // Start on circumference
     const leaderEnd = [textPosition.x - cosA * textOffset, textPosition.y - sinA * textOffset]; // End near text
 
-    group.appendChild(createSvgElement('line', { x1: leaderStart[0], y1: leaderStart[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth }));
+    group.appendChild(createSvgElement('line', { x1: leaderStart[0], y1: leaderStart[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     const textEl = createSvgElement('text', { x: textPosition.x, y: textPosition.y, 'font-size': fontSize, fill: strokeColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial, sans-serif' });
     textEl.textContent = textContent;
     group.appendChild(textEl);
@@ -202,8 +202,10 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
       const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       pathEl.setAttribute('d', path.data);
       pathEl.setAttribute('stroke', '#777777');
-      pathEl.setAttribute('stroke-width', 0.3 * strokeScale);
-      pathEl.setAttribute('stroke-dasharray', `${2 * strokeScale},${1 * strokeScale}`);
+      pathEl.setAttribute('stroke-width', 0.1); // Reduced thickness for PDF
+      pathEl.setAttribute('stroke-linecap', 'round'); // Add linecap
+      pathEl.setAttribute('stroke-linejoin', 'round'); // Add linejoin
+      pathEl.setAttribute('stroke-dasharray', `${2 * strokeScale},${1 * strokeScale}`); // Keep scaling for dash pattern
       pathEl.setAttribute('fill', 'none');
       pathEl.setAttribute('vector-effect', 'non-scaling-stroke'); // Important for consistent stroke width on zoom
       contentGroup.appendChild(pathEl);
@@ -214,7 +216,9 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
       const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       pathEl.setAttribute('d', path.data);
       pathEl.setAttribute('stroke', '#000000');
-      pathEl.setAttribute('stroke-width', 0.5 * strokeScale);
+      pathEl.setAttribute('stroke-width', 0.15); // Reduced thickness for PDF
+      pathEl.setAttribute('stroke-linecap', 'round'); // Add linecap
+      pathEl.setAttribute('stroke-linejoin', 'round'); // Add linejoin
       pathEl.setAttribute('fill', 'none');
       pathEl.setAttribute('vector-effect', 'non-scaling-stroke');
       contentGroup.appendChild(pathEl);
