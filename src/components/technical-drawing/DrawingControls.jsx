@@ -9,7 +9,8 @@ export default function DrawingControls({
   onZoomChange,
   onPanChange,
   onScaleChange,
-  onResetView
+  onResetView,
+  onExportPDF // Add prop for export handler
 }) {
 
   const handleZoom = (delta) => {
@@ -111,6 +112,20 @@ export default function DrawingControls({
           {scale} px/cm
         </span>
       </div>
+
+      {/* Export Button */}
+      <button
+        title="Export as PDF"
+        style={{
+          marginTop: '5px',
+          padding: isMobile ? '5px 10px' : '2px 8px',
+          cursor: 'pointer',
+          fontSize: isMobile ? '14px' : 'inherit'
+        }}
+        onClick={onExportPDF} // Call the passed-in handler
+      >
+        Export PDF
+      </button>
     </div>
   );
 }

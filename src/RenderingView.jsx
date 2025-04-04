@@ -1,5 +1,5 @@
 // RenderingView.jsx
-import React, { useRef, useState, useEffect, Suspense } from "react";
+import React, { useRef, useState, useEffect, Suspense, forwardRef, useImperativeHandle } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Environment } from "@react-three/drei";
 import * as THREE from "three";
@@ -7,17 +7,14 @@ import * as THREE from "three";
 // Set Z as the up direction for ReplicAD models (consistent with main app)
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
-// Camera controller component with auto-rotation
+// Camera controller component (auto-rotation removed)
 function CameraController({
-  autoRotate = true,
-  autoRotateSpeed = 1.0,
-  isPlaying = true,
   target = [0, 0, 0],
   modelSize = 100,
+  controlsRef // Pass ref from parent
 }) {
-  const controlsRef = useRef();
   const { camera } = useThree();
-  
+
   // Position camera initially
   useEffect(() => {
     // Position camera based on model size
@@ -31,27 +28,24 @@ function CameraController({
     camera.updateProjectionMatrix();
   }, [camera, modelSize, target]);
   
-  // Update controls for auto-rotation settings
+  // Update target when it changes
   useEffect(() => {
     if (controlsRef.current) {
-      controlsRef.current.autoRotate = autoRotate && isPlaying;
-      controlsRef.current.autoRotateSpeed = autoRotateSpeed;
       controlsRef.current.target.set(target[0], target[1], target[2]);
       controlsRef.current.update();
     }
-  }, [controlsRef, autoRotate, autoRotateSpeed, isPlaying, target]);
+  }, [controlsRef, target]);
 
   return (
-    <OrbitControls 
+    <OrbitControls
       ref={controlsRef}
       enableRotate={true}
-      enablePan={false}
+      enablePan={false} // Keep pan disabled? Or enable? User can decide later.
       enableZoom={true}
-      autoRotate={autoRotate && isPlaying}
-      autoRotateSpeed={autoRotateSpeed}
-      maxPolarAngle={Math.PI * 0.75}
+      autoRotate={false} // Explicitly disable autoRotate
+      maxPolarAngle={Math.PI * 0.75} // Keep angle limits
       minPolarAngle={Math.PI * 0.25}
-      makeDefault
+      makeDefault // Make these the default controls
     />
   );
 }
@@ -154,16 +148,14 @@ function ModelDisplay({ mesh, highQuality, modelId }) {
 }
 
 // Scene component to organize all 3D elements
-function Scene({ mesh, isPlaying, rotationSpeed, modelSize, showFloor, highQuality, modelId }) {
+function Scene({ mesh, modelSize, showFloor, highQuality, modelId, controlsRef }) {
   return (
     <>
-      <CameraController 
-        autoRotate={true} 
-        autoRotateSpeed={rotationSpeed} 
-        isPlaying={isPlaying}
+      <CameraController
         modelSize={modelSize}
+        controlsRef={controlsRef} // Pass down the ref
       />
-      
+
       <EnhancedLighting />
       
       {showFloor && (
@@ -179,15 +171,71 @@ function Scene({ mesh, isPlaying, rotationSpeed, modelSize, showFloor, highQuali
   );
 }
 
+
+// Internal component to handle export logic using hooks inside Canvas
+const ExportHandler = forwardRef(({ getControls }, ref) => { // Removed isPlaying related props
+  const { gl, scene, camera } = useThree();
+
+  useImperativeHandle(ref, () => ({
+    handleExportImage: (format = 'png') => {
+      if (!gl || !scene || !camera) {
+        console.error("Renderer, scene, or camera not available for export.");
+        return;
+      }
+      const controls = getControls(); // Get controls ref from parent
+
+      // Ensure controls and camera are up-to-date before rendering
+      if (controls) {
+        controls.update(); // Update controls state internally
+      }
+      camera.updateProjectionMatrix(); // Ensure camera matrix is current
+
+      // Render the scene *now* with the current camera state
+      gl.render(scene, camera);
+
+      // Capture data URL immediately after render
+      try {
+          const mimeType = `image/${format}`;
+          const quality = format === 'jpeg' ? 0.95 : undefined;
+          const dataURL = gl.domElement.toDataURL(mimeType, quality);
+
+          // Trigger download
+          const link = document.createElement('a');
+          link.download = `cad-render.${format}`;
+          link.href = dataURL;
+          document.body.appendChild(link); // Required for Firefox
+          link.click();
+          document.body.removeChild(link);
+
+          console.log(`Image exported as ${format}`);
+
+        } catch (error) {
+          console.error(`Error exporting image as ${format}:`, error);
+          alert(`Failed to export image as ${format}. See console for details.`);
+        }
+      // No need for finally block to restore rotation state
+    }
+  }));
+
+  return null; // This component doesn't render anything itself
+});
+
+
 // Main 360° rendering view component
 export default function RenderingView({ mesh, isMobile }) {
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [rotationSpeed, setRotationSpeed] = useState(1.0);
+  // Removed isPlaying and rotationSpeed state
   const [modelSize, setModelSize] = useState(100);
   const [showFloor, setShowFloor] = useState(true);
   const [highQuality, setHighQuality] = useState(!isMobile);
   const [modelId, setModelId] = useState(Date.now()); // Unique ID for the current model
-  
+  const controlsRef = useRef(); // Ref for OrbitControls
+  const exportHandlerRef = useRef(); // Ref for the ExportHandler component
+
+  // Function to trigger export via the ref
+  const triggerExport = (format) => {
+    exportHandlerRef.current?.handleExportImage(format);
+  };
+
   // Update model ID when mesh changes to force scene re-creation
   useEffect(() => {
     setModelId(Date.now());
@@ -241,7 +289,8 @@ export default function RenderingView({ mesh, isMobile }) {
           touchAction: "none"
         }}
         dpr={pixelRatio}
-        gl={{ 
+        gl={{
+          preserveDrawingBuffer: true, // Needed for image export
           antialias: highQuality,
           logarithmicDepthBuffer: true,
           alpha: false,
@@ -256,18 +305,24 @@ export default function RenderingView({ mesh, isMobile }) {
         }}
       >
         <Suspense fallback={null}>
-          <Scene 
+          <Scene
             mesh={mesh}
-            isPlaying={isPlaying}
-            rotationSpeed={rotationSpeed}
+            // isPlaying and rotationSpeed props removed
             modelSize={modelSize}
             showFloor={showFloor}
             highQuality={highQuality}
             modelId={modelId}
+            controlsRef={controlsRef} // Pass ref to Scene
+          />
+          {/* Render the ExportHandler inside Canvas */}
+          <ExportHandler
+            ref={exportHandlerRef}
+            getControls={() => controlsRef.current}
+            // Removed isPlaying related props
           />
         </Suspense>
       </Canvas>
-      
+
       {/* Controls overlay */}
       <div style={{
         position: "absolute",
@@ -282,45 +337,12 @@ export default function RenderingView({ mesh, isMobile }) {
         borderRadius: "8px",
         margin: "0 auto",
         width: isMobile ? "95%" : "auto",
-        maxWidth: "500px"
+        maxWidth: "500px" // Adjust max-width if needed after removing controls
       }}>
-        <button
-          onClick={() => setIsPlaying(!isPlaying)}
-          style={{
-            background: "rgba(255,255,255,0.2)",
-            border: "none",
-            color: "white",
-            padding: isMobile ? "8px 12px" : "6px 12px",
-            borderRadius: "4px",
-            cursor: "pointer",
-            fontSize: isMobile ? "14px" : "12px"
-          }}
-        >
-          {isPlaying ? "❚❚" : "▶"}
-        </button>
-        
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          color: "white",
-          fontSize: isMobile ? "14px" : "12px"
-        }}>
-          <span>Speed:</span>
-          <input
-            type="range"
-            min="0.1"
-            max="5"
-            step="0.1"
-            value={rotationSpeed}
-            onChange={(e) => setRotationSpeed(parseFloat(e.target.value))}
-            style={{
-              width: isMobile ? "80px" : "100px"
-            }}
-          />
-          <span>{rotationSpeed.toFixed(1)}x</span>
-        </div>
-        
+        {/* Removed Play/Pause Button */}
+
+        {/* Removed Speed Control */}
+
         <button
           onClick={() => setShowFloor(!showFloor)}
           style={{
@@ -335,7 +357,7 @@ export default function RenderingView({ mesh, isMobile }) {
         >
           {showFloor ? "Hide Grid" : "Show Grid"}
         </button>
-        
+
         {!isMobile && (
           <button
             onClick={() => setHighQuality(!highQuality)}
@@ -352,6 +374,36 @@ export default function RenderingView({ mesh, isMobile }) {
             {highQuality ? "Standard Quality" : "High Quality"}
           </button>
         )}
+
+        {/* Export Buttons - Use triggerExport */}
+        <button
+          onClick={() => triggerExport('jpeg')}
+          style={{
+            background: "rgba(255,255,255,0.2)",
+            border: "none",
+            color: "white",
+            padding: isMobile ? "8px 12px" : "6px 12px",
+            borderRadius: "4px",
+            cursor: "pointer",
+            fontSize: isMobile ? "14px" : "12px"
+          }}
+        >
+          Export JPG
+        </button>
+        <button
+          onClick={() => triggerExport('png')}
+          style={{
+            background: "rgba(255,255,255,0.2)",
+            border: "none",
+            color: "white",
+            padding: isMobile ? "8px 12px" : "6px 12px",
+            borderRadius: "4px",
+            cursor: "pointer",
+            fontSize: isMobile ? "14px" : "12px"
+          }}
+        >
+          Export PNG
+        </button>
       </div>
     </div>
   );
