@@ -87,14 +87,14 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
         newMeasurements[uniquePathId] = {
           pathId: uniquePathId, // This is the full, unique path segment ID
           type: path.geometry.type,
-          geometry: path.geometry,
+          // geometry: path.geometry, // REMOVED: Geometry will be looked up dynamically
           textPosition: initialTextPosition,
           viewId: viewId,
         };
         console.log(`--- Added Measurement ---`);
         console.log(`  ID: ${uniquePathId}`);
         console.log(`  Type: ${path.geometry.type}`);
-        console.log(`  Geometry:`, path.geometry);
+        // console.log(`  Geometry:`, path.geometry); // REMOVED
         console.log(`  Initial Text Pos:`, initialTextPosition);
         console.log(`  View ID: ${newMeasurements[uniquePathId].viewId}`);
         console.log(`------------------------`);

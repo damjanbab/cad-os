@@ -139,14 +139,46 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                 <g>
                   {Object.values(activeMeasurements)
                     .filter(m => m.viewId === frontViewId)
-                    .map(measurement => (
-                      <MeasurementDisplay
-                        key={measurement.pathId}
-                        measurementData={measurement}
-                        svgRef={frontSvgRef} // Pass correct ref
-                        onUpdatePosition={onMeasurementUpdate}
-                      />
-                    ))}
+                    .map(measurement => {
+                      // Find the current path data using the pathId
+                      const pathIdParts = measurement.pathId.split('_');
+                      const visibility = pathIdParts[pathIdParts.length - 3];
+                      const originalIdOrIndex = pathIdParts.slice(pathIdParts.length - 2).join('_');
+                      let currentPath = null;
+                      const pathsToCheck = visibility === 'visible' ? frontView?.visible?.paths : frontView?.hidden?.paths;
+
+                      if (pathsToCheck) {
+                        currentPath = pathsToCheck.find(p => {
+                          const pIdParts = `${p.id || ''}`.split('_');
+                          const pOriginalIdOrIndex = pIdParts.slice(pIdParts.length - 2).join('_');
+                          return pOriginalIdOrIndex === originalIdOrIndex || `${p.id}` === originalIdOrIndex;
+                        });
+                        // Fallback logic (similar to ProjectionView)
+                        if (!currentPath) {
+                           const indexStr = pathIdParts[pathIdParts.length - 1];
+                           const index = parseInt(indexStr, 10);
+                           if (!isNaN(index) && index >= 0 && index < pathsToCheck.length && pathsToCheck[index]?.geometry?.type === measurement.type) {
+                              currentPath = pathsToCheck[index];
+                           }
+                        }
+                      }
+
+                      if (!currentPath || !currentPath.geometry) {
+                        console.warn(`PartView(Front): Could not find current geometry for measurement: ${measurement.pathId}`);
+                        return null;
+                      }
+
+                      const currentMeasurementData = { ...measurement, geometry: currentPath.geometry };
+
+                      return (
+                        <MeasurementDisplay
+                          key={measurement.pathId}
+                          measurementData={currentMeasurementData} // Pass updated data
+                          svgRef={frontSvgRef} // Pass correct ref
+                          onUpdatePosition={onMeasurementUpdate}
+                        />
+                      );
+                    })}
                 </g>
               </svg>
             </div>
@@ -219,14 +251,46 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                  <g>
                   {Object.values(activeMeasurements)
                     .filter(m => m.viewId === topViewId)
-                    .map(measurement => (
-                      <MeasurementDisplay
-                        key={measurement.pathId}
-                        measurementData={measurement}
-                        svgRef={topSvgRef} // Pass correct ref
-                        onUpdatePosition={onMeasurementUpdate}
-                      />
-                    ))}
+                     .map(measurement => {
+                      // Find the current path data using the pathId
+                      const pathIdParts = measurement.pathId.split('_');
+                      const visibility = pathIdParts[pathIdParts.length - 3];
+                      const originalIdOrIndex = pathIdParts.slice(pathIdParts.length - 2).join('_');
+                      let currentPath = null;
+                      const pathsToCheck = visibility === 'visible' ? topView?.visible?.paths : topView?.hidden?.paths;
+
+                      if (pathsToCheck) {
+                         currentPath = pathsToCheck.find(p => {
+                          const pIdParts = `${p.id || ''}`.split('_');
+                          const pOriginalIdOrIndex = pIdParts.slice(pIdParts.length - 2).join('_');
+                          return pOriginalIdOrIndex === originalIdOrIndex || `${p.id}` === originalIdOrIndex;
+                        });
+                        // Fallback logic
+                        if (!currentPath) {
+                           const indexStr = pathIdParts[pathIdParts.length - 1];
+                           const index = parseInt(indexStr, 10);
+                           if (!isNaN(index) && index >= 0 && index < pathsToCheck.length && pathsToCheck[index]?.geometry?.type === measurement.type) {
+                              currentPath = pathsToCheck[index];
+                           }
+                        }
+                      }
+
+                      if (!currentPath || !currentPath.geometry) {
+                        console.warn(`PartView(Top): Could not find current geometry for measurement: ${measurement.pathId}`);
+                        return null;
+                      }
+
+                      const currentMeasurementData = { ...measurement, geometry: currentPath.geometry };
+
+                      return (
+                        <MeasurementDisplay
+                          key={measurement.pathId}
+                          measurementData={currentMeasurementData} // Pass updated data
+                          svgRef={topSvgRef} // Pass correct ref
+                          onUpdatePosition={onMeasurementUpdate}
+                        />
+                      );
+                    })}
                 </g>
               </svg>
             </div>
@@ -299,14 +363,46 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                  <g>
                   {Object.values(activeMeasurements)
                     .filter(m => m.viewId === rightViewId)
-                    .map(measurement => (
-                      <MeasurementDisplay
-                        key={measurement.pathId}
-                        measurementData={measurement}
-                        svgRef={rightSvgRef} // Pass correct ref
-                        onUpdatePosition={onMeasurementUpdate}
-                      />
-                    ))}
+                     .map(measurement => {
+                      // Find the current path data using the pathId
+                      const pathIdParts = measurement.pathId.split('_');
+                      const visibility = pathIdParts[pathIdParts.length - 3];
+                      const originalIdOrIndex = pathIdParts.slice(pathIdParts.length - 2).join('_');
+                      let currentPath = null;
+                      const pathsToCheck = visibility === 'visible' ? rightView?.visible?.paths : rightView?.hidden?.paths;
+
+                      if (pathsToCheck) {
+                         currentPath = pathsToCheck.find(p => {
+                          const pIdParts = `${p.id || ''}`.split('_');
+                          const pOriginalIdOrIndex = pIdParts.slice(pIdParts.length - 2).join('_');
+                          return pOriginalIdOrIndex === originalIdOrIndex || `${p.id}` === originalIdOrIndex;
+                        });
+                        // Fallback logic
+                        if (!currentPath) {
+                           const indexStr = pathIdParts[pathIdParts.length - 1];
+                           const index = parseInt(indexStr, 10);
+                           if (!isNaN(index) && index >= 0 && index < pathsToCheck.length && pathsToCheck[index]?.geometry?.type === measurement.type) {
+                              currentPath = pathsToCheck[index];
+                           }
+                        }
+                      }
+
+                      if (!currentPath || !currentPath.geometry) {
+                        console.warn(`PartView(Right): Could not find current geometry for measurement: ${measurement.pathId}`);
+                        return null;
+                      }
+
+                      const currentMeasurementData = { ...measurement, geometry: currentPath.geometry };
+
+                      return (
+                        <MeasurementDisplay
+                          key={measurement.pathId}
+                          measurementData={currentMeasurementData} // Pass updated data
+                          svgRef={rightSvgRef} // Pass correct ref
+                          onUpdatePosition={onMeasurementUpdate}
+                        />
+                      );
+                    })}
                 </g>
               </svg>
             </div>
