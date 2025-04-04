@@ -254,14 +254,19 @@ function createNormalizedViewBox(viewBox, maxWidth, maxHeight) {
   const centerY = viewBox.y + viewBox.height / 2;
 
   // Use provided max dimensions or default if zero/invalid
-  const validMaxWidth = maxWidth > 0 ? maxWidth : 100;
-  const validMaxHeight = maxHeight > 0 ? maxHeight : 100;
+  const baseWidth = maxWidth > 0 ? maxWidth : 100;
+  const baseHeight = maxHeight > 0 ? maxHeight : 100;
 
-  // Calculate new top-left corner to keep the view centered
-  const newX = centerX - validMaxWidth / 2;
-  const newY = centerY - validMaxHeight / 2;
+  // Add 15% margin to each side (total 30% increase)
+  const marginFactor = 1.3;
+  const paddedWidth = baseWidth * marginFactor;
+  const paddedHeight = baseHeight * marginFactor;
 
-  return `${newX} ${newY} ${validMaxWidth} ${validMaxHeight}`;
+  // Calculate new top-left corner based on padded dimensions to keep the original content centered
+  const newX = centerX - paddedWidth / 2;
+  const newY = centerY - paddedHeight / 2;
+
+  return `${newX} ${newY} ${paddedWidth} ${paddedHeight}`;
 }
 
 /**
