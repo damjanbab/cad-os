@@ -9,7 +9,7 @@ export default function About() {
       color: "#1E293B",
       overflowX: "hidden" // Prevent horizontal scrolling
     }}>
-      {/* Professional Profile Section */}
+      {/* Company Profile Section */}
       <div style={{ marginBottom: "4rem" }}>
         <div style={{ 
           display: "flex", 
@@ -23,11 +23,11 @@ export default function About() {
             backgroundColor: "#2563EB", 
             borderRadius: "2px" 
           }}></div>
-          <h1 style={{ fontSize: "2.25rem", fontWeight: "800", margin: 0 }}>About Me</h1>
+          <h1 style={{ fontSize: "2.25rem", fontWeight: "800", margin: 0 }}>About CAD-OS</h1>
         </div>
 
         <div style={{ display: "flex", gap: "2rem", alignItems: "flex-start", marginBottom: "2rem" }}>
-          {/* Profile Image */}
+          {/* Company Logo */}
           <div style={{ 
             flexShrink: 0, 
             width: "180px", 
@@ -37,7 +37,76 @@ export default function About() {
             border: "4px solid #E2E8F0",
             boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
           }}>
-            {/* Direct reference to GitHub raw content */}
+            <img 
+              src="./assets/company.jpg"
+              alt="CAD-OS Logo" 
+              style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+              onError={(e) => {
+                // Fallback options
+                const fallbackPaths = [
+                  "./assets/company.jpg",
+                  "/cad-os/assets/company.jpg",
+                  "https://raw.githubusercontent.com/haloedDepth/cad-os/main/assets/company.jpg"
+                ];
+                
+                const currentSrc = e.target.src;
+                const nextPath = fallbackPaths.find(path => path !== currentSrc);
+                
+                if (nextPath) {
+                  e.target.src = nextPath;
+                } else {
+                  // If all paths fail, use a placeholder
+                  e.target.src = "https://via.placeholder.com/180x180?text=CAD-OS";
+                }
+              }}
+            />
+          </div>
+
+          {/* Company Description */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569", marginBottom: "1rem" }}>
+              Founded in January 2025, CAD-OS is a specialized engineering firm dedicated to delivering innovative parametric CAD solutions. Our team combines deep technical expertise in 3D modeling with cutting-edge programming capabilities to revolutionize how engineering models are created, shared, and implemented.
+            </p>
+
+            <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569", marginBottom: "1rem" }}>
+              We've built our services on a foundation of transparency, quality, and exceptional communication. By leveraging open-source technologies alongside proprietary development techniques, we deliver professional engineering solutions that dramatically reduce development time while maintaining precision and adaptability.
+            </p>
+
+            <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569" }}>
+              Our platform embodies our commitment to client empowerment, providing real-time collaboration tools, instant feedback mechanisms, and comprehensive self-service capabilities that set a new standard for CAD service delivery.
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      {/* Founder Section */}
+      <div style={{ marginBottom: "4rem" }}>
+        <div style={{ 
+          display: "flex", 
+          alignItems: "center", 
+          marginBottom: "2rem", 
+          gap: "1rem" 
+        }}>
+          <div style={{ 
+            width: "4px", 
+            height: "2rem", 
+            backgroundColor: "#2563EB", 
+            borderRadius: "2px" 
+          }}></div>
+          <h2 style={{ fontSize: "1.75rem", fontWeight: "700", margin: 0 }}>Our Founder</h2>
+        </div>
+        
+        <div style={{ display: "flex", gap: "2rem", alignItems: "flex-start" }}>
+          {/* Founder Image */}
+          <div style={{ 
+            flexShrink: 0, 
+            width: "150px", 
+            height: "150px", 
+            borderRadius: "50%", 
+            overflow: "hidden",
+            border: "4px solid #E2E8F0",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
+          }}>
             <img 
               src="https://raw.githubusercontent.com/damjanbab/cad-os/main/assets/profile.jpg"
               alt="Damjan Babic" 
@@ -57,26 +126,92 @@ export default function About() {
                   e.target.src = nextPath;
                 } else {
                   // If all paths fail, use a placeholder
-                  e.target.src = "https://via.placeholder.com/180x180?text=Profile";
+                  e.target.src = "https://via.placeholder.com/150x150?text=Profile";
                 }
               }}
             />
           </div>
 
-          {/* Bio Text */}
+          {/* Founder Bio */}
           <div style={{ flex: 1, minWidth: 0 }}>
+            <h3 style={{ 
+              fontSize: "1.25rem", 
+              fontWeight: "700", 
+              marginBottom: "0.75rem",
+              color: "#1E293B"
+            }}>
+              Damjan Babic
+            </h3>
             <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569", marginBottom: "1rem" }}>
-              I'm a 31-year-old Croatian professional with a background in Marine Engineering and over a decade of experience in 3D modeling using commercial software. My expertise lies in parametric and programmatic CAD solutions that deliver precise, adaptable models for engineering and manufacturing applications.
+              Damjan Babic founded CAD-OS with a background in Marine Engineering and over a decade of experience in 3D modeling using commercial software. His expertise in parametric and programmatic CAD solutions ensures clients receive precise, adaptable models for engineering and manufacturing applications.
             </p>
-
-            <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569", marginBottom: "1rem" }}>
-              Through self-study, I've developed strong programming skills in JavaScript, Python, Clojure, and various frontend technologies, allowing me to create custom solutions that merge engineering precision with modern web technologies. This combination enables me to offer unique, cost-effective services that traditional CAD approaches can't match.
-            </p>
-
             <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569" }}>
-              This site serves as my professional portfolio, showcasing the capabilities of my parametric CAD services while demonstrating the technical implementation through interactive demos that potential clients can explore.
+              Through self-study, Damjan has developed strong programming skills in JavaScript, Python, Clojure, and various frontend technologies, allowing him to create custom solutions that merge engineering precision with modern web technologies. This unique combination enables CAD-OS to offer innovative, cost-effective services that traditional CAD approaches can't match.
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Company Values Section */}
+      <div style={{ marginBottom: "4rem" }}>
+        <h2 style={{ fontSize: "1.75rem", fontWeight: "700", marginBottom: "2rem" }}>
+          Our Core Values
+        </h2>
+        
+        <div style={{ 
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+          gap: "2rem"
+        }}>
+          <ValueCard 
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8h1a4 4 0 1 1 0 8h-1"></path><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path><line x1="6" y1="1" x2="6" y2="4"></line><line x1="10" y1="1" x2="10" y2="4"></line><line x1="14" y1="1" x2="14" y2="4"></line>
+              </svg>
+            }
+            title="Transparency"
+            description="We believe in complete openness throughout the development process, giving clients full visibility into their projects at every stage."
+          />
+          
+          <ValueCard 
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline>
+              </svg>
+            }
+            title="Quality"
+            description="Engineering precision and technical excellence guide all our work, ensuring every model meets rigorous standards and real-world functionality requirements."
+          />
+          
+          <ValueCard 
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            }
+            title="Communication"
+            description="Clear, responsive communication forms the backbone of our client relationships, ensuring alignment and satisfaction at every project milestone."
+          />
+          
+          <ValueCard 
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+              </svg>
+            }
+            title="Continuous Innovation"
+            description="We constantly explore new techniques and technologies to enhance our service offerings and deliver progressively better solutions to our clients."
+          />
+          
+          <ValueCard 
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            }
+            title="Rapid Prototyping"
+            description="We specialize in quickly turning concepts into functional prototypes, significantly accelerating the product development cycle for our clients."
+          />
         </div>
       </div>
 
@@ -93,8 +228,8 @@ export default function About() {
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
             </svg>
           }
-          title="Engineering Background"
-          description="With a formal education in Marine Engineering, I bring a strong technical foundation to every project. This background ensures that all models meet rigorous engineering standards and real-world functionality requirements."
+          title="Engineering Expertise"
+          description="Our team brings extensive engineering knowledge to every project, ensuring models meet rigorous technical standards and real-world functionality requirements across various industries."
         />
 
         <ExpertiseCard 
@@ -105,8 +240,8 @@ export default function About() {
               <polyline points="2 12 12 17 22 12"></polyline>
             </svg>
           }
-          title="3D Modeling Expertise"
-          description="Over 10 years of experience with commercial 3D modeling software has given me proficiency in creating complex models across various industries. I specialize in parametric design that allows for rapid iterations and modifications."
+          title="Advanced 3D Modeling"
+          description="With over a decade of experience in commercial 3D modeling software, our specialists excel in creating complex parametric models that allow for rapid iterations and modifications."
         />
 
         <ExpertiseCard 
@@ -116,8 +251,8 @@ export default function About() {
               <path d="M8 18h8"></path>
             </svg>
           }
-          title="Programming Skills"
-          description="Self-taught programming knowledge in JavaScript, Python, Clojure, and frontend technologies enables me to create custom parametric solutions that bridge the gap between traditional CAD and modern web applications."
+          title="Software Development"
+          description="Our programming capabilities in JavaScript, Python, Clojure, and frontend technologies enable us to create custom parametric solutions bridging traditional CAD and modern web applications."
         />
       </div>
 
@@ -134,7 +269,7 @@ export default function About() {
           marginBottom: "2rem",
           textAlign: "center"
         }}>
-          Technology Stack
+          Our Technology Stack
         </h2>
 
         <div style={{ 
@@ -178,7 +313,7 @@ export default function About() {
       {/* Service Process */}
       <div style={{ marginBottom: "4rem" }}>
         <h2 style={{ fontSize: "1.75rem", fontWeight: "700", marginBottom: "2rem" }}>
-          My Service Process
+          Our Service Process
         </h2>
         
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
@@ -206,7 +341,7 @@ export default function About() {
                   fontSize: "1rem", 
                   lineHeight: "1.6" 
                 }}>
-                  We begin with a detailed discussion about your project needs, including technical requirements, use cases, and design parameters. This consultation ensures I fully understand your vision.
+                  We begin with a detailed discussion about your project needs, including technical requirements, use cases, and design parameters. This consultation ensures we fully understand your vision.
                 </p>
               </div>
             </div>
@@ -236,7 +371,7 @@ export default function About() {
                   fontSize: "1rem", 
                   lineHeight: "1.6" 
                 }}>
-                  I create a parametric model framework that captures the essential components and relationships of your design, making it easy to adjust and refine throughout the development process.
+                  We create a parametric model framework that captures the essential components and relationships of your design, making it easy to adjust and refine throughout the development process.
                 </p>
               </div>
             </div>
@@ -296,7 +431,7 @@ export default function About() {
                   fontSize: "1rem", 
                   lineHeight: "1.6" 
                 }}>
-                  Once the 3D model meets your requirements, I generate detailed technical drawings suitable for manufacturing, including dimensions, tolerances, and material specifications.
+                  Once the 3D model meets your requirements, we generate detailed technical drawings suitable for manufacturing, including dimensions, tolerances, and material specifications.
                 </p>
               </div>
             </div>
@@ -388,7 +523,7 @@ export default function About() {
           marginBottom: "2.5rem",
           color: "#CBD5E1"
         }}>
-          Have a project in mind or need a custom 3D modeling solution? I'd love to hear about your requirements and discuss how my services can bring your ideas to reality.
+          Have a project in mind or need a custom 3D modeling solution? We'd love to hear about your requirements and discuss how our services can bring your ideas to reality.
         </p>
 
         <div style={{ 
@@ -639,7 +774,48 @@ export default function About() {
   );
 }
 
-// Helper component for expertise cards (static, no hover effects)
+// Helper component for value cards
+function ValueCard({ icon, title, description }) {
+  return (
+    <div style={{
+      backgroundColor: "white",
+      borderRadius: "0.5rem",
+      padding: "1.5rem",
+      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+      border: "1px solid #E2E8F0",
+      height: "100%",
+      display: "flex",
+      flexDirection: "column"
+    }}>
+      <div style={{ 
+        color: "#2563EB", 
+        marginBottom: "1rem", 
+        display: "inline-flex",
+        padding: "0.75rem",
+        backgroundColor: "#EFF6FF",
+        borderRadius: "0.5rem"
+      }}>
+        {icon}
+      </div>
+      <h3 style={{ 
+        fontSize: "1.25rem", 
+        fontWeight: "700", 
+        marginBottom: "0.75rem" 
+      }}>
+        {title}
+      </h3>
+      <p style={{ 
+        color: "#475569",
+        lineHeight: "1.5",
+        flex: "1"
+      }}>
+        {description}
+      </p>
+    </div>
+  );
+}
+
+// Helper component for expertise cards
 function ExpertiseCard({ icon, title, description }) {
   return (
     <div style={{
@@ -676,7 +852,7 @@ function ExpertiseCard({ icon, title, description }) {
   );
 }
 
-// Helper component for technology items (static, no hover effects)
+// Helper component for technology items
 function TechItem({ name, description, link }) {
   return (
     <div style={{
