@@ -51,6 +51,20 @@ export default function CadApp() {
     if (modelRegistry[selectedModel].hasExplosion) {
       modelParams.explosionFactor = explosionFactor;
     }
+
+    // Check for password requirement before calling the worker
+    const modelDefinition = modelRegistry[selectedModel];
+    if (modelDefinition?.requiresPassword) {
+      const enteredPassword = prompt(`Enter password for ${selectedModel} model:`);
+      if (enteredPassword !== 'damjan22') { // Simple password check (NOTE: Insecure)
+        setValidationErrors(["Incorrect password"]);
+        setMesh(null);
+        setProjections(null);
+        setBomData(null);
+        console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer here on failure
+        return; // Stop execution if password is wrong
+      }
+    }
     
     cad.createMesh(selectedModel, modelParams).then(result => {
       console.timeEnd(`[PERF] worker call for ${selectedModel}`);
