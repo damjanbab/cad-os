@@ -296,8 +296,8 @@ export function processProjectionsForRendering(projections) {
         console.log(`Processed ${viewName} viewBox:`, combinedViewBox);
 
         // Normalize paths and add unique IDs to make them identifiable/clickable
-        const normalizedVisiblePaths = normalizePaths(visiblePaths, `${viewName}_visible`); // Use original normalizePaths
-        const normalizedHiddenPaths = normalizePaths(hiddenPaths, `${viewName}_hidden`); // Use original normalizePaths
+        const normalizedVisiblePaths = normalizePaths(visiblePaths, `${viewName}_visible`);
+        const normalizedHiddenPaths = normalizePaths(hiddenPaths, `${viewName}_hidden`);
 
         processedViews[viewName] = {
           visible: {
@@ -330,8 +330,8 @@ export function processProjectionsForRendering(projections) {
         const idPrefix = `${part.name.replace(/\s+/g, '_')}_${viewName}`;
 
         // Normalize paths with unique IDs
-        const normalizedVisiblePaths = normalizePaths(viewVisiblePaths, `${idPrefix}_visible`); // Use original normalizePaths
-        const normalizedHiddenPaths = normalizePaths(viewHiddenPaths, `${idPrefix}_hidden`); // Use original normalizePaths
+        const normalizedVisiblePaths = normalizePaths(viewVisiblePaths, `${idPrefix}_visible`);
+        const normalizedHiddenPaths = normalizePaths(viewHiddenPaths, `${idPrefix}_hidden`);
 
         // Use the normalized viewbox if available for consistent scaling
         const visibleViewBox = view.normalizedViewBox || view.visible.toSVGViewBox(5);
@@ -370,101 +370,203 @@ export function processProjectionsForRendering(projections) {
   };
 }
 
+// Tolerance for floating point comparisons
+const TOLERANCE = 1e-6;
+
 /**
- * Normalize paths for rendering and add unique IDs.
- * This version decomposes paths into segments but does NOT merge them.
+ * Check if two points are close within a tolerance
+ */
+function arePointsClose(p1, p2, tolerance = TOLERANCE) {
+  if (!p1 || !p2) return false;
+  return Math.sqrt(Math.pow(p1[0] - p2[0], 2) + Math.pow(p1[1] - p2[1], 2)) < tolerance;
+}
+
+/**
+ * Check if three points are collinear within a tolerance
+ * Uses the area of the triangle method.
+ */
+function areCollinear(p1, p2, p3, tolerance = TOLERANCE) {
+  if (!p1 || !p2 || !p3) return false;
+  // Check for vertical line first to avoid division by zero or large slopes
+  if (Math.abs(p1[0] - p2[0]) < tolerance && Math.abs(p2[0] - p3[0]) < tolerance) {
+    return true;
+  }
+  // Check for horizontal line
+  if (Math.abs(p1[1] - p2[1]) < tolerance && Math.abs(p2[1] - p3[1]) < tolerance) {
+    return true;
+  }
+  // Calculate the area of the triangle formed by the three points
+  // Using a robust method less prone to floating point issues with large coordinates
+  const area = Math.abs((p2[0] - p1[0]) * (p3[1] - p1[1]) - (p3[0] - p1[0]) * (p2[1] - p1[1]));
+  // Normalize by the length of the base segment (p1 to p3) to get a relative tolerance
+  const baseLengthSq = Math.pow(p3[0] - p1[0], 2) + Math.pow(p3[1] - p1[1], 2);
+  // Avoid division by zero for coincident points
+  if (baseLengthSq < tolerance * tolerance) return true;
+  // Compare area relative to base length
+  return area / Math.sqrt(baseLengthSq) < tolerance;
+}
+
+
+/**
+ * Merge two adjacent and collinear line segments
+ */
+function mergeLineSegments(seg1, seg2) {
+  // Determine the correct start and end points based on connection
+  let startPoint, endPoint;
+  if (arePointsClose(seg1.endpoints[1], seg2.endpoints[0])) {
+    startPoint = seg1.endpoints[0];
+    endPoint = seg2.endpoints[1];
+  } else if (arePointsClose(seg1.endpoints[0], seg2.endpoints[1])) {
+    startPoint = seg2.endpoints[0];
+    endPoint = seg1.endpoints[1];
+  } else if (arePointsClose(seg1.endpoints[0], seg2.endpoints[0])) {
+    startPoint = seg1.endpoints[1];
+    endPoint = seg2.endpoints[1];
+  } else if (arePointsClose(seg1.endpoints[1], seg2.endpoints[1])) {
+    startPoint = seg1.endpoints[0];
+    endPoint = seg2.endpoints[0];
+  } else {
+    // Should not happen if arePointsClose check passed before calling merge
+    console.warn("Cannot determine merge order for segments", seg1, seg2);
+    return seg1; // Return one segment as fallback
+  }
+
+  const newLength = (seg1.length || 0) + (seg2.length || 0); // Handle potential undefined length
+  const newPath = `M ${startPoint[0]} ${startPoint[1]} L ${endPoint[0]} ${endPoint[1]}`;
+
+  return {
+    type: 'line',
+    path: newPath,
+    length: newLength,
+    endpoints: [startPoint, endPoint]
+    // id and groupId will be assigned later
+  };
+}
+
+
+/**
+ * Normalize paths for rendering, merge collinear lines, and add unique IDs.
  * @param {Array} paths - Array of path strings or arrays
  * @param {String} prefix - ID prefix for the paths
- * @returns {Array} Normalized paths with IDs
+ * @returns {Array} Normalized paths with IDs where groupId === id
  */
 function normalizePaths(paths, prefix = 'path') {
   if (!Array.isArray(paths)) return [];
 
-  // This array will hold our processed paths
-  const normalizedPaths = [];
-  let pathIndex = 0;
+  const finalPaths = [];
+  let pathIndex = 0; // Counter for original paths from replicad
 
   for (let i = 0; i < paths.length; i++) {
-    const path = paths[i];
+    const path = paths[i]; // Keep original loop variable name
 
     // Extract path data string
     let pathData;
     if (typeof path === 'string') {
       pathData = path;
     } else if (Array.isArray(path)) {
+      // Handle potential nested arrays or objects within the array
       if (path.every(item => typeof item === 'string')) {
         pathData = path.join(' ');
-      } else if (path.length > 0) {
-        pathData = String(path[0]);
+      } else if (path.length > 0 && typeof path[0] === 'string') {
+        pathData = path[0]; // Assume the first element is the path string if mixed types
       } else {
-        pathData = '';
+        pathData = ''; // Fallback for unexpected array content
       }
-    } else if (path && typeof path === 'object' && path.d) {
-      pathData = path.d;
+    } else if (path && typeof path === 'object' && typeof path.d === 'string') {
+      pathData = path.d; // Handle object with 'd' property
     } else {
+      // Attempt to stringify other types, though likely indicates an issue upstream
       pathData = String(path);
     }
 
     // Skip empty paths
     if (!pathData.trim()) continue;
 
-    // First, check if this is a circle
+    // Check for circles first
     const circleInfo = detectCircle(pathData);
     if (circleInfo) {
       const id = `${prefix}_${pathIndex}_circle`;
-      // Handle circle as a single entity
-      normalizedPaths.push({
+      finalPaths.push({
         id: id,
-        groupId: id, // Circles are their own group
+        groupId: id, // Use unique ID as group ID
         data: pathData,
         type: 'circle',
         geometry: {
           type: 'circle',
           center: circleInfo.center,
           radius: circleInfo.radius,
-          diameter: circleInfo.radius * 2
-        }
+          diameter: circleInfo.radius * 2,
+        },
       });
-      pathIndex++;
-      continue;
+      pathIndex++; // Increment index for the next original path
+      continue; // Move to the next original path
     }
 
-    // Convert the path to a series of absolute coordinates or keep curves/arcs
-    const segments = decomposePathToSegments(pathData);
-    const groupBaseId = `${prefix}_${pathIndex}`; // Group segments from the same original path
+    // Decompose the path into segments
+    const initialSegments = decomposePathToSegments(pathData);
+    const mergedSegments = [];
 
-    if (segments.length > 0) {
-      // Create a separate path object for each segment
-      segments.forEach((segment, j) => {
-        const segmentId = `${groupBaseId}_${j}`; // Unique ID for each segment
-        normalizedPaths.push({
-          id: segmentId,
-          groupId: groupBaseId, // Use the original path's group ID
-          data: segment.path,
-          type: segment.type,
-          geometry: {
-            type: segment.type,
-            length: segment.length,
-            endpoints: segment.endpoints // [[startX, startY], [endX, endY]]
-          }
-        });
+    if (initialSegments.length > 0) {
+      let currentMergedSegment = initialSegments[0];
+
+      for (let j = 1; j < initialSegments.length; j++) {
+        const nextSegment = initialSegments[j];
+
+        // Check if both are lines and can be merged
+        // Ensure endpoints exist before checking closeness and collinearity
+        if (currentMergedSegment.type === 'line' && nextSegment.type === 'line' &&
+            currentMergedSegment.endpoints && nextSegment.endpoints &&
+            (arePointsClose(currentMergedSegment.endpoints[1], nextSegment.endpoints[0]) || arePointsClose(currentMergedSegment.endpoints[0], nextSegment.endpoints[1]) || arePointsClose(currentMergedSegment.endpoints[0], nextSegment.endpoints[0]) || arePointsClose(currentMergedSegment.endpoints[1], nextSegment.endpoints[1])) && // Check adjacency (allow reversed segments)
+            areCollinear(currentMergedSegment.endpoints[0], currentMergedSegment.endpoints[1], nextSegment.endpoints[0]) && // Check collinearity using 3 points
+            areCollinear(currentMergedSegment.endpoints[0], currentMergedSegment.endpoints[1], nextSegment.endpoints[1])) // Check collinearity using the other endpoint
+        {
+          // Merge them
+          currentMergedSegment = mergeLineSegments(currentMergedSegment, nextSegment);
+        } else {
+          // Cannot merge, push the current (potentially merged) segment and start new
+          mergedSegments.push(currentMergedSegment);
+          currentMergedSegment = nextSegment;
+        }
+      }
+      // Push the last segment (which might be merged or the only segment)
+      mergedSegments.push(currentMergedSegment);
+
+      // Assign final IDs to the merged/processed segments
+      mergedSegments.forEach((segment, j) => {
+        // Ensure segment is valid before pushing
+        if (segment && segment.path) {
+            const finalId = `${prefix}_${pathIndex}_${j}`; // Unique ID for the final segment
+            finalPaths.push({
+              id: finalId,
+              groupId: finalId, // Use unique ID as group ID
+              data: segment.path,
+              type: segment.type,
+              geometry: {
+                type: segment.type,
+                length: segment.length,
+                endpoints: segment.endpoints, // [[startX, startY], [endX, endY]]
+              },
+            });
+        } else {
+            console.warn("Skipping invalid segment during final ID assignment:", segment);
+        }
       });
     } else {
       // Fallback for paths we couldn't decompose (and wasn't a circle)
-       const id = `${prefix}_${pathIndex}_unknown`;
-       normalizedPaths.push({
-         id: id,
-         groupId: id, // Unknown paths are their own group
-         data: pathData,
-         type: 'unknown',
-         geometry: { type: 'unknown' }
-       });
+      const id = `${prefix}_${pathIndex}_unknown`;
+      finalPaths.push({
+        id: id,
+        groupId: id, // Use unique ID as group ID
+        data: pathData,
+        type: 'unknown',
+        geometry: { type: 'unknown' },
+      });
     }
 
-    pathIndex++;
+    pathIndex++; // Increment index for the next original path
   }
 
-  return normalizedPaths;
+  return finalPaths;
 }
 
 
@@ -475,8 +577,9 @@ function normalizePaths(paths, prefix = 'path') {
  */
 function detectCircle(pathData) {
     // Use the accurate SVG arc calculation logic
-    const arcRegex = /([Aa])\s*([-\d.]+)\s*,?\s*([-\d.]+)\s+([-\d.]+)\s+([01])\s*,?\s*([01])\s+([-\d.]+)\s*,?\s*([-\d.]+)/g;
-    const moveRegex = /M\s*([-\d.]+)\s*,?\s*([-\d.]+)/i;
+    const arcRegex = /([Aa])\s*([-\d.eE+]+)\s*,?\s*([-\d.eE+]+)\s+([-\d.eE+]+)\s+([01])\s*,?\s*([01])\s+([-\d.eE+]+)\s*,?\s*([-\d.eE+]+)/g;
+    const moveRegex = /M\s*([-\d.eE+]+)\s*,?\s*([-\d.eE+]+)/i;
+
 
     const moveMatch = pathData.match(moveRegex);
     if (!moveMatch) return null;
@@ -486,6 +589,8 @@ function detectCircle(pathData) {
 
     const arcs = [];
     let match;
+    // Reset lastIndex before exec loop
+    arcRegex.lastIndex = 0;
     while ((match = arcRegex.exec(pathData)) !== null) {
         arcs.push({
         rx: parseFloat(match[2]),
@@ -501,15 +606,18 @@ function detectCircle(pathData) {
 
     if (arcs.length === 0) return null;
 
+    // Check if rx and ry are equal (within tolerance) for all arcs
     const firstRx = Math.abs(arcs[0].rx);
     const firstRy = Math.abs(arcs[0].ry);
-    if (firstRx === 0 || Math.abs(firstRx - firstRy) > 0.01 * Math.max(firstRx, firstRy)) {
-        return null;
+    if (firstRx < TOLERANCE || Math.abs(firstRx - firstRy) > TOLERANCE * Math.max(firstRx, firstRy)) {
+        return null; // Not circular or rx/ry too different
     }
-    if (!arcs.every(arc => Math.abs(Math.abs(arc.rx) - firstRx) < 1e-3 && Math.abs(Math.abs(arc.ry) - firstRy) < 1e-3)) {
-        return null;
+    if (!arcs.every(arc => Math.abs(Math.abs(arc.rx) - firstRx) < TOLERANCE && Math.abs(Math.abs(arc.ry) - firstRy) < TOLERANCE)) {
+        return null; // Radii are not consistent across arcs
     }
 
+    // Check if the path is closed and forms a full circle
+    // This requires parsing the full path to find the final endpoint
     let currentX = startX;
     let currentY = startY;
     const allCommands = pathData.match(/([MLHVCSQTAZ])([^MLHVCSQTAZ]*)/ig);
@@ -517,25 +625,42 @@ function detectCircle(pathData) {
 
     for (const cmdStr of allCommands) {
         const cmd = cmdStr[0];
-        const params = cmdStr.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
+        // Use regex to handle scientific notation and potential missing spaces/commas
+        const params = (cmdStr.slice(1).match(/[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g) || []).map(Number);
+
+        // Check if params extraction was successful
+        if (params.some(isNaN)) {
+             console.warn(`Could not parse parameters for command: ${cmdStr}`);
+             continue; // Skip this command if params are invalid
+        }
+
         const endpoint = getEndpointForCommand(cmd, params, currentX, currentY);
         currentX = endpoint[0];
         currentY = endpoint[1];
     }
 
-    const isClosed = Math.abs(currentX - startX) < 1e-3 && Math.abs(currentY - startY) < 1e-3;
+    const isClosed = Math.abs(currentX - startX) < TOLERANCE && Math.abs(currentY - startY) < TOLERANCE;
 
-    if (!isClosed && arcs.length < 2) {
-        return null;
+    // A full circle usually consists of two arcs
+    if (!isClosed || arcs.length < 2) {
+        return null; // Not a closed path or not enough arcs for a typical full circle SVG representation
     }
 
+    // Calculate center from the first arc (assuming it's a valid circular arc)
     let firstArcData = null;
     currentX = startX;
     currentY = startY;
     for (const cmdStr of allCommands) {
         const cmd = cmdStr[0];
-        const params = cmdStr.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
+        const params = (cmdStr.slice(1).match(/[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g) || []).map(Number);
+         if (params.some(isNaN)) continue;
+
         if (cmd === 'A' || cmd === 'a') {
+             // Ensure enough parameters for arc command
+             if (params.length < 7) {
+                 console.warn(`Invalid arc command parameters: ${cmdStr}`);
+                 continue;
+             }
             firstArcData = {
                 rx: Math.abs(params[0]),
                 ry: Math.abs(params[1]),
@@ -547,21 +672,24 @@ function detectCircle(pathData) {
                 startX: currentX,
                 startY: currentY,
             };
-            break;
+            break; // Found the first arc
         }
         const endpoint = getEndpointForCommand(cmd, params, currentX, currentY);
         currentX = endpoint[0];
         currentY = endpoint[1];
     }
 
-    if (!firstArcData) return null;
+    if (!firstArcData) return null; // No valid arc command found
 
+    // Use standard SVG arc to center calculation
+    // https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
     const { rx, ry, xAxisRotationDeg, largeArcFlag, sweepFlag, endX: x2, endY: y2, startX: x1, startY: y1 } = firstArcData;
 
     const phi = xAxisRotationDeg * Math.PI / 180;
     const cosPhi = Math.cos(phi);
     const sinPhi = Math.sin(phi);
 
+    // Step 1: Compute (x1', y1')
     const x1p = cosPhi * (x1 - x2) / 2 + sinPhi * (y1 - y2) / 2;
     const y1p = -sinPhi * (x1 - x2) / 2 + cosPhi * (y1 - y2) / 2;
 
@@ -570,28 +698,32 @@ function detectCircle(pathData) {
     const x1p_sq = x1p * x1p;
     const y1p_sq = y1p * y1p;
 
+    // Ensure radii are large enough
     let radiiCheck = x1p_sq / rx_sq + y1p_sq / ry_sq;
     let correctedRx = rx;
     let correctedRy = ry;
     if (radiiCheck > 1) {
-        correctedRx = Math.sqrt(radiiCheck) * rx;
-        correctedRy = Math.sqrt(radiiCheck) * ry;
+        const sqrtRadiiCheck = Math.sqrt(radiiCheck);
+        correctedRx = sqrtRadiiCheck * rx;
+        correctedRy = sqrtRadiiCheck * ry;
     }
     const correctedRx_sq = correctedRx * correctedRx;
     const correctedRy_sq = correctedRy * correctedRy;
 
+    // Step 2: Compute (cx', cy')
     let sign = (largeArcFlag === sweepFlag) ? -1 : 1;
     let sq = Math.max(0, (correctedRx_sq * correctedRy_sq - correctedRx_sq * y1p_sq - correctedRy_sq * x1p_sq) / (correctedRx_sq * y1p_sq + correctedRy_sq * x1p_sq));
     let coef = sign * Math.sqrt(sq);
     const cxp = coef * (correctedRx * y1p / correctedRy);
     const cyp = coef * -(correctedRy * x1p / correctedRx);
 
+    // Step 3: Compute (cx, cy) from (cx', cy')
     const cx = cosPhi * cxp - sinPhi * cyp + (x1 + x2) / 2;
     const cy = sinPhi * cxp + cosPhi * cyp + (y1 + y2) / 2;
 
     return {
         center: [cx, cy],
-        radius: firstRx
+        radius: correctedRx // Use corrected radius
     };
 }
 
@@ -603,17 +735,25 @@ function detectCircle(pathData) {
 function decomposePathToSegments(pathData) {
   const segments = [];
   let currentX = 0, currentY = 0;
-  let startX = 0, startY = 0;
-  let firstX = 0, firstY = 0;
+  let startX = 0, startY = 0; // Start of the current subpath
   let isFirstCommand = true;
 
-  // Regular expression to match SVG path commands with their parameters
+  // Regular expression to match SVG path commands with their parameters, including scientific notation
   const commandsRegex = /([MLHVCSQTAZmlhvcsqtaz])([^MLHVCSQTAZmlhvcsqtaz]*)/g;
   let match;
 
   while ((match = commandsRegex.exec(pathData)) !== null) {
     const command = match[1];
-    const params = match[2].trim().split(/[\s,]+/).map(parseFloat).filter(n => !isNaN(n));
+    // Use regex to handle scientific notation and potential missing spaces/commas
+    const params = (match[2].match(/[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g) || []).map(Number);
+
+    // Check if params extraction was successful
+    if (params.some(isNaN)) {
+         console.warn(`Could not parse parameters for command: ${match[0]}`);
+         continue; // Skip this command if params are invalid
+    }
+
+    let pairs = [];
 
     switch (command) {
       case 'M': // Move to absolute
@@ -621,14 +761,11 @@ function decomposePathToSegments(pathData) {
           currentX = params[0];
           currentY = params[1];
           if (isFirstCommand) {
-            firstX = currentX;
-            firstY = currentY;
             isFirstCommand = false;
           }
-          startX = currentX;
+          startX = currentX; // Update start of subpath
           startY = currentY;
-
-          // Additional coordinates after the first pair are treated as "line to" commands
+          // Implicit LineTo for subsequent pairs
           for (let i = 2; i < params.length; i += 2) {
             if (i + 1 < params.length) {
               const x = params[i];
@@ -645,15 +782,12 @@ function decomposePathToSegments(pathData) {
         if (params.length >= 2) {
           currentX += params[0];
           currentY += params[1];
-          if (isFirstCommand) {
-            firstX = currentX;
-            firstY = currentY;
+           if (isFirstCommand) {
             isFirstCommand = false;
           }
-          startX = currentX;
+          startX = currentX; // Update start of subpath
           startY = currentY;
-
-          // Additional coordinates after the first pair are treated as "line to" commands
+          // Implicit LineTo for subsequent pairs
           for (let i = 2; i < params.length; i += 2) {
             if (i + 1 < params.length) {
               const x = currentX + params[i];
@@ -724,35 +858,68 @@ function decomposePathToSegments(pathData) {
 
       case 'Z': // Close path
       case 'z':
-        if (currentX !== startX || currentY !== startY) {
-          segments.push(createLineSegment(currentX, currentY, startX, startY));
-          currentX = startX;
-          currentY = startY;
+        if (Math.abs(currentX - startX) > TOLERANCE || Math.abs(currentY - startY) > TOLERANCE) {
+           segments.push(createLineSegment(currentX, currentY, startX, startY));
         }
+        currentX = startX; // Move back to the start of the subpath
+        currentY = startY;
         break;
 
-      // For curves and arcs, we don't decompose them into lines, but keep the full command
-      case 'C': case 'c': // Cubic Bézier
-      case 'S': case 's': // Smooth cubic Bézier
-      case 'Q': case 'q': // Quadratic Bézier
-      case 'T': case 't': // Smooth quadratic Bézier
-      case 'A': case 'a': // Arc
-        // Keep the original command as a single segment
-        const fullCommand = match[0];
-
-        // Update current position
-        const endpoint = getEndpointForCurve(command, params, currentX, currentY);
-
-        // Create a segment for this curve
-        segments.push({
-          type: 'curve',
-          path: `M ${currentX} ${currentY} ${fullCommand}`,
-          length: estimateCurveLength(command, params, currentX, currentY),
-          endpoints: [[currentX, currentY], endpoint]
-        });
-
-        currentX = endpoint[0];
-        currentY = endpoint[1];
+      // Curves and Arcs - keep them as single segments
+      case 'C': case 'c': // Cubic Bézier (6 params)
+        pairs = params.length / 6;
+        for(let i=0; i<pairs; ++i) {
+            const p = params.slice(i*6, (i+1)*6);
+            if (p.length === 6) {
+                const endpoint = getEndpointForCurve(command, p, currentX, currentY);
+                segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] });
+                currentX = endpoint[0]; currentY = endpoint[1];
+            }
+        }
+        break;
+      case 'S': case 's': // Smooth Cubic Bézier (4 params)
+         pairs = params.length / 4;
+         for(let i=0; i<pairs; ++i) {
+            const p = params.slice(i*4, (i+1)*4);
+             if (p.length === 4) {
+                const endpoint = getEndpointForCurve(command, p, currentX, currentY);
+                segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] });
+                currentX = endpoint[0]; currentY = endpoint[1];
+            }
+         }
+        break;
+      case 'Q': case 'q': // Quadratic Bézier (4 params)
+         pairs = params.length / 4;
+         for(let i=0; i<pairs; ++i) {
+            const p = params.slice(i*4, (i+1)*4);
+             if (p.length === 4) {
+                const endpoint = getEndpointForCurve(command, p, currentX, currentY);
+                segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] });
+                currentX = endpoint[0]; currentY = endpoint[1];
+            }
+         }
+        break;
+      case 'T': case 't': // Smooth Quadratic Bézier (2 params)
+         pairs = params.length / 2;
+         for(let i=0; i<pairs; ++i) {
+            const p = params.slice(i*2, (i+1)*2);
+             if (p.length === 2) {
+                const endpoint = getEndpointForCurve(command, p, currentX, currentY);
+                segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] });
+                currentX = endpoint[0]; currentY = endpoint[1];
+            }
+         }
+        break;
+      case 'A': case 'a': // Arc (7 params)
+         pairs = params.length / 7;
+         for(let i=0; i<pairs; ++i) {
+            const p = params.slice(i*7, (i+1)*7);
+             if (p.length === 7) {
+                const endpoint = getEndpointForCurve(command, p, currentX, currentY);
+                segments.push({ type: 'arc', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] });
+                currentX = endpoint[0]; currentY = endpoint[1];
+            }
+         }
         break;
     }
   }
@@ -764,6 +931,10 @@ function decomposePathToSegments(pathData) {
  * Create a line segment object
  */
 function createLineSegment(x1, y1, x2, y2) {
+  // Avoid creating zero-length segments
+  if (Math.abs(x1 - x2) < TOLERANCE && Math.abs(y1 - y2) < TOLERANCE) {
+    return null;
+  }
   const length = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
   return {
     type: 'line',
@@ -774,20 +945,20 @@ function createLineSegment(x1, y1, x2, y2) {
 }
 
 /**
- * Estimate length of a curve
+ * Estimate length of a curve/arc segment
  */
 function estimateCurveLength(command, params, currentX, currentY) {
-  // For simplicity, this just returns the straight-line distance
-  // A more accurate implementation would compute actual curve length
+  // Simple straight-line distance for now
   const endpoint = getEndpointForCurve(command, params, currentX, currentY);
   return Math.sqrt(
     Math.pow(endpoint[0] - currentX, 2) +
     Math.pow(endpoint[1] - currentY, 2)
   );
+  // TODO: Implement more accurate length estimation for curves/arcs if needed
 }
 
 /**
- * Get the endpoint of any SVG path command (Needed for detectCircle)
+ * Get the endpoint of any SVG path command (Needed for detectCircle and segment decomposition)
  */
 function getEndpointForCommand(command, params, currentX, currentY) {
   // Use the existing getEndpointForCurve for curve/arc commands
@@ -798,31 +969,35 @@ function getEndpointForCommand(command, params, currentX, currentY) {
   // Handle other commands
   let x = currentX, y = currentY;
   const isRelative = command === command.toLowerCase();
+  const numParams = params.length;
 
   switch (command.toUpperCase()) {
     case 'M':
-      x = params[params.length - 2];
-      y = params[params.length - 1];
-      if (isRelative) { x += currentX; y += currentY; }
-      break;
     case 'L':
-      x = params[params.length - 2];
-      y = params[params.length - 1];
-      if (isRelative) { x += currentX; y += currentY; }
+      if (numParams >= 2) {
+        x = params[numParams - 2];
+        y = params[numParams - 1];
+        if (isRelative) { x += currentX; y += currentY; }
+      }
       break;
     case 'H':
-      x = params[params.length - 1];
-      if (isRelative) { x += currentX; }
-      y = currentY; // Y doesn't change
+      if (numParams >= 1) {
+        x = params[numParams - 1];
+        if (isRelative) { x += currentX; }
+        y = currentY; // Y doesn't change
+      }
       break;
     case 'V':
-      x = currentX; // X doesn't change
-      y = params[params.length - 1];
-      if (isRelative) { y += currentY; }
+       if (numParams >= 1) {
+        x = currentX; // X doesn't change
+        y = params[numParams - 1];
+        if (isRelative) { y += currentY; }
+      }
       break;
     case 'Z':
-      // Endpoint is the start of the current subpath, but we don't track that here easily.
-      // For simplicity, return current position, though Z closes the path.
+      // Endpoint is the start of the current subpath, which we don't track here.
+      // For simplicity in endpoint calculation, return current position.
+      // The caller (decomposePathToSegments) handles Z correctly by adding a line to startX/startY.
       x = currentX;
       y = currentY;
       break;
@@ -832,22 +1007,41 @@ function getEndpointForCommand(command, params, currentX, currentY) {
 
 
 /**
- * Get the endpoint of a curve command (Needed for detectCircle)
+ * Get the endpoint of a curve command (Needed for detectCircle and segment decomposition)
  */
 function getEndpointForCurve(command, params, currentX, currentY) {
-  switch (command) {
-    case 'C': return [params[4], params[5]];
-    case 'c': return [currentX + params[4], currentY + params[5]];
-    case 'S': return [params[2], params[3]];
-    case 's': return [currentX + params[2], currentY + params[3]];
-    case 'Q': return [params[2], params[3]];
-    case 'q': return [currentX + params[2], currentY + params[3]];
-    case 'T': return [params[0], params[1]];
-    case 't': return [currentX + params[0], currentY + params[1]];
-    case 'A': return [params[5], params[6]];
-    case 'a': return [currentX + params[5], currentY + params[6]];
-    default: return [currentX, currentY];
+  const isRelative = command === command.toLowerCase();
+  let x = currentX, y = currentY;
+  const numParams = params.length;
+
+  switch (command.toUpperCase()) {
+    case 'C': // 6 params: x1 y1 x2 y2 x y
+      if (numParams >= 6) {
+        x = params[numParams - 2]; y = params[numParams - 1];
+        if (isRelative) { x += currentX; y += currentY; }
+      }
+      break;
+    case 'S': // 4 params: x2 y2 x y
+    case 'Q': // 4 params: x1 y1 x y
+       if (numParams >= 4) {
+        x = params[numParams - 2]; y = params[numParams - 1];
+        if (isRelative) { x += currentX; y += currentY; }
+      }
+      break;
+    case 'T': // 2 params: x y
+       if (numParams >= 2) {
+        x = params[numParams - 2]; y = params[numParams - 1];
+        if (isRelative) { x += currentX; y += currentY; }
+      }
+      break;
+    case 'A': // 7 params: rx ry x-axis-rotation large-arc-flag sweep-flag x y
+       if (numParams >= 7) {
+        x = params[numParams - 2]; y = params[numParams - 1];
+        if (isRelative) { x += currentX; y += currentY; }
+      }
+      break;
   }
+  return [x, y];
 }
 
 
@@ -876,7 +1070,12 @@ function combineViewBoxes(viewBox1, viewBox2) {
   const maxX = Math.max(box1.x + box1.width, box2.x + box2.width);
   const maxY = Math.max(box1.y + box1.height, box2.y + box2.height);
 
-  return `${minX} ${minY} ${maxX - minX} ${maxY - minY}`;
+  // Ensure width and height are non-negative
+  const width = Math.max(0, maxX - minX);
+  const height = Math.max(0, maxY - minY);
+
+
+  return `${minX} ${minY} ${width} ${height}`;
 }
 
 /**
@@ -889,15 +1088,21 @@ function parseViewBox(viewBoxString) {
     return null;
   }
 
-  const parts = viewBoxString.split(' ').map(parseFloat);
+  const parts = viewBoxString.split(/[\s,]+/).map(parseFloat); // Allow comma separation
   if (parts.length !== 4 || parts.some(isNaN)) {
+     console.warn("Could not parse viewBox string:", viewBoxString);
     return null;
   }
+
+  // Ensure width and height are non-negative
+  const width = Math.max(0, parts[2]);
+  const height = Math.max(0, parts[3]);
+
 
   return {
     x: parts[0],
     y: parts[1],
-    width: parts[2],
-    height: parts[3]
+    width: width,
+    height: height
   };
 }
