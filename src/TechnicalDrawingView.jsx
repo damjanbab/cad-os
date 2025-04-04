@@ -46,7 +46,7 @@ function PathElement({ path, stroke, strokeWidth, strokeDasharray, isHighlighted
 }
 
 // Projection View Component
-function ProjectionView({ projection, title, position, dimensions, scale, highlightedPaths, onPathClick, viewId }) {
+function ProjectionView({ projection, title, position, dimensions, scale, highlightedGroups, onPathClick, viewId }) { // Renamed prop
   if (!projection) return null;
 
   // Extract dimensions passed in pixels
@@ -93,7 +93,7 @@ function ProjectionView({ projection, title, position, dimensions, scale, highli
                 stroke="#777777"
                 strokeWidth="0.3"
                 strokeDasharray="2,1"
-                isHighlighted={highlightedPaths[`${viewId}_${path.id}`]} // Check individual highlight
+                isHighlighted={highlightedGroups[path.groupId]} // Check group highlight
                 onClick={onPathClick}
                 viewId={viewId}
               />
@@ -103,8 +103,8 @@ function ProjectionView({ projection, title, position, dimensions, scale, highli
           {/* Draw visible lines SECOND (on top) so they visually override hidden lines */}
           <g>
             {(projection.visible?.paths || []).map((path, i) => {
-              const uniquePathId = `${viewId}_${path.id}`;
-              const isHighlighted = highlightedPaths[uniquePathId]; // Check individual highlight
+              const uniquePathId = `${viewId}_${path.id}`; // Keep unique ID for key/debugging
+              const isHighlighted = highlightedGroups[path.groupId]; // Check group highlight
               const isCircle = path.geometry?.type === 'circle';
               const center = path.geometry?.center;
 
@@ -141,7 +141,7 @@ function ProjectionView({ projection, title, position, dimensions, scale, highli
 }
 
 // Component to render individual part views
-function PartView({ part, index, scale, highlightedPaths, onPathClick }) {
+function PartView({ part, index, scale, highlightedGroups, onPathClick }) { // Renamed prop
   if (!part || !part.views) return null;
 
   const titleHeight = 20; // Height of the title bar in pixels for part views
@@ -247,7 +247,7 @@ function PartView({ part, index, scale, highlightedPaths, onPathClick }) {
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
-                      isHighlighted={highlightedPaths[`${frontViewId}_${path.id}`]} // Check individual highlight
+                      isHighlighted={highlightedGroups[path.groupId]} // Check group highlight
                       onClick={onPathClick}
                       viewId={frontViewId}
                     />
@@ -257,8 +257,8 @@ function PartView({ part, index, scale, highlightedPaths, onPathClick }) {
                 {/* Draw visible lines SECOND (on top) */}
                 <g>
                   {(frontView.visible?.paths || []).map((path, i) => {
-                    const uniquePathId = `${frontViewId}_${path.id}`;
-                    const isHighlighted = highlightedPaths[uniquePathId]; // Check individual highlight
+                    const uniquePathId = `${frontViewId}_${path.id}`; // Keep unique ID for key/debugging
+                    const isHighlighted = highlightedGroups[path.groupId]; // Check group highlight
                     const isCircle = path.geometry?.type === 'circle';
                     const center = path.geometry?.center;
                     return (
@@ -325,7 +325,7 @@ function PartView({ part, index, scale, highlightedPaths, onPathClick }) {
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
-                      isHighlighted={highlightedPaths[`${topViewId}_${path.id}`]} // Check individual highlight
+                      isHighlighted={highlightedGroups[path.groupId]} // Check group highlight
                       onClick={onPathClick}
                       viewId={topViewId}
                     />
@@ -335,8 +335,8 @@ function PartView({ part, index, scale, highlightedPaths, onPathClick }) {
                 {/* Draw visible lines SECOND (on top) */}
                 <g>
                   {(topView.visible?.paths || []).map((path, i) => {
-                    const uniquePathId = `${topViewId}_${path.id}`;
-                    const isHighlighted = highlightedPaths[uniquePathId]; // Check individual highlight
+                    const uniquePathId = `${topViewId}_${path.id}`; // Keep unique ID for key/debugging
+                    const isHighlighted = highlightedGroups[path.groupId]; // Check group highlight
                     const isCircle = path.geometry?.type === 'circle';
                     const center = path.geometry?.center;
                     return (
@@ -403,7 +403,7 @@ function PartView({ part, index, scale, highlightedPaths, onPathClick }) {
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
-                      isHighlighted={highlightedPaths[`${rightViewId}_${path.id}`]} // Check individual highlight
+                      isHighlighted={highlightedGroups[path.groupId]} // Check group highlight
                       onClick={onPathClick}
                       viewId={rightViewId}
                     />
@@ -413,8 +413,8 @@ function PartView({ part, index, scale, highlightedPaths, onPathClick }) {
                 {/* Draw visible lines SECOND (on top) */}
                 <g>
                   {(rightView.visible?.paths || []).map((path, i) => {
-                    const uniquePathId = `${rightViewId}_${path.id}`;
-                    const isHighlighted = highlightedPaths[uniquePathId]; // Check individual highlight
+                    const uniquePathId = `${rightViewId}_${path.id}`; // Keep unique ID for key/debugging
+                    const isHighlighted = highlightedGroups[path.groupId]; // Check group highlight
                     const isCircle = path.geometry?.type === 'circle';
                     const center = path.geometry?.center;
                     return (
@@ -477,29 +477,33 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(10); // Initial scale: 10 pixels per cm
-  const [highlightedPaths, setHighlightedPaths] = useState({}); // State stores individual path IDs
+  const [highlightedGroups, setHighlightedGroups] = useState({}); // State stores group IDs
 
   // For tracking mouse position and dragging
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [dragStartOffset, setDragStartOffset] = useState({ x: 0, y: 0 });
 
-  // Handle path click - toggle highlighting for the individual path
+  // Handle path click - toggle highlighting for the entire group
   const handlePathClick = (uniquePathId, path) => {
-    setHighlightedPaths(prevHighlighted => {
-      const newHighlighted = { ...prevHighlighted };
+    const groupId = path.groupId; // Get the group ID from the clicked path
+    if (!groupId) return; // Should not happen if groupId is always set
 
-      if (newHighlighted[uniquePathId]) {
-        // Path is already highlighted, remove it
-        delete newHighlighted[uniquePathId];
-        console.log(`De-highlighted: ${uniquePathId}`);
+    setHighlightedGroups(prevHighlightedGroups => {
+      const newHighlightedGroups = { ...prevHighlightedGroups };
+
+      if (newHighlightedGroups[groupId]) {
+        // Group is already highlighted, remove it
+        delete newHighlightedGroups[groupId];
+        console.log(`De-highlighted Group: ${groupId}`);
       } else {
-        // Add path to highlighted
-        newHighlighted[uniquePathId] = true;
+        // Add group to highlighted (or replace if single selection)
+        // For simplicity, let's allow multiple groups to be highlighted
+        newHighlightedGroups[groupId] = true;
         console.log(`--- DIAGNOSTIC CLICK ---`);
-        console.log(`Highlighted: ${uniquePathId}`);
-        console.log(`  Base ID: ${path.id}`);
-        console.log(`  Group ID: ${path.groupId}`); // Should be same as path.id in this version
+        console.log(`Clicked Path ID: ${uniquePathId}`);
+        console.log(`Highlighted Group: ${groupId}`);
+        console.log(`  Base ID of clicked path: ${path.id}`);
         console.log(`  Type: ${path.type}`);
         console.log(`  Data: ${path.data}`);
 
@@ -527,10 +531,10 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
         } else {
             console.log(`  Geometry: null`);
         }
-        console.log(`------------------------`);
+            console.log(`------------------------`);
       }
 
-      return newHighlighted;
+      return newHighlightedGroups;
     });
   };
 
@@ -629,7 +633,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
   const resetView = () => {
     setZoomLevel(1);
     setPanOffset({ x: 0, y: 0 });
-    setHighlightedPaths({}); // Reset individual paths
+    setHighlightedGroups({}); // Reset groups
   };
 
   // --- Layout Calculation ---
@@ -827,7 +831,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
                 position={frontPos}
                 dimensions={{ width: frontWidth, height: frontHeight }}
                 scale={scale}
-                highlightedPaths={highlightedPaths} // Pass individual paths state
+                highlightedGroups={highlightedGroups} // Pass groups state
                 onPathClick={handlePathClick}
                 viewId={standardFrontViewId}
               />
@@ -841,7 +845,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
                 position={topPos}
                 dimensions={{ width: topWidth, height: topHeight }}
                 scale={scale}
-                highlightedPaths={highlightedPaths} // Pass individual paths state
+                highlightedGroups={highlightedGroups} // Pass groups state
                 onPathClick={handlePathClick}
                 viewId={standardTopViewId}
               />
@@ -855,7 +859,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
                 position={rightPos}
                 dimensions={{ width: rightWidth, height: rightHeight }}
                 scale={scale}
-                highlightedPaths={highlightedPaths} // Pass individual paths state
+                highlightedGroups={highlightedGroups} // Pass groups state
                 onPathClick={handlePathClick}
                 viewId={standardRightViewId}
               />
@@ -881,7 +885,7 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
                   part={part}
                   index={index}
                   scale={scale}
-                  highlightedPaths={highlightedPaths} // Pass individual paths state
+                  highlightedGroups={highlightedGroups} // Pass groups state
                   onPathClick={handlePathClick}
                 />
               ))}
@@ -892,4 +896,3 @@ export default function TechnicalDrawingView({ projections, isMobile }) {
     </div>
   );
 }
-

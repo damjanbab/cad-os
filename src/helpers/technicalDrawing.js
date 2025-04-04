@@ -434,7 +434,7 @@ function normalizePaths(paths, prefix = 'path') {
         const segmentId = `${groupBaseId}_${j}`; // Unique ID for each segment
         normalizedPaths.push({
           id: segmentId,
-          groupId: segmentId, // Each segment is its own group in this simple version
+          groupId: groupBaseId, // Use the original path's group ID
           data: segment.path,
           type: segment.type,
           geometry: {
