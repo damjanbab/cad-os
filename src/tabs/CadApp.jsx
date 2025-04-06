@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react"; // Import useCallback
 import { wrap } from "comlink";
 
+import { usePasswordVerification } from "../hooks/usePasswordVerification.js"; // Import the hook
 import ThreeContext from "../ThreeContext.jsx";
 import ReplicadMesh from "../ReplicadMesh.jsx";
 import TechnicalDrawingCanvas from "../components/technical-drawing/TechnicalDrawingCanvas.jsx"; // Updated import
@@ -24,7 +25,12 @@ export default function CadApp() {
   const [controlsExpanded, setControlsExpanded] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [verifiedModels, setVerifiedModels] = useState({}); // State for verified passwords
-  
+  const { isPasswordRequired, verifyPasswordAttempt } = usePasswordVerification(verifiedModels, setVerifiedModels); // Use the updated hook
+
+  // State for password input UI
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
+  const [passwordInputValue, setPasswordInputValue] = useState('');
+
   // Detect mobile devices
   useEffect(() => {
     const checkMobile = () => {
@@ -45,35 +51,38 @@ export default function CadApp() {
   // Use useCallback to memoize the mesh creation logic
   // Define it *before* the useEffect that calls it
   const createModelMesh = useCallback(async () => {
-    setValidationErrors([]);
+    // Note: Errors are cleared later inside the try block or if password fails
     console.time(`[PERF] worker call for ${selectedModel}`);
-      console.log(`[INFO] Creating ${selectedModel} with params:`, params);
-    
+    console.log(`[INFO] Creating ${selectedModel} with params:`, params);
+
+    // --- Check if Password Input is Needed ---
+    const modelDefinition = modelRegistry[selectedModel];
+    if (isPasswordRequired(selectedModel, modelDefinition)) {
+      setShowPasswordInput(true); // Show the input field
+      setMesh(null); // Clear potentially stale mesh/data
+      setProjections(null);
+      setBomData(null);
+      // Optionally set a specific error message like "Password required"
+      // setValidationErrors(["Password required for this model."]);
+      console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer here
+      return; // Stop execution until password is submitted
+    } else {
+      // If password is not required or already verified, ensure input is hidden
+      setShowPasswordInput(false);
+    }
+    // --- End Password Check ---
+
     // If model supports explosion and we have an explosion factor, include it
     const modelParams = { ...params };
     if (modelRegistry[selectedModel].hasExplosion) {
       modelParams.explosionFactor = explosionFactor;
     }
 
-      // Check for password requirement AND if not already verified
-      const modelDefinition = modelRegistry[selectedModel];
-      if (modelDefinition?.requiresPassword && !verifiedModels[selectedModel]) {
-        const enteredPassword = prompt(`Enter password for ${selectedModel} model:`);
-        if (enteredPassword !== 'damjan22') { // Simple password check (NOTE: Insecure)
-          setValidationErrors(["Incorrect password"]);
-          setMesh(null);
-          setProjections(null);
-          setBomData(null);
-          console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer here on failure
-          return; // Stop execution if password is wrong
-        } else {
-          // Password correct, mark as verified for this session
-          setVerifiedModels(prev => ({ ...prev, [selectedModel]: true }));
-        }
-      } // End of password check block
-
-      // Proceed with mesh creation if password is correct or not required
+      // Proceed with mesh creation
       try {
+        // Clear any previous validation errors now that we are proceeding
+        setValidationErrors([]);
+
         const result = await cad.createMesh(selectedModel, modelParams);
         console.timeEnd(`[PERF] worker call for ${selectedModel}`);
 
@@ -103,7 +112,7 @@ export default function CadApp() {
         setBomData(null);
         console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer on catch
       }
-    }, [selectedModel, params, explosionFactor, activeTab, verifiedModels]); // Add verifiedModels to dependency array
+    }, [selectedModel, params, explosionFactor, activeTab, verifiedModels, isPasswordRequired]); // Update dependencies
 
   // useEffect hook to call the memoized function when dependencies change
   useEffect(() => {
@@ -123,8 +132,8 @@ export default function CadApp() {
         setProjections(projections);
       });
     }
-  }, [activeTab]);
-  
+  }, [activeTab, mesh, projections, selectedModel, params, explosionFactor]); // Added dependencies based on usage
+
   const handleModelChange = (e) => {
     const newModel = e.target.value;
     // const newModel = e.target.value; // Remove duplicate declaration
@@ -154,11 +163,31 @@ export default function CadApp() {
   const toggleControls = () => {
     setControlsExpanded(!controlsExpanded);
   };
-  
+
+  // Handler for submitting the password from the input field
+  const handlePasswordSubmit = () => {
+    const modelDefinition = modelRegistry[selectedModel];
+    const result = verifyPasswordAttempt(selectedModel, passwordInputValue);
+
+    if (result.success) {
+      setPasswordInputValue(''); // Clear input
+      setShowPasswordInput(false); // Hide input
+      setValidationErrors([]); // Clear errors
+      // Re-trigger mesh creation now that password is verified
+      // Need to ensure this doesn't cause infinite loops.
+      // Calling createModelMesh directly might be okay if dependencies are stable.
+      // Or rely on useEffect triggering due to verifiedModels change.
+      // Let's try calling directly for explicitness, assuming createModelMesh deps are correct.
+      createModelMesh();
+    } else {
+      setValidationErrors([result.error || "Verification failed"]);
+    }
+  };
+
   return (
     <>
       {/* Control Panel - DIRECT CHILD with no parent div for spacing */}
-      <div style={{ 
+      <div style={{
         padding: isMobile ? "8px" : "10px", 
         borderBottom: "1px solid #eee", 
         backgroundColor: "#f8f8f8",
@@ -409,10 +438,55 @@ export default function CadApp() {
             </ul>
           </div>
         )}
+
+        {/* Conditionally render Password Input Area */}
+        {showPasswordInput && (
+          <div style={{
+            marginTop: "10px",
+            padding: "10px",
+            backgroundColor: "#fffbe6", // Light yellow background
+            border: "1px solid #ffe58f", // Yellow border
+            borderRadius: "4px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px"
+          }}>
+            <label htmlFor="passwordInput" style={{ fontWeight: "bold", color: "#d46b08" }}>
+              Password for {selectedModel}:
+            </label>
+            <input
+              id="passwordInput"
+              type="password"
+              value={passwordInputValue}
+              onChange={(e) => setPasswordInputValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()} // Submit on Enter
+              style={{
+                padding: "5px 8px",
+                border: "1px solid #ccc",
+                borderRadius: "4px",
+                flexGrow: 1
+              }}
+            />
+            <button
+              onClick={handlePasswordSubmit}
+              style={{
+                padding: "5px 15px",
+                border: "none",
+                borderRadius: "4px",
+                backgroundColor: "#4a90e2",
+                color: "white",
+                cursor: "pointer",
+                fontWeight: "bold"
+              }}
+            >
+              Verify
+            </button>
+          </div>
+        )}
       </div>
-      
+
       {/* Visualization Area - Second DIRECT CHILD with explicit flex styling */}
-      <div style={{ 
+      <div style={{
         flex: 1, 
         position: "relative",
         overflow: "hidden",
@@ -432,8 +506,23 @@ export default function CadApp() {
             padding: "0 20px",
             textAlign: "center"
           }}>
-            Fix parameters to see model
+            {showPasswordInput ? "Enter password above to view model" : "Fix parameters to see model"}
           </div>
+        ) : showPasswordInput ? (
+           // Show message instead of model/loaders when password input is visible
+           <div style={{
+             height: "100%",
+             width: "100%",
+             display: "flex",
+             alignItems: "center",
+             justifyContent: "center",
+             fontSize: isMobile ? "14px" : "12px",
+             color: "#999",
+             padding: "0 20px",
+             textAlign: "center"
+           }}>
+             Enter password in the control panel above.
+           </div>
         ) : (
           <>
             {/* 3D View */}
