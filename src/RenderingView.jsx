@@ -3,6 +3,7 @@ import React, { useRef, useState, useEffect, Suspense, forwardRef, useImperative
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Environment } from "@react-three/drei";
 import * as THREE from "three";
+import { generate3DModelImageDataUrl } from './services/imageGenerator.js'; // Import the service (Corrected path again)
 
 // Set Z as the up direction for ReplicAD models (consistent with main app)
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -177,43 +178,29 @@ function Scene({ mesh, modelSize, showFloor, highQuality, modelId, controlsRef }
 
 
 // Internal component to handle export logic using hooks inside Canvas
-// Removed getControls from props as we capture state earlier
-const ExportHandler = forwardRef(({ requestHighDetailMesh, setIsExporting }, ref) => { 
-  // We still need mainCamera for FOV, near, far
-  const { camera: mainCamera } = useThree(); 
+const ExportHandler = forwardRef(({ requestHighDetailMesh, setIsExporting }, ref) => {
+  // Get main camera reference for aspect ratio, near, far planes
+  const { camera: mainCamera } = useThree();
 
   useImperativeHandle(ref, () => ({
     // Accept capturedCameraState as the second argument
-    handleExportImage: async (format = 'png', capturedCameraState) => { 
+    handleExportImage: async (format = 'png', capturedCameraState) => {
       if (!requestHighDetailMesh) {
         console.error("High detail mesh request function not available.");
         alert("Export function not properly configured.");
         return;
       }
-      // Check if we received the captured state
       if (!capturedCameraState) {
         console.error("Captured camera state not provided for export.");
         alert("Failed to capture camera state for export.");
-        return; 
-      } // Added missing closing brace
-      // We still need mainCamera for some properties like near/far if not captured
-      if (!mainCamera) { 
+        return;
+      }
+      if (!mainCamera) {
         console.error("Main camera reference not available for export.");
         return;
       }
 
       setIsExporting(true); // Show loading indicator
-
-      let offScreenCanvas = null;
-      let offScreenRenderer = null;
-      let offScreenScene = null;
-      let offScreenCamera = null;
-      let geometryFaces = null;
-      let geometryEdges = null;
-      let materialFaces = null;
-      let materialEdges = null;
-      let meshFaces = null;
-      let meshEdges = null;
 
       try {
         console.log("Requesting high detail mesh for export...");
@@ -227,112 +214,17 @@ const ExportHandler = forwardRef(({ requestHighDetailMesh, setIsExporting }, ref
         }
         console.log("High detail mesh received.");
 
-        // --- Create Off-Screen Rendering Environment ---
-        // Calculate aspect ratio from main camera
-        const aspect = mainCamera.aspect; 
-        const exportHeight = 4096; // Keep height fixed
-        const exportWidth = Math.round(exportHeight * aspect); // Calculate width based on aspect
-
-        // 1. Canvas
-        offScreenCanvas = document.createElement('canvas');
-        offScreenCanvas.width = exportWidth;
-        offScreenCanvas.height = exportHeight;
-
-        // 2. Renderer
-        offScreenRenderer = new THREE.WebGLRenderer({
-          canvas: offScreenCanvas,
-          antialias: true,
-          preserveDrawingBuffer: true, // Keep buffer for toDataURL
-          alpha: false, // Assuming opaque background is fine
-          precision: 'highp', // Use high precision
-        });
-        offScreenRenderer.setSize(exportWidth, exportHeight);
-        offScreenRenderer.setClearColor(new THREE.Color("#121212")); // Match main background
-        offScreenRenderer.shadowMap.enabled = true; // Enable shadows for high quality
-
-        // 3. Scene
-        offScreenScene = new THREE.Scene();
-
-        // 4. Lighting & Environment (similar to main scene's high quality)
-        offScreenScene.add(new THREE.AmbientLight(0xffffff, 1.5));
-        const dirLight1 = new THREE.DirectionalLight(0xffffff, 3);
-        dirLight1.position.set(10, 10, 10);
-        dirLight1.castShadow = true; // Enable shadow casting
-        offScreenScene.add(dirLight1);
-        const dirLight2 = new THREE.DirectionalLight(0xffffff, 1); // Create the light first
-        dirLight2.position.set(-10, -10, 5); // Set its position
-        offScreenScene.add(dirLight2); // Add the light object to the scene
-        offScreenScene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1));
-        // Note: Environment component needs React context, manually add env map if needed or skip
-
-        // 5. Geometry & Materials (using high detail mesh data)
-        // Faces
-        if (highDetailMesh.faces && highDetailMesh.faces.vertices && highDetailMesh.faces.normals && highDetailMesh.faces.triangles) {
-          geometryFaces = new THREE.BufferGeometry();
-          geometryFaces.setAttribute('position', new THREE.BufferAttribute(new Float32Array(highDetailMesh.faces.vertices), 3));
-          geometryFaces.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(highDetailMesh.faces.normals), 3));
-          geometryFaces.setIndex(new THREE.BufferAttribute(new Uint32Array(highDetailMesh.faces.triangles), 1));
-          
-          materialFaces = new THREE.MeshStandardMaterial({
-            color: "#6a92a6", // High quality color
-            metalness: 0.4,
-            roughness: 0.3,
-            envMapIntensity: 0.8,
-            flatShading: false,
-          });
-          
-          meshFaces = new THREE.Mesh(geometryFaces, materialFaces);
-          meshFaces.castShadow = true; // Allow casting shadows
-          meshFaces.receiveShadow = true; // Allow receiving shadows
-          offScreenScene.add(meshFaces);
-        }
-
-        // Edges
-        if (highDetailMesh.edges && highDetailMesh.edges.vertices) {
-          geometryEdges = new THREE.BufferGeometry();
-          geometryEdges.setAttribute('position', new THREE.BufferAttribute(new Float32Array(highDetailMesh.edges.vertices), 3));
-          
-          materialEdges = new THREE.LineBasicMaterial({
-            color: "#304352", // High quality color
-            linewidth: 1, // Note: linewidth > 1 might not work on all systems
-          });
-          
-          meshEdges = new THREE.LineSegments(geometryEdges, materialEdges);
-          offScreenScene.add(meshEdges);
-        }
-
-        // 6. Camera (Sync with main camera)
-        // Use captured FOV, calculated aspect, and mainCamera's near/far
-        offScreenCamera = new THREE.PerspectiveCamera(
-          capturedCameraState.fov, 
-          exportWidth / exportHeight, // Use calculated aspect ratio
-          mainCamera.near, 
-          mainCamera.far  
+        // --- Call the Image Generation Service ---
+        console.log("Calling image generation service...");
+        const dataURL = await generate3DModelImageDataUrl(
+          highDetailMesh,
+          capturedCameraState,
+          mainCamera, // Pass the main camera reference
+          format
         );
-        
-        // --- Use Captured Camera State ---
-        // console.log("[EXPORT LOG] Using captured camera state:", capturedCameraState); // Removed log
+        console.log("Image generation service returned data URL.");
 
-        // Copy position and orientation from the captured state
-        offScreenCamera.position.copy(capturedCameraState.position);
-        offScreenCamera.quaternion.copy(capturedCameraState.quaternion);
-        // FOV is set in constructor
-        
-        offScreenCamera.updateProjectionMatrix(); // Apply all changes
-        
-        // console.log("[EXPORT LOG] offScreenCamera state after sync:", { pos: offScreenCamera.position.clone(), quat: offScreenCamera.quaternion.clone(), fov: offScreenCamera.fov }); // Removed log
-        // --- End Camera Sync ---
-
-        // --- Render and Export ---
-        // console.log("Rendering off-screen scene..."); // Removed log
-        offScreenRenderer.render(offScreenScene, offScreenCamera);
-        // console.log("Rendering complete."); // Removed log
-
-        const mimeType = `image/${format}`;
-        const quality = format === 'jpeg' ? 0.95 : undefined; // Quality for JPG
-        const dataURL = offScreenRenderer.domElement.toDataURL(mimeType, quality);
-
-        // Trigger download
+        // --- Trigger Download ---
         const link = document.createElement('a');
         link.download = `cad-render-high-quality.${format}`;
         link.href = dataURL;
@@ -343,31 +235,14 @@ const ExportHandler = forwardRef(({ requestHighDetailMesh, setIsExporting }, ref
         console.log(`High quality image exported as ${format}`);
 
       } catch (error) {
-        console.error(`Error exporting high quality image as ${format}:`, error);
+        // Error is already logged within the service, just show alert
+        console.error(`Error during handleExportImage:`, error);
         alert(`Failed to export high quality image as ${format}. See console for details.`);
       } finally {
         // --- Cleanup ---
-        // console.log("Cleaning up export resources..."); // Removed log
-        if (offScreenRenderer) offScreenRenderer.dispose();
-        if (geometryFaces) geometryFaces.dispose();
-        if (geometryEdges) geometryEdges.dispose();
-        if (materialFaces) materialFaces.dispose();
-        if (materialEdges) materialEdges.dispose();
-        // Dispose textures if Environment was used and added textures
-        // offScreenScene.traverse(obj => { if (obj.dispose) obj.dispose(); }); // More aggressive cleanup if needed
-        offScreenCanvas = null; // Allow garbage collection
-        offScreenRenderer = null;
-        offScreenScene = null;
-        offScreenCamera = null;
-        geometryFaces = null;
-        geometryEdges = null;
-        materialFaces = null;
-        materialEdges = null;
-        meshFaces = null;
-        meshEdges = null;
-
+        // No complex resources to clean up here anymore
         setIsExporting(false); // Hide loading indicator
-        // console.log("Cleanup complete."); // Removed log
+        console.log("Export process finished.");
       }
     }
   }));
