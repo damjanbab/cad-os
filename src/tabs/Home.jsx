@@ -1,6 +1,48 @@
-import React from "react";
+import React, { useEffect } from "react";
 
 export default function Home() {
+  useEffect(() => {
+    // Prevent adding multiple times if component re-renders quickly
+    if (document.getElementById('calendly-css')) return;
+
+    // Add Calendly CSS
+    const cssLink = document.createElement('link');
+    cssLink.id = 'calendly-css';
+    cssLink.href = 'https://assets.calendly.com/assets/external/widget.css';
+    cssLink.rel = 'stylesheet';
+    document.head.appendChild(cssLink);
+
+    // Add Calendly Script
+    const script = document.createElement('script');
+    script.id = 'calendly-js';
+    script.src = 'https://assets.calendly.com/assets/external/widget.js';
+    script.async = true;
+
+    // Initialize widget once script is loaded
+    script.onload = () => {
+      if (window.Calendly) {
+        window.Calendly.initBadgeWidget({
+          url: 'https://calendly.com/damjanbab/30min',
+          text: 'Schedule a FREE consultation meeting',
+          color: '#0069ff',
+          textColor: '#ffffff',
+        });
+      }
+    };
+    document.body.appendChild(script);
+
+    // Cleanup function
+    return () => {
+      const css = document.getElementById('calendly-css');
+      const js = document.getElementById('calendly-js');
+      const widget = document.querySelector('.calendly-badge-widget'); 
+      
+      if (css) document.head.removeChild(css);
+      if (js) document.body.removeChild(js);
+      if (widget) widget.parentElement?.removeChild(widget); 
+    };
+  }, []); // Empty dependency array ensures this runs only on mount and unmount
+
   return (
     <div style={{ 
       maxWidth: "1200px",
