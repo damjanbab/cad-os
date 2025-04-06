@@ -119,7 +119,43 @@ export default function CadApp() {
     // Call the memoized function
     createModelMesh();
   }, [createModelMesh]); // useEffect depends on the memoized function
-  
+
+  // Function to request high-detail mesh from worker
+  const requestHighDetailMesh = useCallback(async () => {
+    // Ensure password is verified if needed before requesting high detail
+    const modelDefinition = modelRegistry[selectedModel];
+    if (isPasswordRequired(selectedModel, modelDefinition)) {
+      console.warn("Password required, cannot generate high-detail mesh yet.");
+      // Optionally trigger password prompt or return an error/null
+      return null; 
+    }
+
+    console.log(`[INFO] Requesting high-detail mesh for ${selectedModel}`);
+    console.time(`[PERF] worker call for ${selectedModel} (high detail)`);
+    try {
+      // Include explosion factor if applicable
+      const modelParams = { ...params };
+      if (modelRegistry[selectedModel].hasExplosion) {
+        modelParams.explosionFactor = explosionFactor;
+      }
+      // Call worker with 'high' quality setting
+      const result = await cad.createMesh(selectedModel, modelParams, 'high'); 
+      console.timeEnd(`[PERF] worker call for ${selectedModel} (high detail)`);
+      
+      if (result.error) {
+        console.error("Error generating high-detail mesh:", result.validationErrors);
+        setValidationErrors(result.validationErrors || ["Error generating high-detail mesh."]);
+        return null;
+      }
+      return result; // Return the high-detail mesh data
+    } catch (error) {
+      console.error("Error requesting high-detail mesh:", error);
+      setValidationErrors(["An error occurred while generating the high-detail model."]);
+      console.timeEnd(`[PERF] worker call for ${selectedModel} (high detail)`);
+      return null;
+    }
+  }, [selectedModel, params, explosionFactor, cad, isPasswordRequired, verifiedModels]); // Added dependencies
+
   // When tab changes, generate the required view data
   useEffect(() => {
     if (activeTab === 'technical' && mesh && !projections) {
@@ -561,12 +597,16 @@ export default function CadApp() {
             {/* 360° Rendering View */}
             {activeTab === 'rendering' ? (
               mesh ? (
-                <RenderingView 
-                  mesh={mesh} 
+                <RenderingView
+                  mesh={mesh} // Pass the standard mesh for display
                   isMobile={isMobile}
+                  // Pass down the function and necessary data for high-detail export
+                  requestHighDetailMesh={requestHighDetailMesh}
+                  selectedModel={selectedModel}
+                  params={params} // Pass current params
                 />
               ) : (
-                <div style={{ 
+                <div style={{
                   height: "100%",
                   width: "100%", 
                   display: "flex", 
