@@ -11,4 +11,7 @@ export default defineConfig({
   server: {
     port: 4444,
   },
+  worker: {
+    format: 'es', // Explicitly set worker format to ES module
+  },
 });

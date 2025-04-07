@@ -1,4 +1,4 @@
-// Simple worker.js with minimal safe logging
+// Worker for main app tasks (mesh generation, projections)
 import opencascade from "replicad-opencascadejs/src/replicad_single.js";
 import opencascadeWasm from "replicad-opencascadejs/src/replicad_single.wasm?url";
 import { setOC } from "replicad";
@@ -159,5 +159,5 @@ function createMesh(modelName, params, quality = 'standard') { // Add quality pa
   });
 }
 
-// Export the functions needed
+// Export only the functions needed for the main app
 expose({ createMesh, createProjections });

@@ -1,9 +1,10 @@
 // RenderingView.jsx
-import React, { useRef, useState, useEffect, Suspense, forwardRef, useImperativeHandle, useCallback } from "react"; // Added useCallback
-import { Canvas, useThree } from "@react-three/fiber";
+import React, { useRef, useState, useEffect, Suspense, forwardRef, useImperativeHandle, useCallback } from "react";
+import { Canvas, useThree, useFrame } from "@react-three/fiber"; // useFrame might be removable if not used elsewhere now
 import { OrbitControls, Environment } from "@react-three/drei";
 import * as THREE from "three";
-import { generate3DModelImageDataUrl } from './services/imageGenerator.js'; // Import the service (Corrected path again)
+// Removed Comlink and Worker imports
+import { generate3DModelImageDataUrl } from './services/imageGenerator.js'; // Keep image export service
 
 // Set Z as the up direction for ReplicAD models (consistent with main app)
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -24,7 +25,7 @@ function CameraController({
       const distance = modelSize * 2.5;
     camera.position.set(
       distance * Math.sin(Math.PI / 4),
-      -distance * Math.cos(Math.PI / 4), 
+      -distance * Math.cos(Math.PI / 4),
       distance * 0.7
       );
       camera.lookAt(target[0], target[1], target[2]);
@@ -60,14 +61,14 @@ function EnhancedLighting() {
   return (
     <>
       <ambientLight intensity={1.5} />
-      <directionalLight 
-        position={[10, 10, 10]} 
-        intensity={3} 
+      <directionalLight
+        position={[10, 10, 10]}
+        intensity={3}
         castShadow
       />
-      <directionalLight 
-        position={[-10, -10, 5]} 
-        intensity={1} 
+      <directionalLight
+        position={[-10, -10, 5]}
+        intensity={1}
       />
       <hemisphereLight groundColor="#555" intensity={1} />
     </>
@@ -79,11 +80,11 @@ function FloorGrid({ modelSize = 100 }) {
   // Scale grid based on model size
   const gridSize = Math.max(modelSize * 5, 500);
   const gridDivisions = Math.floor(gridSize / 20);
-  
+
   return (
     <group position={[0, 0, -0.01]}>
-      <gridHelper 
-        args={[gridSize, gridDivisions, 0x888888, 0x444444]} 
+      <gridHelper
+        args={[gridSize, gridDivisions, 0x888888, 0x444444]}
         rotation={[Math.PI/2, 0, 0]}
       />
     </group>
@@ -93,7 +94,7 @@ function FloorGrid({ modelSize = 100 }) {
 // Model component to render the actual 3D content
 function ModelDisplay({ mesh, highQuality, modelId }) {
   if (!mesh || !mesh.faces) return null;
-  
+
   return (
     <group key={`model-${modelId}`}>
       {/* Faces */}
@@ -128,7 +129,7 @@ function ModelDisplay({ mesh, highQuality, modelId }) {
           />
         </mesh>
       )}
-      
+
       {/* Edges */}
       {mesh.edges && mesh.edges.vertices && (
         <lineSegments>
@@ -146,7 +147,7 @@ function ModelDisplay({ mesh, highQuality, modelId }) {
           />
         </lineSegments>
       )}
-      
+
       {/* Note: Helper spaces are intentionally not rendered in 360° view */}
     </group>
   );
@@ -162,13 +163,13 @@ function Scene({ mesh, modelSize, showFloor, highQuality, modelId, controlsRef }
       />
 
       <EnhancedLighting />
-      
+
       {showFloor && (
         <FloorGrid modelSize={modelSize} />
       )}
-      
+
       <ModelDisplay mesh={mesh} highQuality={highQuality} modelId={modelId} />
-      
+
       {highQuality && (
         <Environment preset="studio" />
       )}
@@ -177,7 +178,7 @@ function Scene({ mesh, modelSize, showFloor, highQuality, modelId, controlsRef }
 }
 
 
-// Internal component to handle export logic using hooks inside Canvas
+// Internal component to handle IMAGE export logic using hooks inside Canvas
 const ExportHandler = forwardRef(({ requestHighDetailMesh, setIsExporting }, ref) => {
   // Get main camera reference for aspect ratio, near, far planes
   const { camera: mainCamera } = useThree();
@@ -257,11 +258,16 @@ export default function RenderingView({ mesh, isMobile, requestHighDetailMesh, s
   const [showFloor, setShowFloor] = useState(true);
   const [highQuality, setHighQuality] = useState(!isMobile); // For interactive view quality
   const [modelId, setModelId] = useState(Date.now()); // Unique ID for the current model
-  const [isExporting, setIsExporting] = useState(false); // State for loading indicator
+  const [isExporting, setIsExporting] = useState(false); // State for image export loading indicator ONLY
+  // Removed video export state variables
   const controlsRef = useRef(); // Ref for OrbitControls
   const exportHandlerRef = useRef(); // Ref for the ExportHandler component
+  const mainCanvasRef = useRef(); // Ref to get the main canvas element
+  // Removed workerApiRef
 
-  // Function to trigger export via the ref - NOW CAPTURES STATE
+  // Removed worker initialization useEffect
+
+  // Function to trigger IMAGE export via the ref - NOW CAPTURES STATE
   const triggerExport = useCallback((format) => {
     const controls = controlsRef.current;
     if (!controls || !controls.object) {
@@ -269,10 +275,10 @@ export default function RenderingView({ mesh, isMobile, requestHighDetailMesh, s
       alert("Cannot capture camera state for export.");
       return;
     }
-    
+
     // Update controls to ensure internal state is current
-    controls.update(); 
-    
+    controls.update();
+
     // Capture state SYNCHRONOUSLY
     const capturedCameraState = {
       position: controls.object.position.clone(),
@@ -286,11 +292,13 @@ export default function RenderingView({ mesh, isMobile, requestHighDetailMesh, s
 
   }, []); // controlsRef is stable, no dependency needed
 
+  // Removed video export logic and helpers
+
   // Update model ID when mesh changes to force scene re-creation
   useEffect(() => {
     setModelId(Date.now());
   }, [mesh]);
-  
+
   // Calculate model size from mesh
   useEffect(() => {
     if (mesh && mesh.faces && mesh.faces.vertices) {
@@ -301,18 +309,18 @@ export default function RenderingView({ mesh, isMobile, requestHighDetailMesh, s
           const xValues = [];
           const yValues = [];
           const zValues = [];
-          
+
           for (let i = 0; i < vertices.length; i += 3) {
             xValues.push(vertices[i]);
             yValues.push(vertices[i + 1]);
             zValues.push(vertices[i + 2]);
           }
-          
+
           if (xValues.length > 0 && yValues.length > 0 && zValues.length > 0) {
             const xRange = Math.max(...xValues) - Math.min(...xValues);
             const yRange = Math.max(...yValues) - Math.min(...yValues);
             const zRange = Math.max(...zValues) - Math.min(...zValues);
-            
+
             const maxDimension = Math.max(xRange, yRange, zRange);
             setModelSize(maxDimension > 0 ? maxDimension : 100);
           }
@@ -326,7 +334,7 @@ export default function RenderingView({ mesh, isMobile, requestHighDetailMesh, s
 
   // Pixel ratio based on quality setting
   const pixelRatio = highQuality ? Math.min(window.devicePixelRatio, 2) : 1;
-  
+
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       {/* Use key to force canvas recreation when model changes */}
@@ -338,9 +346,10 @@ export default function RenderingView({ mesh, isMobile, requestHighDetailMesh, s
           backgroundColor: "#121212",
           touchAction: "none"
         }}
+        ref={mainCanvasRef} // Assign ref to the Canvas component itself
         dpr={pixelRatio}
         gl={{
-          preserveDrawingBuffer: true, // Needed for image export
+          preserveDrawingBuffer: true, // CRITICAL: Needed for canvas capture (image export AND video frames)
           antialias: highQuality,
           logarithmicDepthBuffer: true,
           alpha: false,
@@ -368,8 +377,8 @@ export default function RenderingView({ mesh, isMobile, requestHighDetailMesh, s
           {/* Render the ExportHandler inside Canvas - no longer needs getControls */}
           <ExportHandler
             ref={exportHandlerRef}
-            requestHighDetailMesh={requestHighDetailMesh} 
-            setIsExporting={setIsExporting} 
+            requestHighDetailMesh={requestHighDetailMesh}
+            setIsExporting={setIsExporting}
           />
         </Suspense>
       </Canvas>
@@ -473,11 +482,15 @@ export default function RenderingView({ mesh, isMobile, requestHighDetailMesh, s
             cursor: "pointer",
             fontSize: isMobile ? "14px" : "12px"
           }}
-          disabled={isExporting} // Disable button while exporting
+          disabled={isExporting} // Only disable for image export now
         >
           {isExporting ? "Exporting..." : "Export PNG"}
         </button>
+
+        {/* REMOVED: Export 360 Video Button */}
       </div>
+
+      {/* REMOVED: Optional: Display download link if URL is ready */}
     </div>
   );
 }

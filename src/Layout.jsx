@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Home from "./tabs/Home.jsx";
 import CadApp from "./tabs/CadApp.jsx";
 import About from "./tabs/About.jsx";
+import ToolsPage from "./tabs/tools/ToolsPage.jsx"; // Import the new Tools page
 
 export default function Layout() {
   const [activeTab, setActiveTab] = useState("home");
@@ -119,6 +120,22 @@ export default function Layout() {
           >
             About
           </button>
+          {/* New Tools Button */}
+          <button
+            onClick={() => switchTab("tools")}
+            style={{
+              backgroundColor: activeTab === "tools" ? "#2563EB" : "transparent",
+              color: "white",
+              border: "none",
+              padding: "0.5rem 1rem",
+              borderRadius: "0.25rem",
+              cursor: "pointer",
+              fontWeight: activeTab === "tools" ? "600" : "400",
+              transition: "background-color 0.2s"
+            }}
+          >
+            Tools
+          </button>
         </div>
       </nav>
 
@@ -132,6 +149,12 @@ export default function Layout() {
       {activeTab === "about" && (
         <div style={{ flex: 1, overflow: "auto" }}>
           <About />
+        </div>
+      )}
+      {/* Render Tools Page */}
+      {activeTab === "tools" && (
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <ToolsPage />
         </div>
       )}
     </div>
