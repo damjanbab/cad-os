@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react"; // Import useCallback
 import { wrap } from "comlink";
 
-import { usePasswordVerification } from "../hooks/usePasswordVerification.js"; // Import the hook
 import ThreeContext from "../ThreeContext.jsx";
 import ReplicadMesh from "../ReplicadMesh.jsx";
 import TechnicalDrawingCanvas from "../components/technical-drawing/TechnicalDrawingCanvas.jsx"; // Updated import
@@ -23,13 +22,7 @@ export default function CadApp() {
   const [validationErrors, setValidationErrors] = useState([]);
   const [activeTab, setActiveTab] = useState('3d');
   const [controlsExpanded, setControlsExpanded] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
-  const [verifiedModels, setVerifiedModels] = useState({}); // State for verified passwords
-  const { isPasswordRequired, verifyPasswordAttempt } = usePasswordVerification(verifiedModels, setVerifiedModels); // Use the updated hook
-
-  // State for password input UI
-  const [showPasswordInput, setShowPasswordInput] = useState(false);
-  const [passwordInputValue, setPasswordInputValue] = useState('');
+const [isMobile, setIsMobile] = useState(false);
 
   // Detect mobile devices
   useEffect(() => {
@@ -53,26 +46,9 @@ export default function CadApp() {
   const createModelMesh = useCallback(async () => {
     // Note: Errors are cleared later inside the try block or if password fails
     console.time(`[PERF] worker call for ${selectedModel}`);
-    console.log(`[INFO] Creating ${selectedModel} with params:`, params);
+console.log(`[INFO] Creating ${selectedModel} with params:`, params);
 
-    // --- Check if Password Input is Needed ---
-    const modelDefinition = modelRegistry[selectedModel];
-    if (isPasswordRequired(selectedModel, modelDefinition)) {
-      setShowPasswordInput(true); // Show the input field
-      setMesh(null); // Clear potentially stale mesh/data
-      setProjections(null);
-      setBomData(null);
-      // Optionally set a specific error message like "Password required"
-      // setValidationErrors(["Password required for this model."]);
-      console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer here
-      return; // Stop execution until password is submitted
-    } else {
-      // If password is not required or already verified, ensure input is hidden
-      setShowPasswordInput(false);
-    }
-    // --- End Password Check ---
-
-    // If model supports explosion and we have an explosion factor, include it
+// If model supports explosion and we have an explosion factor, include it
     const modelParams = { ...params };
     if (modelRegistry[selectedModel].hasExplosion) {
       modelParams.explosionFactor = explosionFactor;
@@ -109,29 +85,21 @@ export default function CadApp() {
         setValidationErrors(["An error occurred while generating the model."]);
         setMesh(null);
         setProjections(null);
-        setBomData(null);
-        console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer on catch
-      }
-    }, [selectedModel, params, explosionFactor, activeTab, verifiedModels, isPasswordRequired]); // Update dependencies
+    setBomData(null);
+    console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer on catch
+  }
+}, [selectedModel, params, explosionFactor, activeTab]); // Update dependencies
 
-  // useEffect hook to call the memoized function when dependencies change
+// useEffect hook to call the memoized function when dependencies change
   useEffect(() => {
     // Call the memoized function
     createModelMesh();
   }, [createModelMesh]); // useEffect depends on the memoized function
 
-  // Function to request high-detail mesh from worker
-  const requestHighDetailMesh = useCallback(async () => {
-    // Ensure password is verified if needed before requesting high detail
-    const modelDefinition = modelRegistry[selectedModel];
-    if (isPasswordRequired(selectedModel, modelDefinition)) {
-      console.warn("Password required, cannot generate high-detail mesh yet.");
-      // Optionally trigger password prompt or return an error/null
-      return null; 
-    }
-
-    console.log(`[INFO] Requesting high-detail mesh for ${selectedModel}`);
-    console.time(`[PERF] worker call for ${selectedModel} (high detail)`);
+// Function to request high-detail mesh from worker
+const requestHighDetailMesh = useCallback(async () => {
+  console.log(`[INFO] Requesting high-detail mesh for ${selectedModel}`);
+  console.time(`[PERF] worker call for ${selectedModel} (high detail)`);
     try {
       // Include explosion factor if applicable
       const modelParams = { ...params };
@@ -151,12 +119,12 @@ export default function CadApp() {
     } catch (error) {
       console.error("Error requesting high-detail mesh:", error);
       setValidationErrors(["An error occurred while generating the high-detail model."]);
-      console.timeEnd(`[PERF] worker call for ${selectedModel} (high detail)`);
-      return null;
-    }
-  }, [selectedModel, params, explosionFactor, cad, isPasswordRequired, verifiedModels]); // Added dependencies
+  console.timeEnd(`[PERF] worker call for ${selectedModel} (high detail)`);
+  return null;
+}
+}, [selectedModel, params, explosionFactor, cad]); // Added dependencies
 
-  // When tab changes, generate the required view data
+// When tab changes, generate the required view data
   useEffect(() => {
     if (activeTab === 'technical' && mesh && !projections) {
       const modelParams = { ...params };
@@ -197,31 +165,11 @@ export default function CadApp() {
   };
   
   const toggleControls = () => {
-    setControlsExpanded(!controlsExpanded);
-  };
+setControlsExpanded(!controlsExpanded);
+};
 
-  // Handler for submitting the password from the input field
-  const handlePasswordSubmit = () => {
-    const modelDefinition = modelRegistry[selectedModel];
-    const result = verifyPasswordAttempt(selectedModel, passwordInputValue);
-
-    if (result.success) {
-      setPasswordInputValue(''); // Clear input
-      setShowPasswordInput(false); // Hide input
-      setValidationErrors([]); // Clear errors
-      // Re-trigger mesh creation now that password is verified
-      // Need to ensure this doesn't cause infinite loops.
-      // Calling createModelMesh directly might be okay if dependencies are stable.
-      // Or rely on useEffect triggering due to verifiedModels change.
-      // Let's try calling directly for explicitness, assuming createModelMesh deps are correct.
-      createModelMesh();
-    } else {
-      setValidationErrors([result.error || "Verification failed"]);
-    }
-  };
-
-  return (
-    <>
+return (
+<>
       {/* Control Panel - DIRECT CHILD with no parent div for spacing */}
       <div style={{
         padding: isMobile ? "8px" : "10px", 
@@ -472,56 +420,11 @@ export default function CadApp() {
                 <li key={index}>{error}</li>
               ))}
             </ul>
-          </div>
-        )}
-
-        {/* Conditionally render Password Input Area */}
-        {showPasswordInput && (
-          <div style={{
-            marginTop: "10px",
-            padding: "10px",
-            backgroundColor: "#fffbe6", // Light yellow background
-            border: "1px solid #ffe58f", // Yellow border
-            borderRadius: "4px",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px"
-          }}>
-            <label htmlFor="passwordInput" style={{ fontWeight: "bold", color: "#d46b08" }}>
-              Password for {selectedModel}:
-            </label>
-            <input
-              id="passwordInput"
-              type="password"
-              value={passwordInputValue}
-              onChange={(e) => setPasswordInputValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()} // Submit on Enter
-              style={{
-                padding: "5px 8px",
-                border: "1px solid #ccc",
-                borderRadius: "4px",
-                flexGrow: 1
-              }}
-            />
-            <button
-              onClick={handlePasswordSubmit}
-              style={{
-                padding: "5px 15px",
-                border: "none",
-                borderRadius: "4px",
-                backgroundColor: "#4a90e2",
-                color: "white",
-                cursor: "pointer",
-                fontWeight: "bold"
-              }}
-            >
-              Verify
-            </button>
-          </div>
-        )}
       </div>
+    )}
+  </div>
 
-      {/* Visualization Area - Second DIRECT CHILD with explicit flex styling */}
+  {/* Visualization Area - Second DIRECT CHILD with explicit flex styling */}
       <div style={{
         flex: 1, 
         position: "relative",
@@ -540,28 +443,13 @@ export default function CadApp() {
             fontSize: isMobile ? "14px" : "12px",
             color: "#999",
             padding: "0 20px",
-            textAlign: "center"
-          }}>
-            {showPasswordInput ? "Enter password above to view model" : "Fix parameters to see model"}
-          </div>
-        ) : showPasswordInput ? (
-           // Show message instead of model/loaders when password input is visible
-           <div style={{
-             height: "100%",
-             width: "100%",
-             display: "flex",
-             alignItems: "center",
-             justifyContent: "center",
-             fontSize: isMobile ? "14px" : "12px",
-             color: "#999",
-             padding: "0 20px",
-             textAlign: "center"
-           }}>
-             Enter password in the control panel above.
-           </div>
-        ) : (
-          <>
-            {/* 3D View */}
+        textAlign: "center"
+      }}>
+        Fix parameters to see model
+      </div>
+    ) : (
+      <>
+        {/* 3D View */}
             {activeTab === '3d' && mesh ? (
               <ThreeContext>
                 <ReplicadMesh 

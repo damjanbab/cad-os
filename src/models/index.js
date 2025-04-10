@@ -22,7 +22,7 @@ export const modelRegistry = {
   "LProfile": lProfileModel,
   "Frustum": frustumModel,
   "Drill": drillModel,
-  "Staircase": { ...staircaseModel, hasBoM: true, requiresPassword: true } // Add requiresPassword flag
+  "Staircase": { ...staircaseModel, hasBoM: true }
 };
 
 // Helper function to create object with default values
