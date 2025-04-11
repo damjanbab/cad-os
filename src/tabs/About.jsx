@@ -48,13 +48,48 @@ export default function About() {
     };
   }, []); // Empty dependency array ensures this runs only on mount and unmount
 
+  // CSS for responsive layout
+  const responsiveCss = `
+    .profile-container, .founder-container {
+      display: flex;
+      flex-direction: row; /* Default: row for desktop */
+      align-items: flex-start;
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+    .profile-container .image-container, .founder-container .image-container {
+      flex-shrink: 0;
+    }
+    .profile-container .text-container, .founder-container .text-container {
+      flex: 1;
+      min-width: 0;
+      text-align: left; /* Default: left align text */
+    }
+
+    @media (max-width: 768px) {
+      .profile-container, .founder-container {
+        flex-direction: column; /* Stack on mobile */
+        align-items: center; /* Center items when stacked */
+      }
+      .profile-container .image-container, .founder-container .image-container {
+         margin-bottom: 1.5rem; /* Add space below image when stacked */
+      }
+       .profile-container .text-container, .founder-container .text-container {
+         text-align: center; /* Center text on mobile */
+         max-width: 800px; /* Keep text readable */
+         flex: none; /* Reset flex properties */
+         min-width: auto;
+      }
+    }
+  `;
+
   return (
-    <div style={{ 
+    <div style={{
       maxWidth: "1200px",
       margin: "0 auto",
       padding: "2rem",
       color: "#1E293B",
-      overflowX: "hidden" // Prevent horizontal scrolling
+      // overflowX: "hidden" // Removed, should not be needed after layout fix
     }}>
       {/* Company Profile Section */}
       <div style={{ marginBottom: "4rem" }}>
@@ -73,18 +108,21 @@ export default function About() {
           <h1 style={{ fontSize: "2.25rem", fontWeight: "800", margin: 0 }}>About CAD-OS</h1>
         </div>
 
-        <div style={{ display: "flex", gap: "2rem", alignItems: "flex-start", marginBottom: "2rem" }}>
+        {/* Apply responsive CSS via style tag */}
+        <style>{responsiveCss}</style>
+
+        {/* Use CSS classes for layout */}
+        <div className="profile-container">
           {/* Company Logo */}
-          <div style={{ 
-            flexShrink: 0, 
-            width: "180px", 
-            height: "180px", 
-            borderRadius: "50%", 
+          <div className="image-container" style={{
+            width: "180px", // Keep size
+            height: "180px",
+            borderRadius: "50%",
             overflow: "hidden",
             border: "4px solid #E2E8F0",
             boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
           }}>
-            <img 
+            <img
               src="https://raw.githubusercontent.com/damjanbab/cad-os/main/assets/company.jpg"
               alt="CAD-OS Logo" 
               style={{ width: "100%", height: "100%", objectFit: "cover" }} 
@@ -110,7 +148,7 @@ export default function About() {
           </div>
 
           {/* Company Description */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="text-container">
             <p style={{ fontSize: "1.125rem", lineHeight: "1.7", color: "#475569", marginBottom: "1rem" }}>
               Founded in January 2025, CAD-OS is a specialized engineering firm dedicated to delivering innovative parametric CAD solutions. Our team combines deep technical expertise in 3D modeling with cutting-edge programming capabilities to revolutionize how engineering models are created, shared, and implemented.
             </p>
@@ -142,19 +180,19 @@ export default function About() {
           }}></div>
           <h2 style={{ fontSize: "1.75rem", fontWeight: "700", margin: 0 }}>Our Founder</h2>
         </div>
-        
-        <div style={{ display: "flex", gap: "2rem", alignItems: "flex-start" }}>
+
+        {/* Use CSS classes for layout */}
+        <div className="founder-container">
           {/* Founder Image */}
-          <div style={{ 
-            flexShrink: 0, 
-            width: "150px", 
-            height: "150px", 
-            borderRadius: "50%", 
+          <div className="image-container" style={{
+            width: "150px", // Keep size
+            height: "150px",
+            borderRadius: "50%",
             overflow: "hidden",
             border: "4px solid #E2E8F0",
             boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
           }}>
-            <img 
+            <img
               src="https://raw.githubusercontent.com/damjanbab/cad-os/main/assets/profile.jpg"
               alt="Damjan Babic" 
               style={{ width: "100%", height: "100%", objectFit: "cover" }} 
@@ -180,9 +218,9 @@ export default function About() {
           </div>
 
           {/* Founder Bio */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h3 style={{ 
-              fontSize: "1.25rem", 
+          <div className="text-container">
+            <h3 style={{
+              fontSize: "1.25rem",
               fontWeight: "700", 
               marginBottom: "0.75rem",
               color: "#1E293B"

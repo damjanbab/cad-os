@@ -70,8 +70,8 @@ export default function BlogPost({ article }) { // Removed onBackClick prop
   const blogStyles = {
     container: {
       maxWidth: '900px',
-      margin: '0 auto',
-      padding: '0 20px',
+      // margin: '0 auto', // Removed to prevent nested centering issues
+      padding: '0 20px', // Padding remains to keep content off edges
     },
     backButton: {
       display: 'flex',
