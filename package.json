@@ -19,6 +19,7 @@
     "file-saver": "^2.0.5",
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
+    "marked": "^15.0.8",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "replicad": "^0.18.1",

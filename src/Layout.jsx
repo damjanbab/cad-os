@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import Home from "./tabs/Home.jsx";
 import CadApp from "./tabs/CadApp.jsx";
 import About from "./tabs/About.jsx";
-import ToolsPage from "./tabs/tools/ToolsPage.jsx"; // Import the new Tools page
+import ToolsPage from "./tabs/tools/ToolsPage.jsx"; 
+import Blog from "./tabs/Blog.jsx"; // Import the new Blog component
 
 export default function Layout() {
   const [activeTab, setActiveTab] = useState("home");
@@ -104,6 +105,23 @@ export default function Layout() {
           >
             App
           </button>
+          
+          {/* New Blog Button */}
+          <button 
+            onClick={() => switchTab("blog")}
+            style={{
+              backgroundColor: activeTab === "blog" ? "#2563EB" : "transparent",
+              color: "white",
+              border: "none",
+              padding: "0.5rem 1rem",
+              borderRadius: "0.25rem",
+              cursor: "pointer",
+              fontWeight: activeTab === "blog" ? "600" : "400",
+              transition: "background-color 0.2s"
+            }}
+          >
+            Blog
+          </button>
 
           <button 
             onClick={() => switchTab("about")}
@@ -120,7 +138,8 @@ export default function Layout() {
           >
             About
           </button>
-          {/* New Tools Button */}
+          
+          {/* Tools Button */}
           <button
             onClick={() => switchTab("tools")}
             style={{
@@ -146,6 +165,11 @@ export default function Layout() {
         </div>
       )}
       {activeTab === "app" && <CadApp />}
+      {activeTab === "blog" && (
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <Blog />
+        </div>
+      )}
       {activeTab === "about" && (
         <div style={{ flex: 1, overflow: "auto" }}>
           <About />
