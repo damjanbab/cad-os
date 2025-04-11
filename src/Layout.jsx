@@ -89,7 +89,12 @@ export default function Layout() {
       </nav>
 
       {/* Content Area - Rendered by Routes */}
-      <div style={{ flex: 1, overflow: "auto" }}> {/* Added wrapper for consistent overflow handling */}
+      <div style={{ 
+          flex: 1, 
+          // overflow: "auto", // Replaced
+          overflowY: "scroll", // Always show/reserve space for vertical scrollbar
+          overflowX: "hidden"  // Prevent horizontal scroll
+      }}> 
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/app" element={<CadApp />} />
