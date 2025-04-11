@@ -189,6 +189,8 @@ export default function BlogPost({ article }) { // Removed onBackClick prop
       border-radius: 8px;
       overflow-x: auto;
       margin: 1.5rem 0 2rem;
+      white-space: pre-wrap;    /* Added for wrapping */
+      overflow-wrap: break-word; /* Added for wrapping */
     }
     
     .blog-content pre code {
@@ -216,8 +218,16 @@ export default function BlogPost({ article }) { // Removed onBackClick prop
       border-top: 1px solid #E2E8F0;
       margin: 2.5rem 0;
     }
+
+    .blog-content img { /* Added Rule */
+      max-width: 100%;
+      height: auto;
+      display: block; 
+    }
     
-    .blog-content table {
+    .blog-content table { /* Modified Rule */
+      display: block; 
+      overflow-x: auto; 
       width: 100%;
       border-collapse: collapse;
       margin: 2rem 0;
