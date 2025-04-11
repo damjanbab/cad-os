@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import BlogList from '../components/blog/BlogList.jsx';
-import BlogPost from '../components/blog/BlogPost.jsx';
+import React, { useState, useEffect } from "react";
+import { Routes, Route } from "react-router-dom";
+import BlogList from "../components/blog/BlogList.jsx";
+import BlogPostWrapper from "../components/blog/BlogPostWrapper.jsx"; // We will create this next
 
 export default function Blog() {
   const [articles, setArticles] = useState([]);
-  const [selectedArticle, setSelectedArticle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -36,18 +36,6 @@ export default function Blog() {
     
     fetchArticles();
   }, []);
-
-  const handleArticleSelect = (article) => {
-    setSelectedArticle(article);
-    // Scroll to top when selecting an article
-    window.scrollTo(0, 0);
-  };
-
-  const handleBackToList = () => {
-    setSelectedArticle(null);
-    // Scroll to top when returning to list
-    window.scrollTo(0, 0);
-  };
 
   if (loading) {
     return (
@@ -81,45 +69,56 @@ export default function Blog() {
       maxWidth: "1200px",
       margin: "0 auto",
       padding: "2rem",
-      color: "#1E293B"
+      color: "#1E293B",
     }}>
-      {selectedArticle ? (
-        <BlogPost 
-          article={selectedArticle} 
-          onBackClick={handleBackToList} 
+      {/* Nested Routes for Blog List and Single Post */}
+      <Routes>
+        <Route
+          index // Renders at the base path "/blog"
+          element={
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  marginBottom: "2rem",
+                  gap: "1rem",
+                }}
+              >
+                <div
+                  style={{
+                    width: "4px",
+                    height: "2rem",
+                    backgroundColor: "#2563EB",
+                    borderRadius: "2px",
+                  }}
+                ></div>
+                <h1 style={{ fontSize: "2.25rem", fontWeight: "800", margin: 0 }}>
+                  Blog
+                </h1>
+              </div>
+
+              <p
+                style={{
+                  fontSize: "1.125rem",
+                  lineHeight: "1.7",
+                  color: "#475569",
+                  marginBottom: "2rem",
+                }}
+              >
+                Explore our latest articles on parametric modeling, CAD
+                techniques, and engineering insights.
+              </p>
+
+              <BlogList articles={articles} />
+            </>
+          }
         />
-      ) : (
-        <>
-          <div style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            marginBottom: "2rem", 
-            gap: "1rem" 
-          }}>
-            <div style={{ 
-              width: "4px", 
-              height: "2rem", 
-              backgroundColor: "#2563EB", 
-              borderRadius: "2px" 
-            }}></div>
-            <h1 style={{ fontSize: "2.25rem", fontWeight: "800", margin: 0 }}>Blog</h1>
-          </div>
-          
-          <p style={{ 
-            fontSize: "1.125rem", 
-            lineHeight: "1.7", 
-            color: "#475569", 
-            marginBottom: "2rem" 
-          }}>
-            Explore our latest articles on parametric modeling, CAD techniques, and engineering insights.
-          </p>
-          
-          <BlogList 
-            articles={articles} 
-            onArticleSelect={handleArticleSelect} 
-          />
-        </>
-      )}
+        <Route
+          path=":slug" // Renders at "/blog/:slug"
+          element={<BlogPostWrapper articles={articles} />}
+        />
+      </Routes>
     </div>
   );
 }

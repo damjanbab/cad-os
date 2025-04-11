@@ -1,29 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
+import { Routes, Route, NavLink } from "react-router-dom";
 import Home from "./tabs/Home.jsx";
 import CadApp from "./tabs/CadApp.jsx";
 import About from "./tabs/About.jsx";
-import ToolsPage from "./tabs/tools/ToolsPage.jsx"; 
-import Blog from "./tabs/Blog.jsx"; // Import the new Blog component
+import ToolsPage from "./tabs/tools/ToolsPage.jsx";
+import Blog from "./tabs/Blog.jsx";
+
+// Style function for NavLink active state
+const getNavLinkStyle = ({ isActive }) => ({
+  backgroundColor: isActive ? "#2563EB" : "transparent",
+  color: "white",
+  border: "none",
+  padding: "0.5rem 1rem",
+  borderRadius: "0.25rem",
+  cursor: "pointer",
+  fontWeight: isActive ? "600" : "400",
+  transition: "background-color 0.2s",
+  textDecoration: "none", // Remove default underline from links
+});
 
 export default function Layout() {
-  const [activeTab, setActiveTab] = useState("home");
-
-  // Define a clean tab switching function
-  const switchTab = (tab) => {
-    setActiveTab(tab);
-  };
-
-  // Listen for events from child components
-  useEffect(() => {
-    const handleSwitchToTab = (event) => {
-      if (event.detail) {
-        switchTab(event.detail);
-      }
-    };
-
-    window.addEventListener('switchToTab', handleSwitchToTab);
-    return () => window.removeEventListener('switchToTab', handleSwitchToTab);
-  }, []);
 
   return (
     <div style={{ 
@@ -74,113 +70,34 @@ export default function Layout() {
           display: "flex", 
           gap: "0.5rem" 
         }}>
-          <button 
-            onClick={() => switchTab("home")}
-            style={{
-              backgroundColor: activeTab === "home" ? "#2563EB" : "transparent",
-              color: "white",
-              border: "none",
-              padding: "0.5rem 1rem",
-              borderRadius: "0.25rem",
-              cursor: "pointer",
-              fontWeight: activeTab === "home" ? "600" : "400",
-              transition: "background-color 0.2s"
-            }}
-          >
+          <NavLink to="/" style={getNavLinkStyle}>
             Home
-          </button>
-
-          <button 
-            onClick={() => switchTab("app")}
-            style={{
-              backgroundColor: activeTab === "app" ? "#2563EB" : "transparent",
-              color: "white",
-              border: "none",
-              padding: "0.5rem 1rem",
-              borderRadius: "0.25rem",
-              cursor: "pointer",
-              fontWeight: activeTab === "app" ? "600" : "400",
-              transition: "background-color 0.2s"
-            }}
-          >
+          </NavLink>
+          <NavLink to="/app" style={getNavLinkStyle}>
             App
-          </button>
-          
-          {/* New Blog Button */}
-          <button 
-            onClick={() => switchTab("blog")}
-            style={{
-              backgroundColor: activeTab === "blog" ? "#2563EB" : "transparent",
-              color: "white",
-              border: "none",
-              padding: "0.5rem 1rem",
-              borderRadius: "0.25rem",
-              cursor: "pointer",
-              fontWeight: activeTab === "blog" ? "600" : "400",
-              transition: "background-color 0.2s"
-            }}
-          >
+          </NavLink>
+          <NavLink to="/blog" style={getNavLinkStyle}>
             Blog
-          </button>
-
-          <button 
-            onClick={() => switchTab("about")}
-            style={{
-              backgroundColor: activeTab === "about" ? "#2563EB" : "transparent",
-              color: "white",
-              border: "none",
-              padding: "0.5rem 1rem",
-              borderRadius: "0.25rem",
-              cursor: "pointer",
-              fontWeight: activeTab === "about" ? "600" : "400",
-              transition: "background-color 0.2s"
-            }}
-          >
+          </NavLink>
+          <NavLink to="/about" style={getNavLinkStyle}>
             About
-          </button>
-          
-          {/* Tools Button */}
-          <button
-            onClick={() => switchTab("tools")}
-            style={{
-              backgroundColor: activeTab === "tools" ? "#2563EB" : "transparent",
-              color: "white",
-              border: "none",
-              padding: "0.5rem 1rem",
-              borderRadius: "0.25rem",
-              cursor: "pointer",
-              fontWeight: activeTab === "tools" ? "600" : "400",
-              transition: "background-color 0.2s"
-            }}
-          >
+          </NavLink>
+          <NavLink to="/tools" style={getNavLinkStyle}>
             Tools
-          </button>
+          </NavLink>
         </div>
       </nav>
 
-      {/* Content Area - Direct render without wrapper div */}
-      {activeTab === "home" && (
-        <div style={{ flex: 1, overflow: "auto" }}>
-          <Home />
-        </div>
-      )}
-      {activeTab === "app" && <CadApp />}
-      {activeTab === "blog" && (
-        <div style={{ flex: 1, overflow: "auto" }}>
-          <Blog />
-        </div>
-      )}
-      {activeTab === "about" && (
-        <div style={{ flex: 1, overflow: "auto" }}>
-          <About />
-        </div>
-      )}
-      {/* Render Tools Page */}
-      {activeTab === "tools" && (
-        <div style={{ flex: 1, overflow: "auto" }}>
-          <ToolsPage />
-        </div>
-      )}
+      {/* Content Area - Rendered by Routes */}
+      <div style={{ flex: 1, overflow: "auto" }}> {/* Added wrapper for consistent overflow handling */}
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/app" element={<CadApp />} />
+          <Route path="/blog/*" element={<Blog />} /> {/* Use /* for nested routes */}
+          <Route path="/about" element={<About />} />
+          <Route path="/tools" element={<ToolsPage />} />
+        </Routes>
+      </div>
     </div>
   );
 }

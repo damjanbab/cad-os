@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom";
+import { HashRouter } from "react-router-dom";
 import App from "./App.jsx";
 import "./styles.css";
 
@@ -8,7 +9,9 @@ import "replicad-opencascadejs/src/replicad_single.wasm?url";
 
 ReactDOM.render(
   <React.StrictMode>
-    <App />
+    <HashRouter>
+      <App />
+    </HashRouter>
   </React.StrictMode>,
   document.getElementById("root")
 );

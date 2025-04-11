@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom'; // Import Link
 import { marked } from 'marked';
 
-export default function BlogPost({ article, onBackClick }) {
+export default function BlogPost({ article }) { // Removed onBackClick prop
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -268,18 +269,14 @@ export default function BlogPost({ article, onBackClick }) {
       {/* Inject CSS rules */}
       <style>{cssRules}</style>
       
-      <button
-        onClick={onBackClick}
-        style={blogStyles.backButton}
-        onMouseOver={(e) => { e.currentTarget.style.color = '#1E40AF'; }}
-        onMouseOut={(e) => { e.currentTarget.style.color = '#2563EB'; }}
-      >
+      {/* Replaced button with Link */}
+      <Link to="/blog" style={{ ...blogStyles.backButton, textDecoration: 'none' }}> 
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="19" y1="12" x2="5" y2="12"></line>
           <polyline points="12 19 5 12 12 5"></polyline>
         </svg>
         Back to Articles
-      </button>
+      </Link>
 
       <div style={blogStyles.header}>
         <h1 style={blogStyles.title}>{article.title}</h1>

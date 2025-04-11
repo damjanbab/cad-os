@@ -1,32 +1,38 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
-export default function BlogList({ articles, onArticleSelect }) {
+export default function BlogList({ articles }) { // Removed onArticleSelect prop
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       {articles.map(article => (
-        <div 
+        // Wrap the entire article card in a Link
+        <Link 
           key={article.id} 
-          style={{
-            padding: '1.5rem',
-            border: '1px solid #E2E8F0',
-            borderRadius: '0.5rem',
-            backgroundColor: 'white',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-            cursor: 'pointer',
-            transition: 'transform 0.2s, box-shadow 0.2s'
-          }}
-          onClick={() => onArticleSelect(article)}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 10px 15px rgba(0, 0, 0, 0.05)';
+          to={`/blog/${article.id}`} 
+          style={{ textDecoration: 'none', color: 'inherit' }} // Prevent default link styling
+        >
+          <div 
+            style={{
+              padding: '1.5rem',
+              border: '1px solid #E2E8F0',
+              borderRadius: '0.5rem',
+              backgroundColor: 'white',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+              // cursor: 'pointer', // Removed, Link handles cursor
+              transition: 'transform 0.2s, box-shadow 0.2s'
+            }}
+            // onClick={() => onArticleSelect(article)} // Removed onClick
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'translateY(-4px)';
+              e.currentTarget.style.boxShadow = '0 10px 15px rgba(0, 0, 0, 0.05)';
           }}
           onMouseOut={(e) => {
             e.currentTarget.style.transform = 'translateY(0)';
             e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
           }}
-        >
-          <h2 style={{ 
-            fontSize: '1.5rem', 
+          >
+            <h2 style={{ 
+              fontSize: '1.5rem', 
             fontWeight: '700', 
             marginBottom: '0.5rem',
             color: '#1E293B'
@@ -61,7 +67,8 @@ export default function BlogList({ articles, onArticleSelect }) {
               <polyline points="12 5 19 12 12 19"></polyline>
             </svg>
           </div>
-        </div>
+          </div>
+        </Link>
       ))}
     </div>
   );
