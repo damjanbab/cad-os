@@ -91,9 +91,10 @@ export default function Layout() {
       {/* Content Area - Rendered by Routes */}
       <div style={{ 
           flex: 1, 
-          // overflow: "auto", // Replaced
           overflowY: "scroll", // Always show/reserve space for vertical scrollbar
-          overflowX: "hidden"  // Prevent horizontal scroll
+          overflowX: "hidden",  // Prevent horizontal scroll
+          paddingLeft: "2rem",  // Add horizontal padding here
+          paddingRight: "2rem" // Add horizontal padding here
       }}> 
         <Routes>
           <Route path="/" element={<Home />} />

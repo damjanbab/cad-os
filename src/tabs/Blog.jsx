@@ -66,9 +66,10 @@ export default function Blog() {
 
   return (
     <div style={{ 
-      maxWidth: "1200px", // Restored
-      margin: "0 auto",    // Restored
-      padding: "2rem",
+      maxWidth: "1200px", // Keep max-width
+      margin: "0 auto",    // Keep centering
+      paddingTop: "2rem",    // Only vertical padding now
+      paddingBottom: "2rem", // Only vertical padding now
       color: "#1E293B",
     }}>
       {/* Nested Routes for Blog List and Single Post */}

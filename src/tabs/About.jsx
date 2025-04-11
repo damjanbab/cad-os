@@ -85,11 +85,12 @@ export default function About() {
 
   return (
     <div style={{
-      maxWidth: "1200px",
-      margin: "0 auto",
-      padding: "2rem",
+      maxWidth: "1200px", // Keep max-width
+      margin: "0 auto",    // Keep centering
+      paddingTop: "2rem",    // Only vertical padding
+      paddingBottom: "2rem", // Only vertical padding
       color: "#1E293B",
-      // overflowX: "hidden" // Removed, should not be needed after layout fix
+      // Horizontal padding is now handled by Layout.jsx
     }}>
       {/* Company Profile Section */}
       <div style={{ marginBottom: "4rem" }}>
