@@ -66,8 +66,8 @@ export default function Blog() {
 
   return (
     <div style={{ 
-      maxWidth: "1200px",
-      margin: "0 auto",
+      // maxWidth: "1200px", // Removed
+      // margin: "0 auto",    // Removed
       padding: "2rem",
       color: "#1E293B",
     }}>
