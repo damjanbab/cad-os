@@ -69,9 +69,10 @@ export default function BlogPost({ article }) { // Removed onBackClick prop
   // Apply custom styles to the blog post content
   const blogStyles = {
     container: {
-      maxWidth: '900px',
-      margin: '0 auto', // Removed
-      padding: 0, // Removed horizontal padding, now handled by Layout.jsx
+      maxWidth: 'min(900px, calc(100% - 4rem))', // Responsive max-width
+      margin: '0 auto',
+      padding: 0, // Horizontal padding handled by Layout.jsx
+      overflow: 'hidden', // Prevent content overflow
     },
     backButton: {
       display: 'flex',
@@ -108,11 +109,18 @@ export default function BlogPost({ article }) { // Removed onBackClick prop
       lineHeight: '1.8',
       color: '#334155',
       fontSize: '1.1rem',
+      wordWrap: 'break-word',
+      overflowWrap: 'break-word',
     },
   };
 
   // CSS to be injected via style tag
   const cssRules = `
+    .blog-content {
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+    
     .blog-content h1 {
       font-size: 2.25rem;
       font-weight: 800;
