@@ -90,12 +90,12 @@ export default function Layout() {
 
       {/* Content Area - Rendered by Routes */}
       <div style={{ 
-          flex: 1, 
-          overflowY: "scroll", // Always show/reserve space for vertical scrollbar
-          overflowX: "hidden",  // Prevent horizontal scroll
-          paddingLeft: "2rem",  // Add horizontal padding here
-          paddingRight: "2rem" // Add horizontal padding here
-      }}> 
+        flex: 1, 
+        overflowY: "scroll", 
+        overflowX: "hidden",
+        paddingLeft: window.innerWidth < 768 ? "1rem" : "2rem",  // Smaller padding on mobile
+        paddingRight: window.innerWidth < 768 ? "1rem" : "2rem"  // Smaller padding on mobile
+      }}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/app" element={<CadApp />} />
