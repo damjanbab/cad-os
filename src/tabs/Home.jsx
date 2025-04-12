@@ -47,7 +47,7 @@ export default function Home() {
     <div style={{ 
       maxWidth: "1200px",
       margin: "0 auto",
-      padding: "2rem",
+      padding: window.innerWidth < 480 ? "1rem 0" : "2rem 0",
       color: "#1E293B"
     }}>
       {/* Hero Section */}

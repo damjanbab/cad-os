@@ -170,7 +170,7 @@ export default function About() {
         <div style={{ 
           display: "flex", 
           alignItems: "center", 
-          marginBottom: "2rem", 
+          marginBottom: window.innerWidth < 480 ? "1rem 0" : "2rem 0", 
           gap: "1rem" 
         }}>
           <div style={{ 
