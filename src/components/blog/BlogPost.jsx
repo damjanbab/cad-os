@@ -70,7 +70,7 @@ export default function BlogPost({ article }) { // Removed onBackClick prop
   const blogStyles = {
     container: {
       maxWidth: '900px',
-      // margin: '0 auto', // Removed
+      margin: '0 auto', // Removed
       padding: 0, // Removed horizontal padding, now handled by Layout.jsx
     },
     backButton: {
