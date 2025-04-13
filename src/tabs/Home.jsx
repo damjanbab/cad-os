@@ -1,6 +1,8 @@
 import React, { useEffect } from "react";
+import { useNavigate } from "react-router-dom"; // Import useNavigate
 
 export default function Home() {
+  const navigate = useNavigate(); // Get the navigate function
   useEffect(() => {
     // Prevent adding multiple times if component re-renders quickly
     if (document.getElementById('calendly-css')) return;
@@ -80,7 +82,7 @@ export default function Home() {
         </p>
         <div style={{ marginTop: "2rem", display: "flex", gap: "1rem" }}>
           <button 
-            onClick={() => window.dispatchEvent(new CustomEvent('switchTab', { detail: 'app' }))}
+            onClick={() => navigate('/app')} // NEW: Use navigate
             style={{
               backgroundColor: "#1E293B",
               color: "white",
@@ -102,14 +104,7 @@ export default function Home() {
             View Demo Models
           </button>
           <button 
-            onClick={() => {
-              const contactSection = document.getElementById('contact');
-              if (contactSection) {
-                contactSection.scrollIntoView({ behavior: 'smooth' });
-              } else {
-                window.dispatchEvent(new CustomEvent('switchTab', { detail: 'about' }));
-              }
-            }}
+            onClick={() => window.location.href = 'mailto:damjanbab@icloud.com'} // Open mail client
             style={{
               backgroundColor: "white",
               color: "#1E293B",
@@ -369,7 +364,7 @@ export default function Home() {
           
           {/* GitHub button */}
           <a 
-            href="https://github.com/haloedDepth"
+            href="https://github.com/damjanbab" // Corrected GitHub link
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -435,7 +430,7 @@ export default function Home() {
         </div>
         
         <button 
-          onClick={() => window.dispatchEvent(new CustomEvent('switchTab', { detail: 'app' }))}
+          onClick={() => navigate('/app')} // NEW: Use navigate
           style={{
             backgroundColor: "#0EA5E9",
             color: "white",
