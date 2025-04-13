@@ -1,7 +1,131 @@
 import { drawProjection } from "replicad";
 import { exportableModel } from '../helperUtils.js';
-import { parseViewBox, combineViewBoxes } from '../utils/svgUtils.js'; // Updated import
-import { TOLERANCE, arePointsClose, areCollinear } from '../utils/geometryUtils.js'; // Updated import
+import { parseViewBox, combineViewBoxes } from '../utils/svgUtils.js';
+import { TOLERANCE, arePointsClose, areCollinear } from '../utils/geometryUtils.js';
+
+// --- SVG Path Transformation Helpers ---
+
+/**
+ * Parses an SVG path 'd' attribute string into an array of command objects.
+ * Handles absolute/relative commands and various parameter counts.
+ * @param {string} d - The SVG path data string.
+ * @returns {Array<Object>} Array of command objects (e.g., { command: 'M', values: [x, y] }). Returns empty array on error.
+ */
+function parsePathData(d) {
+  if (!d || typeof d !== 'string') {
+    console.error("Invalid input to parsePathData:", d);
+    return [];
+  }
+  // Regex to capture command and parameters, handling scientific notation and optional commas/spaces
+  const commandRegex = /([MLHVCSQTAZ])([^MLHVCSQTAZ]*)/ig;
+  const commands = [];
+  let match;
+
+  while ((match = commandRegex.exec(d)) !== null) {
+    const command = match[1];
+    const paramString = match[2].trim();
+    // Regex to extract numbers (including scientific notation) separated by spaces, commas, or signs
+    const paramRegex = /[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g;
+    const values = (paramString.match(paramRegex) || []).map(Number);
+
+    // Basic validation: Check if any extracted number is NaN
+    if (values.some(isNaN)) {
+      console.warn(`Skipping command due to invalid parameters: ${match[0]}`);
+      continue; // Skip this command if parsing failed
+    }
+
+    commands.push({ command, values });
+  }
+  return commands;
+}
+
+/**
+ * Applies a translation (tx, ty) to the coordinates within a parsed path data array.
+ * Modifies the array in place.
+ * @param {Array<Object>} pathDataArray - Parsed path data from parsePathData.
+ * @param {number} tx - Translation offset in X.
+ * @param {number} ty - Translation offset in Y.
+ */
+function transformPathData(pathDataArray, tx, ty) {
+  pathDataArray.forEach(item => {
+    const command = item.command;
+    const values = item.values;
+
+    // Only transform coordinates for absolute commands
+    // Relative commands ('m', 'l', 'h', 'v', 'c', 's', 'q', 't', 'a') remain relative to the previous point
+    // and don't need direct translation of their parameters.
+    // The absolute 'M' command sets the starting point, which needs translation.
+    // Subsequent absolute commands define points in the translated coordinate space.
+    if (command === command.toUpperCase() && command !== 'Z') { // Absolute commands (except Z)
+      for (let i = 0; i < values.length; i++) {
+        // Apply transformation based on command type and parameter index
+        // M, L, T: (x y)+ pairs
+        // H: x+ values
+        // V: y+ values
+        // C: (x1 y1 x2 y2 x y)+ triplets
+        // S, Q: (x2 y2 x y)+ pairs
+        // A: (rx ry x-axis-rotation large-arc-flag sweep-flag x y)+ sets
+        // We need to transform the endpoint coordinates (x, y)
+        // and control points for curves (x1, y1, x2, y2).
+        // Radii (rx, ry) and flags for arcs are not translated.
+
+        switch (command) {
+          case 'M':
+          case 'L':
+          case 'T':
+            // Every value is a coordinate pair (x, y)
+            values[i] += (i % 2 === 0) ? tx : ty;
+            break;
+          case 'H':
+            // Only x values
+            values[i] += tx;
+            break;
+          case 'V':
+            // Only y values
+            values[i] += ty;
+            break;
+          case 'C':
+            // (x1 y1 x2 y2 x y) - transform all
+            values[i] += (i % 2 === 0) ? tx : ty;
+            break;
+          case 'S':
+          case 'Q':
+            // (x2 y2 x y) - transform all
+            values[i] += (i % 2 === 0) ? tx : ty;
+            break;
+          case 'A':
+            // (rx ry angle large-arc sweep x y) - only transform last two (x, y)
+            if (i >= 5) { // Indices 5 and 6 are x and y
+              values[i] += (i % 2 !== 0) ? tx : ty; // Index 5 is x, Index 6 is y
+            }
+            break;
+        }
+      }
+    }
+  });
+}
+
+
+/**
+ * Serializes a parsed (and potentially transformed) path data array back into an SVG 'd' string.
+ * @param {Array<Object>} pathDataArray - The array of command objects.
+ * @returns {string} The reconstructed SVG path data string.
+ */
+function serializePathData(pathDataArray) {
+  return pathDataArray.map(item => {
+    // Format numbers to avoid excessive precision, but handle potential scientific notation
+    const paramsString = item.values.map(v => {
+        // Use exponential notation for very small or very large numbers, otherwise fixed precision
+        if (Math.abs(v) > 1e6 || (Math.abs(v) < 1e-4 && v !== 0)) {
+            return v.toExponential(4);
+        }
+        return parseFloat(v.toFixed(4)); // Limit precision
+    }).join(' ');
+    return `${item.command}${paramsString}`;
+  }).join('');
+}
+
+// --- End SVG Path Transformation Helpers ---
 
 
 /**
@@ -274,106 +398,190 @@ function createNormalizedViewBox(viewBox, maxWidth, maxHeight) {
 /**
  * Processes projections to be suitable for rendering as SVG
  * @param {Object} projections - The projections object from createOrthographicProjections
- * @returns {Object} Processed projections ready for SVG rendering
+ * @returns {Object} Processed projections ready for SVG rendering (potentially with standardLayout)
  */
 export function processProjectionsForRendering(projections) {
-  const processedViews = {};
+  const finalOutput = {};
+  const layoutGap = 20; // Gap between views in the combined layout (SVG units)
 
-  // Process standard views if they exist
-  if (projections.standard) {
-    for (const [viewName, view] of Object.entries(projections.standard)) {
-      try {
-        // Process each view to get SVG path data
-        const visiblePaths = view.visible.toSVGPaths();
-        const hiddenPaths = view.hidden.toSVGPaths();
+  // Process standard views into a combined layout if they exist
+  if (projections.standard && projections.standard.frontView) {
+    console.log("[INFO] Processing standard views for combined layout.");
+    const { frontView, topView, rightView } = projections.standard;
+    const allPaths = [];
 
-        // Use either the normalized viewbox (for consistent scaling) or fall back to original
-        const visibleViewBox = view.normalizedViewBox || view.visible.toSVGViewBox(5);
-        const hiddenViewBox = view.normalizedViewBox || view.hidden.toSVGViewBox(5);
+    // --- 1. Get Data & ViewBoxes ---
+    const frontData = {
+      view: frontView,
+      name: 'front',
+      viewBox: parseViewBox(frontView.normalizedViewBox || frontView.visible.toSVGViewBox(5)),
+      visiblePaths: frontView.visible.toSVGPaths(),
+      hiddenPaths: frontView.hidden.toSVGPaths(),
+    };
+    const topData = topView ? {
+      view: topView,
+      name: 'top',
+      viewBox: parseViewBox(topView.normalizedViewBox || topView.visible.toSVGViewBox(5)),
+      visiblePaths: topView.visible.toSVGPaths(),
+      hiddenPaths: topView.hidden.toSVGPaths(),
+    } : null;
+    const rightData = rightView ? {
+      view: rightView,
+      name: 'right',
+      viewBox: parseViewBox(rightView.normalizedViewBox || rightView.visible.toSVGViewBox(5)),
+      visiblePaths: rightView.visible.toSVGPaths(),
+      hiddenPaths: rightView.hidden.toSVGPaths(),
+    } : null;
 
-        // For combined viewbox, use the normalized one if available
-        // This ensures all views share the same scale
-        const combinedViewBox = view.normalizedViewBox || combineViewBoxes(visibleViewBox, hiddenViewBox);
-
-        console.log(`Processed ${viewName} viewBox:`, combinedViewBox);
-
-        // Normalize paths and add unique IDs to make them identifiable/clickable
-        // Use "standard_" prefix for standard views to match TechnicalDrawingCanvas viewId props
-        const prefixBase = viewName.replace('View', '').toLowerCase(); // e.g., "front", "top", "right"
-        const standardPrefix = `standard_${prefixBase}`; // e.g., "standard_front"
-        const normalizedVisiblePaths = normalizePaths(visiblePaths, `${standardPrefix}_visible`);
-        const normalizedHiddenPaths = normalizePaths(hiddenPaths, `${standardPrefix}_hidden`);
-
-        processedViews[viewName] = {
-          visible: {
-            paths: normalizedVisiblePaths,
-            viewBox: visibleViewBox
-          },
-          hidden: {
-            paths: normalizedHiddenPaths,
-            viewBox: hiddenViewBox
-          },
-          combinedViewBox
-        };
-      } catch (err) {
-        console.error(`Error processing view ${viewName}:`, err);
-      }
+    if (!frontData.viewBox) {
+        console.error("Front view data is missing or invalid. Cannot create standard layout.");
+        // Fallback or decide how to handle this error - perhaps return empty?
+        return { parts: processPartProjections(projections.parts) }; // Process parts only
     }
+
+    // --- 2. Calculate Layout & Combined ViewBox ---
+    let totalWidth = frontData.viewBox.width;
+    let totalHeight = frontData.viewBox.height;
+    let topOffset = { x: 0, y: 0 };
+    let rightOffset = { x: 0, y: 0 };
+
+    // Position Top View below Front View
+    if (topData && topData.viewBox) {
+      topOffset.x = frontData.viewBox.x + (frontData.viewBox.width - topData.viewBox.width) / 2;
+      topOffset.y = frontData.viewBox.y + frontData.viewBox.height + layoutGap;
+      totalHeight = (topOffset.y + topData.viewBox.height) - frontData.viewBox.y; // Update total height
+      totalWidth = Math.max(totalWidth, topData.viewBox.width + (topOffset.x - frontData.viewBox.x)); // Adjust width if top is wider
+    } else {
+        console.log("[INFO] No valid Top view data for layout.");
+    }
+
+    // Position Right View to the right of Front View
+    if (rightData && rightData.viewBox) {
+      rightOffset.x = frontData.viewBox.x + frontData.viewBox.width + layoutGap;
+      rightOffset.y = frontData.viewBox.y + (frontData.viewBox.height - rightData.viewBox.height) / 2;
+      totalWidth = (rightOffset.x + rightData.viewBox.width) - frontData.viewBox.x; // Update total width
+      totalHeight = Math.max(totalHeight, rightData.viewBox.height + (rightOffset.y - frontData.viewBox.y)); // Adjust height if right is taller
+    } else {
+        console.log("[INFO] No valid Right view data for layout.");
+    }
+
+    // Combined ViewBox starts at the Front view's origin
+    const combinedLayoutViewBox = `${frontData.viewBox.x} ${frontData.viewBox.y} ${totalWidth} ${totalHeight}`;
+    console.log(`[INFO] Calculated Combined Layout ViewBox: ${combinedLayoutViewBox}`);
+    console.log(`[INFO] Front Origin: (${frontData.viewBox.x}, ${frontData.viewBox.y})`);
+    if (topData) console.log(`[INFO] Top Offset for Transform: (${topOffset.x - topData.viewBox.x}, ${topOffset.y - topData.viewBox.y})`);
+    if (rightData) console.log(`[INFO] Right Offset for Transform: (${rightOffset.x - rightData.viewBox.x}, ${rightOffset.y - rightData.viewBox.y})`);
+
+
+    // --- 3. Normalize & Transform Paths ---
+    const processAndTransform = (viewData, tx, ty, viewType) => {
+      if (!viewData) return;
+      const prefix = `standard_${viewType}`;
+      const normalizedVisible = normalizePaths(viewData.visiblePaths, `${prefix}_visible`, tx, ty);
+      const normalizedHidden = normalizePaths(viewData.hiddenPaths, `${prefix}_hidden`, tx, ty);
+      normalizedVisible.forEach(p => p.originalView = viewType);
+      normalizedHidden.forEach(p => p.originalView = viewType);
+      allPaths.push(...normalizedVisible, ...normalizedHidden);
+    };
+
+    // Process Front view (no transformation needed relative to its origin)
+    processAndTransform(frontData, 0, 0, 'front');
+
+    // Process Top view (translate paths)
+    if (topData && topData.viewBox) {
+      const topTx = topOffset.x - topData.viewBox.x;
+      const topTy = topOffset.y - topData.viewBox.y;
+      processAndTransform(topData, topTx, topTy, 'top');
+    }
+
+    // Process Right view (translate paths)
+    if (rightData && rightData.viewBox) {
+      const rightTx = rightOffset.x - rightData.viewBox.x;
+      const rightTy = rightOffset.y - rightData.viewBox.y;
+      processAndTransform(rightData, rightTx, rightTy, 'right');
+    }
+
+    // Add the combined layout to the final output
+    finalOutput.standardLayout = {
+      combinedViewBox: combinedLayoutViewBox,
+      paths: allPaths,
+    };
+    console.log(`[INFO] Created standardLayout with ${allPaths.length} total paths.`);
+
+  } else {
+    console.log("[INFO] No standard projections found or frontView missing, skipping combined layout.");
   }
 
-  // Process part views if available
-  const processedParts = [];
-  for (const part of projections.parts || []) {
-    try {
-      const views = {};
+  // Process part views if available (unchanged logic, extracted to helper)
+  finalOutput.parts = processPartProjections(projections.parts);
 
-      for (const [viewName, view] of Object.entries(part.views)) {
-        const viewVisiblePaths = view.visible.toSVGPaths();
-        const viewHiddenPaths = view.hidden.toSVGPaths();
-
-        // Add component and view name to ID prefix for better organization
-        const idPrefix = `${part.name.replace(/\s+/g, '_')}_${viewName}`;
-
-        // Normalize paths with unique IDs
-        const normalizedVisiblePaths = normalizePaths(viewVisiblePaths, `${idPrefix}_visible`);
-        const normalizedHiddenPaths = normalizePaths(viewHiddenPaths, `${idPrefix}_hidden`);
-
-        // Use the normalized viewbox if available for consistent scaling
-        const visibleViewBox = view.normalizedViewBox || view.visible.toSVGViewBox(5);
-        const hiddenViewBox = view.normalizedViewBox || view.hidden.toSVGViewBox(5);
-
-        // Use normalized viewbox for combined view if available
-        const combinedViewBox = view.normalizedViewBox || combineViewBoxes(visibleViewBox, hiddenViewBox);
-
-        console.log(`Processed ${part.name} ${viewName} viewBox:`, combinedViewBox);
-
-        views[viewName] = {
-          visible: {
-            paths: normalizedVisiblePaths,
-            viewBox: visibleViewBox
-          },
-          hidden: {
-            paths: normalizedHiddenPaths,
-            viewBox: hiddenViewBox
-          },
-          combinedViewBox
-        };
-      }
-
-      processedParts.push({
-        name: part.name,
-        views
-      });
-    } catch (err) {
-      console.error(`Error processing part ${part.name}:`, err);
-    }
+  // Pass component data if available
+  if (projections.componentData) {
+    finalOutput.componentData = projections.componentData;
   }
 
-  return {
-    standard: Object.keys(processedViews).length > 0 ? processedViews : undefined,
-    parts: processedParts
-  };
+
+  return finalOutput;
 }
+
+
+/**
+ * Helper function to process part projections (extracted from original logic)
+ * @param {Array} partsArray - Array of part projection data from createOrthographicProjections
+ * @returns {Array} Processed part projections ready for rendering
+ */
+function processPartProjections(partsArray = []) {
+   const processedParts = [];
+   for (const part of partsArray) {
+    // Removed redundant outer try block
+      try {
+        const views = {};
+
+        for (const [viewName, view] of Object.entries(part.views)) {
+          const viewVisiblePaths = view.visible.toSVGPaths();
+          const viewHiddenPaths = view.hidden.toSVGPaths();
+
+          // Add component and view name to ID prefix for better organization
+          const idPrefix = `${part.name.replace(/\s+/g, '_')}_${viewName}`;
+
+          // Normalize paths with unique IDs (no transformation needed for parts)
+          const normalizedVisiblePaths = normalizePaths(viewVisiblePaths, `${idPrefix}_visible`, 0, 0);
+          const normalizedHiddenPaths = normalizePaths(viewHiddenPaths, `${idPrefix}_hidden`, 0, 0);
+
+          // Use the normalized viewbox if available for consistent scaling
+          const visibleViewBox = view.normalizedViewBox || view.visible.toSVGViewBox(5);
+          const hiddenViewBox = view.normalizedViewBox || view.hidden.toSVGViewBox(5);
+
+          // Use normalized viewbox for combined view if available
+          const combinedViewBox = view.normalizedViewBox || combineViewBoxes(visibleViewBox, hiddenViewBox);
+
+          console.log(`[INFO] Processed Part ${part.name} ${viewName} viewBox:`, combinedViewBox);
+
+          views[viewName] = {
+            visible: {
+              paths: normalizedVisiblePaths,
+              viewBox: visibleViewBox
+            },
+            hidden: {
+              paths: normalizedHiddenPaths,
+              viewBox: hiddenViewBox
+            },
+            combinedViewBox
+          };
+        }
+
+        processedParts.push({
+          name: part.name,
+          views
+        });
+      } catch (err) {
+        console.error(`[ERROR] Error processing part ${part.name}:`, err);
+      }
+    // Removed redundant closing brace and adjusted function closing
+   }
+   return processedParts;
+}
+
 
 /**
  * Merge two adjacent and collinear line segments
@@ -413,65 +621,83 @@ function mergeLineSegments(seg1, seg2) {
 
 
 /**
- * Normalize paths for rendering, merge collinear lines, and add unique IDs.
- * @param {Array} paths - Array of path strings or arrays
- * @param {String} prefix - ID prefix for the paths
- * @returns {Array} Normalized paths with IDs where groupId === id
+ * Normalize paths for rendering, merge collinear lines, add unique IDs, and apply transformations.
+ * @param {Array} paths - Array of path strings or arrays from replicad.
+ * @param {String} prefix - ID prefix for the paths.
+ * @param {number} tx - Translation offset X.
+ * @param {number} ty - Translation offset Y.
+ * @returns {Array} Normalized paths with IDs, geometry, and transformed data.
  */
-function normalizePaths(paths, prefix = 'path') {
-  if (!Array.isArray(paths)) return [];
+function normalizePaths(paths, prefix = 'path', tx = 0, ty = 0) {
+  if (!Array.isArray(paths)) {
+      console.warn("[WARN] normalizePaths received non-array input:", paths);
+      return [];
+  }
 
   const finalPaths = [];
   let pathIndex = 0; // Counter for original paths from replicad
 
-  for (let i = 0; i < paths.length; i++) {
-    const path = paths[i]; // Keep original loop variable name
-
-    // Extract path data string
-    let pathData;
-    if (typeof path === 'string') {
-      pathData = path;
-    } else if (Array.isArray(path)) {
-      // Handle potential nested arrays or objects within the array
-      if (path.every(item => typeof item === 'string')) {
-        pathData = path.join(' ');
-      } else if (path.length > 0 && typeof path[0] === 'string') {
-        pathData = path[0]; // Assume the first element is the path string if mixed types
-      } else {
-        pathData = ''; // Fallback for unexpected array content
-      }
-    } else if (path && typeof path === 'object' && typeof path.d === 'string') {
-      pathData = path.d; // Handle object with 'd' property
+  for (const originalPath of paths) { // Use more descriptive variable name
+    // Extract path data string robustly
+    let pathDataString;
+    if (typeof originalPath === 'string') {
+      pathDataString = originalPath;
+    } else if (Array.isArray(originalPath) && originalPath.length > 0 && typeof originalPath[0] === 'string') {
+      pathDataString = originalPath[0]; // Assume first element if array
+    } else if (originalPath && typeof originalPath === 'object' && typeof originalPath.d === 'string') {
+      pathDataString = originalPath.d; // Handle object with 'd' property
     } else {
-      // Attempt to stringify other types, though likely indicates an issue upstream
-      pathData = String(path);
+      console.warn(`[WARN] Skipping path due to unexpected format:`, originalPath);
+      continue; // Skip this path if format is unknown
     }
 
     // Skip empty paths
-    if (!pathData.trim()) continue;
+    if (!pathDataString || !pathDataString.trim()) continue;
 
-    // Check for circles first
-    const circleInfo = detectCircle(pathData);
+    // --- Apply Transformation ---
+    let transformedPathDataString = pathDataString; // Default to original if no transform needed or fails
+    if (tx !== 0 || ty !== 0) {
+      try {
+        const parsed = parsePathData(pathDataString);
+        if (parsed.length > 0) {
+            transformPathData(parsed, tx, ty);
+            transformedPathDataString = serializePathData(parsed);
+        } else {
+             console.warn(`[WARN] Could not parse path data for transformation: ${pathDataString.substring(0, 50)}...`);
+        }
+      } catch (transformError) {
+        console.error(`[ERROR] Failed to transform path data: ${pathDataString.substring(0, 50)}...`, transformError);
+        // Keep original path data on error
+      }
+    }
+    // --- End Transformation ---
+
+
+    // Check for circles first (using the potentially transformed path data)
+    // Note: Transformation might slightly distort perfect circles, adjust detectCircle if needed
+    const circleInfo = detectCircle(transformedPathDataString);
     if (circleInfo) {
       const id = `${prefix}_${pathIndex}_circle`;
       finalPaths.push({
         id: id,
         groupId: id, // Use unique ID as group ID
-        data: pathData,
+        data: transformedPathDataString, // Use transformed data
         type: 'circle',
         geometry: {
           type: 'circle',
+          // Use calculated center/radius from detectCircle (which used transformed data)
           center: circleInfo.center,
           radius: circleInfo.radius,
           diameter: circleInfo.radius * 2,
         },
+        // originalView added by caller if needed
       });
-      pathIndex++; // Increment index for the next original path
-      continue; // Move to the next original path
+      pathIndex++;
+      continue;
     }
 
-    // Decompose the path into segments
-    const initialSegments = decomposePathToSegments(pathData);
+    // Decompose the transformed path into segments for merging and geometry extraction
+    const initialSegments = decomposePathToSegments(transformedPathDataString);
     const mergedSegments = [];
 
     if (initialSegments.length > 0) {
@@ -481,66 +707,63 @@ function normalizePaths(paths, prefix = 'path') {
         const nextSegment = initialSegments[j];
 
         // Check if both are lines and can be merged
-        // Ensure endpoints exist before checking closeness and collinearity
-        if (currentMergedSegment && nextSegment && // Ensure segments are not null
+        if (currentMergedSegment && nextSegment &&
             currentMergedSegment.type === 'line' && nextSegment.type === 'line' &&
             currentMergedSegment.endpoints && nextSegment.endpoints &&
-            (arePointsClose(currentMergedSegment.endpoints[1], nextSegment.endpoints[0]) || arePointsClose(currentMergedSegment.endpoints[0], nextSegment.endpoints[1]) || arePointsClose(currentMergedSegment.endpoints[0], nextSegment.endpoints[0]) || arePointsClose(currentMergedSegment.endpoints[1], nextSegment.endpoints[1])) && // Check adjacency (allow reversed segments)
-            areCollinear(currentMergedSegment.endpoints[0], currentMergedSegment.endpoints[1], nextSegment.endpoints[0]) && // Check collinearity using 3 points
-            areCollinear(currentMergedSegment.endpoints[0], currentMergedSegment.endpoints[1], nextSegment.endpoints[1])) // Check collinearity using the other endpoint
+            (arePointsClose(currentMergedSegment.endpoints[1], nextSegment.endpoints[0]) || arePointsClose(currentMergedSegment.endpoints[0], nextSegment.endpoints[1]) || arePointsClose(currentMergedSegment.endpoints[0], nextSegment.endpoints[0]) || arePointsClose(currentMergedSegment.endpoints[1], nextSegment.endpoints[1])) &&
+            areCollinear(currentMergedSegment.endpoints[0], currentMergedSegment.endpoints[1], nextSegment.endpoints[0]) &&
+            areCollinear(currentMergedSegment.endpoints[0], currentMergedSegment.endpoints[1], nextSegment.endpoints[1]))
         {
-          // Merge them
           currentMergedSegment = mergeLineSegments(currentMergedSegment, nextSegment);
         } else {
-          // Cannot merge, push the current (potentially merged) segment and start new
-          if (currentMergedSegment) { // Push only if valid
+          if (currentMergedSegment) {
              mergedSegments.push(currentMergedSegment);
           }
           currentMergedSegment = nextSegment;
         }
       }
-      // Push the last segment (which might be merged or the only segment)
-      if (currentMergedSegment) { // Push only if valid
+      if (currentMergedSegment) {
         mergedSegments.push(currentMergedSegment);
       }
 
-      // Assign final IDs to the merged/processed segments
+      // Assign final IDs and structure to the merged/processed segments
       mergedSegments.forEach((segment, j) => {
-        // Ensure segment is valid before pushing
         if (segment && segment.path) {
-            const finalId = `${prefix}_${pathIndex}_${j}`; // Unique ID for the final segment
+            const finalId = `${prefix}_${pathIndex}_${j}`;
             finalPaths.push({
               id: finalId,
-              groupId: finalId, // Use unique ID as group ID
-              data: segment.path,
+              groupId: finalId,
+              data: segment.path, // This path data comes from the merged segment (already transformed)
               type: segment.type,
-              geometry: {
+              geometry: { // Geometry extracted from the transformed segment
                 type: segment.type,
                 length: segment.length,
-                endpoints: segment.endpoints, // [[startX, startY], [endX, endY]]
-                // Add circle specific geometry if needed later
-                center: segment.type === 'circle' ? segment.center : undefined,
+                endpoints: segment.endpoints,
+                center: segment.type === 'circle' ? segment.center : undefined, // Should be handled by detectCircle now
                 radius: segment.type === 'circle' ? segment.radius : undefined,
                 diameter: segment.type === 'circle' ? segment.radius * 2 : undefined,
               },
+              // originalView added by caller if needed
             });
         } else {
-            console.warn("Skipping invalid segment during final ID assignment:", segment);
+            console.warn("[WARN] Skipping invalid segment during final ID assignment:", segment);
         }
       });
-    } else {
+    } else if (!circleInfo) { // Only add fallback if it wasn't a circle and couldn't be decomposed
       // Fallback for paths we couldn't decompose (and wasn't a circle)
       const id = `${prefix}_${pathIndex}_unknown`;
       finalPaths.push({
         id: id,
-        groupId: id, // Use unique ID as group ID
-        data: pathData,
+        groupId: id,
+        data: transformedPathDataString, // Use transformed data
         type: 'unknown',
         geometry: { type: 'unknown' },
+        // originalView added by caller if needed
       });
+       console.warn(`[WARN] Path could not be decomposed or identified as circle: ${transformedPathDataString.substring(0,50)}...`);
     }
 
-    pathIndex++; // Increment index for the next original path
+    pathIndex++; // Increment index for the next original path from replicad
   }
 
   return finalPaths;

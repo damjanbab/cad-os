@@ -70,41 +70,38 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
           initialTextPosition.y = path.geometry.center[1]; // Place inside initially
         }
 
-        // Extract viewId from uniquePathId (e.g., "standard_front_visible_0_0" -> "standard_front")
-        // Find the last occurrence of _visible_ or _hidden_ and take the part before it
-        let viewId = uniquePathId;
-        const visibleIndex = uniquePathId.lastIndexOf('_visible_');
-        const hiddenIndex = uniquePathId.lastIndexOf('_hidden_');
-
-        if (visibleIndex !== -1) {
-          viewId = uniquePathId.substring(0, visibleIndex);
-        } else if (hiddenIndex !== -1) {
-          viewId = uniquePathId.substring(0, hiddenIndex);
-        }
-        // If neither is found, it might be a circle ID like 'prefix_index_circle', keep the prefix part
-        else if (uniquePathId.endsWith('_circle')) {
-           const circleParts = uniquePathId.split('_');
-           viewId = circleParts.slice(0, -2).join('_'); // Remove index and 'circle'
-        }
-        // Fallback: if the format is unexpected, use the full ID (less ideal)
-        else {
-            console.warn(`Could not reliably extract viewId from pathId: ${uniquePathId}`);
+        // Determine the correct viewId for the measurement state
+        let measurementViewId;
+        // Check if the path ID indicates it belongs to the combined standard layout
+        if (uniquePathId.startsWith('standard_')) {
+            measurementViewId = "standard_layout"; // Use the combined view ID
+            console.log(`[INFO] Clicked path ${uniquePathId} belongs to standard_layout.`);
+        } else {
+            // Otherwise, extract viewId for part views (assuming format like PartName_viewName_...)
+            const parts = uniquePathId.split('_');
+            if (parts.length >= 2) {
+                 // Attempt to reconstruct part/view name (e.g., "ComponentName_front")
+                 // This might need adjustment based on actual part path ID format
+                 measurementViewId = parts.slice(0, parts.length - 3).join('_'); // Heuristic guess
+                 console.log(`[INFO] Extracted part viewId: ${measurementViewId} from ${uniquePathId}`);
+            } else {
+                 measurementViewId = uniquePathId; // Fallback
+                 console.warn(`[WARN] Could not reliably extract part viewId from pathId: ${uniquePathId}`);
+            }
         }
 
 
         newMeasurements[uniquePathId] = {
           pathId: uniquePathId, // This is the full, unique path segment ID
           type: path.geometry.type,
-          // geometry: path.geometry, // REMOVED: Geometry will be looked up dynamically
           textPosition: initialTextPosition,
-          viewId: viewId,
+          viewId: measurementViewId, // Store the determined view ID
         };
         console.log(`--- Added Measurement ---`);
         console.log(`  ID: ${uniquePathId}`);
         console.log(`  Type: ${path.geometry.type}`);
-        // console.log(`  Geometry:`, path.geometry); // REMOVED
         console.log(`  Initial Text Pos:`, initialTextPosition);
-        console.log(`  View ID: ${newMeasurements[uniquePathId].viewId}`);
+        console.log(`  Stored View ID: ${measurementViewId}`); // Log the stored view ID
         console.log(`------------------------`);
       }
 
@@ -134,44 +131,32 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
   }, [resetInteraction]); // Dependency on hook's reset function
 
   // --- Layout Calculation ---
-  const standardViews = projections.standard;
-  let frontViewData, topViewData, rightViewData;
-  let frontWidth = 0, frontHeight = 0;
-  let topWidth = 0, topHeight = 0;
-  let rightWidth = 0, rightHeight = 0;
-  const layoutGap = 20; // Gap between views in pixels
+  const standardLayout = projections.standardLayout; // Check for the new combined layout
+  const partsLayout = projections.parts;
+  let standardLayoutData = null;
+  let standardLayoutWidth = 0, standardLayoutHeight = 0;
+  const initialOffsetX = 50; // Base offset for positioning content
+  const initialOffsetY = 50;
+  const layoutGap = 20; // Gap used for positioning parts below standard layout
 
-  // Create unique view IDs for standard views
-  const standardFrontViewId = "standard_front";
-  const standardTopViewId = "standard_top";
-  const standardRightViewId = "standard_right";
-
-  if (standardViews) {
-    frontViewData = standardViews.frontView ? parseViewBox(standardViews.frontView.combinedViewBox) : null;
-    topViewData = standardViews.topView ? parseViewBox(standardViews.topView.combinedViewBox) : null;
-    rightViewData = standardViews.rightView ? parseViewBox(standardViews.rightView.combinedViewBox) : null;
-
-    if (frontViewData) {
-      frontWidth = frontViewData.width * scale;
-      frontHeight = frontViewData.height * scale;
-    }
-    if (topViewData) {
-      topWidth = topViewData.width * scale;
-      topHeight = topViewData.height * scale;
-    }
-    if (rightViewData) {
-      rightWidth = rightViewData.width * scale;
-      rightHeight = rightViewData.height * scale;
+  // Calculate dimensions for the combined standard layout if it exists
+  if (standardLayout && standardLayout.combinedViewBox) {
+    standardLayoutData = parseViewBox(standardLayout.combinedViewBox);
+    if (standardLayoutData) {
+      standardLayoutWidth = standardLayoutData.width * scale;
+      standardLayoutHeight = standardLayoutData.height * scale;
+      console.log("[INFO] Standard Layout Dimensions (scaled):", standardLayoutWidth, standardLayoutHeight);
+      console.log("[INFO] Standard Layout ViewBox:", standardLayout.combinedViewBox);
+    } else {
+        console.warn("[WARN] Could not parse standardLayout viewBox:", standardLayout.combinedViewBox);
     }
   }
 
-  // Calculate positions according to standard engineering drawing layout
-  const initialOffsetX = 50;
-  const initialOffsetY = 50; // Start with front view at top
+  // Position for the single standard layout view
+  const standardLayoutPos = [initialOffsetX, initialOffsetY];
 
-  const frontPos = [initialOffsetX, initialOffsetY]; // Front view at top
-  const topPos = [initialOffsetX + (frontWidth - topWidth) / 2, initialOffsetY + frontHeight + layoutGap]; // Top view below front view
-  const rightPos = [initialOffsetX + frontWidth + layoutGap, initialOffsetY + (frontHeight - rightHeight) / 2]; // Right view to the right of front
+  // Calculate top position for the parts section, placed below the standard layout
+  const partsTopPosition = initialOffsetY + (standardLayoutHeight > 0 ? standardLayoutHeight + layoutGap * 2 : 0);
 
   return (
     <div
@@ -214,67 +199,44 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
           transformOrigin: '0 0',
         }}
       >
-        {/* Standard Projections */}
-        {standardViews && (
-          <>
-            {/* Front View */}
-            {standardViews.frontView && frontViewData && (
-              <ProjectionView
-                projection={standardViews.frontView}
-                title="Front View"
-                position={frontPos}
-                dimensions={{ width: frontWidth, height: frontHeight }}
-                onPathClick={handlePathClick}
-                viewId={standardFrontViewId}
-                activeMeasurements={activeMeasurements}
-                onMeasurementUpdate={handleMeasurementUpdate}
-              />
-            )}
-
-            {/* Top View */}
-            {standardViews.topView && topViewData && (
-              <ProjectionView
-                projection={standardViews.topView}
-                title="Top View"
-                position={topPos}
-                dimensions={{ width: topWidth, height: topHeight }}
-                onPathClick={handlePathClick}
-                viewId={standardTopViewId}
-                activeMeasurements={activeMeasurements}
-                onMeasurementUpdate={handleMeasurementUpdate}
-              />
-            )}
-
-            {/* Right View */}
-            {standardViews.rightView && rightViewData && (
-              <ProjectionView
-                projection={standardViews.rightView}
-                title="Right View"
-                position={rightPos}
-                dimensions={{ width: rightWidth, height: rightHeight }}
-                onPathClick={handlePathClick}
-                viewId={standardRightViewId}
-                activeMeasurements={activeMeasurements}
-                onMeasurementUpdate={handleMeasurementUpdate}
-              />
-            )}
-          </>
+        {/* Combined Standard Layout View */}
+        {standardLayout && standardLayoutData && (
+          <ProjectionView
+            // Pass the necessary parts of standardLayout to ProjectionView
+            projection={{
+                // ProjectionView expects visible/hidden structure, but we have combined paths.
+                // We'll pass all paths and let ProjectionView handle rendering them.
+                // We might need to adjust ProjectionView later if this causes issues.
+                // For now, create a structure it might expect, using the combined data.
+                visible: { paths: standardLayout.paths.filter(p => p.id.includes('_visible_') || p.id.includes('_circle')), viewBox: standardLayout.combinedViewBox }, // Approximate structure
+                hidden: { paths: standardLayout.paths.filter(p => p.id.includes('_hidden_')), viewBox: standardLayout.combinedViewBox }, // Approximate structure
+                combinedViewBox: standardLayout.combinedViewBox,
+                // Pass all paths directly if ProjectionView is adapted to handle it
+                allPaths: standardLayout.paths // Pass all paths for potential direct use
+            }}
+            title="Standard Views" // Single title for the combined layout
+            position={standardLayoutPos}
+            dimensions={{ width: standardLayoutWidth, height: standardLayoutHeight }}
+            onPathClick={handlePathClick}
+            viewId="standard_layout" // Single ID for the combined layout view
+            activeMeasurements={activeMeasurements}
+            onMeasurementUpdate={handleMeasurementUpdate}
+          />
         )}
 
-        {/* Part Projections - position below the standard views */}
-        {projections.parts && projections.parts.length > 0 && (
+        {/* Part Projections - position below the standard layout */}
+        {partsLayout && partsLayout.length > 0 && (
           <div style={{
             position: 'absolute', // Position relative to the zoom/pan container
-            // Calculate top based on standard view layout height
-            top: `${initialOffsetY + frontHeight + (topViewData ? topHeight + layoutGap : 0) + layoutGap * 2}px`,
+            top: `${partsTopPosition}px`, // Use calculated top position
             left: `${initialOffsetX}px`,
             width: 'max-content' // Allow container to grow with parts
           }}>
             <h3 style={{ padding: '0 0 5px 0', margin: 0, fontSize: '14px', fontWeight: 'bold' }}>
-              Component Views
+              {standardLayout ? 'Component Views' : 'Part Views'} {/* Adjust title based on context */}
             </h3>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              {projections.parts.map((part, index) => (
+              {partsLayout.map((part, index) => (
                 <PartView
                   key={index}
                   part={part}

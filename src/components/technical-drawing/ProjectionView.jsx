@@ -79,41 +79,35 @@ export default function ProjectionView({ projection, title, position, dimensions
               .filter(m => m.viewId === viewId) // Only show measurements for this specific view instance
               .map(measurement => {
                 // Find the current path data using the pathId from the measurement state
-                const pathIdParts = measurement.pathId.split('_');
-                const visibility = pathIdParts[pathIdParts.length - 3]; // 'visible' or 'hidden'
-                const originalIdOrIndex = pathIdParts.slice(pathIdParts.length - 2).join('_'); // e.g., "0_0" or "circle_1"
-
+                // Look in the combined 'allPaths' array if available (for standardLayout),
+                // otherwise fall back to checking visible/hidden separately (for parts).
                 let currentPath = null;
-                const pathsToCheck = visibility === 'visible' ? projection.visible?.paths : projection.hidden?.paths;
+                const allPaths = projection.allPaths; // Use the combined list passed from Canvas
 
-                if (pathsToCheck) {
-                  // Attempt to find by matching the end of the ID (originalId_index or type_index)
-                  currentPath = pathsToCheck.find(p => {
-                    const pIdParts = `${p.id || ''}`.split('_'); // Handle cases where id might be numeric
-                    const pOriginalIdOrIndex = pIdParts.slice(pIdParts.length - 2).join('_');
-                    // Check if the end part matches (e.g., "0_0" === "0_0" or "circle_1" === "circle_1")
-                    // Or handle cases where the stored ID might just be the index if p.id wasn't set
-                    return pOriginalIdOrIndex === originalIdOrIndex || `${p.id}` === originalIdOrIndex;
-                  });
+                if (allPaths) {
+                    // Direct lookup using the unique pathId stored in the measurement state
+                    currentPath = allPaths.find(p => p.id === measurement.pathId);
+                    if (!currentPath) {
+                         console.warn(`[WARN] Measurement Lookup: Path with ID ${measurement.pathId} not found in projection.allPaths for view ${viewId}.`);
+                    }
+                } else {
+                    // Fallback for older structure or parts (shouldn't be needed for standardLayout now)
+                    console.warn(`[WARN] Measurement Lookup: projection.allPaths not found for view ${viewId}. Falling back to visible/hidden lookup.`);
+                    const pathsToCheck = measurement.pathId.includes('_visible_') || measurement.pathId.includes('_circle')
+                        ? projection.visible?.paths
+                        : projection.hidden?.paths;
 
-                  // Fallback if ID matching fails (e.g., if IDs weren't consistently set during generation)
-                  // This assumes the index part of the uniquePathId corresponds to the array index
-                  if (!currentPath) {
-                     const indexStr = pathIdParts[pathIdParts.length - 1];
-                     const index = parseInt(indexStr, 10);
-                     if (!isNaN(index) && index >= 0 && index < pathsToCheck.length) {
-                        // Basic check: does the type match?
-                        if (pathsToCheck[index]?.geometry?.type === measurement.type) {
-                           // console.warn(`Measurement ${measurement.pathId}: Falling back to index-based path lookup.`);
-                           currentPath = pathsToCheck[index];
-                        }
-                     }
-                  }
+                    if (pathsToCheck) {
+                        currentPath = pathsToCheck.find(p => p.id === measurement.pathId);
+                    }
+                     if (!currentPath) {
+                         console.warn(`[WARN] Measurement Fallback Lookup: Path with ID ${measurement.pathId} not found in visible/hidden paths for view ${viewId}.`);
+                    }
                 }
 
 
                 if (!currentPath || !currentPath.geometry) {
-                  console.warn(`Could not find current geometry for measurement: ${measurement.pathId}`);
+                  console.warn(`[WARN] Could not find valid geometry for measurement: ${measurement.pathId} in view ${viewId}`);
                   return null; // Don't render measurement if geometry is missing
                 }
 
