@@ -4,6 +4,8 @@ import 'svg2pdf.js'; // Side-effect import
 import { parseViewBox } from '../utils/svgUtils.js';
 import { vec } from '../utils/geometryUtils.js'; // Although not directly used here, it was in the original file, keeping for potential future use or if renderMeasurementToSvg needs it implicitly.
 
+const LOG_PREFIX = "[PDF Export]";
+
 // --- Helper Function for Measurement SVG Rendering (for PDF) ---
 // Replicates MeasurementDisplay logic but creates SVG elements directly
 const renderMeasurementToSvg = (measurementData, geometry) => {
@@ -114,16 +116,19 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
   // --- PDF Rendering Helper (Using Direct Transforms) ---
   // Wrapped in useCallback to ensure stability if passed as dependency
   const renderViewToPdfSvg = useCallback((targetSvgGroup, viewData, viewTitle, position, dimensions, viewId) => {
+    console.log(`${LOG_PREFIX} Rendering View: ${viewTitle} (ID: ${viewId}) at [${position}] with target dimensions ${dimensions.width}x${dimensions.height}mm`);
     if (!viewData || !dimensions || !viewData.combinedViewBox) {
-      console.warn(`Skipping render for view ${viewId || viewTitle} due to missing data.`);
+      console.warn(`${LOG_PREFIX} Skipping render for view ${viewId || viewTitle} due to missing data:`, { viewData, dimensions });
       return;
     }
     const [x, y] = position;
     const { width: targetWidth, height: targetHeight } = dimensions; // Target area on PDF page (mm)
+    console.log(`${LOG_PREFIX}   View Target Area: x=${x}, y=${y}, width=${targetWidth}, height=${targetHeight}`);
 
     const viewBoxData = parseViewBox(viewData.combinedViewBox);
+    console.log(`${LOG_PREFIX}   Original Combined ViewBox: ${viewData.combinedViewBox}`, viewBoxData);
     if (!viewBoxData || viewBoxData.width <= 0 || viewBoxData.height <= 0) {
-      console.warn(`Skipping render for view ${viewId || viewTitle} due to invalid viewBox: ${viewData.combinedViewBox}`);
+      console.warn(`${LOG_PREFIX} Skipping render for view ${viewId || viewTitle} due to invalid viewBox: ${viewData.combinedViewBox}`);
       return;
     }
 
@@ -148,20 +153,25 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
 
     // --- Calculate Transformation ---
     const scaleX = targetWidth / viewBoxData.width;
-    const scaleY = targetHeight / viewBoxData.height;
+    const scaleY = (viewBoxData.height > 1e-6) ? targetHeight / viewBoxData.height : 1; // Avoid division by zero
     const scale = Math.min(scaleX, scaleY); // Maintain aspect ratio
+    console.log(`${LOG_PREFIX}   Calculated Scale: scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}, finalScale=${scale.toFixed(4)}`);
 
     // Calculate translation to center the scaled content
     const scaledContentWidth = viewBoxData.width * scale;
     const scaledContentHeight = viewBoxData.height * scale;
     const translateX = (targetWidth - scaledContentWidth) / 2 - viewBoxData.x * scale;
     const translateY = (targetHeight - scaledContentHeight) / 2 - viewBoxData.y * scale;
+    console.log(`${LOG_PREFIX}   Calculated Translation: dX=${translateX.toFixed(2)}, dY=${translateY.toFixed(2)} (for centering within target area)`);
+    console.log(`${LOG_PREFIX}   Scaled Content Size: ${scaledContentWidth.toFixed(2)}x${scaledContentHeight.toFixed(2)}mm`);
 
     // --- Create Content Group with Transform ---
     // This group holds the actual drawing paths and measurements
     const contentGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     // Apply translation to position the content area below the title, then apply scaling and centering transform
-    contentGroup.setAttribute('transform', `translate(0, ${viewTitleHeight}) translate(${translateX}, ${translateY}) scale(${scale})`);
+    const contentTransform = `translate(0, ${viewTitleHeight}) translate(${translateX}, ${translateY}) scale(${scale})`;
+    contentGroup.setAttribute('transform', contentTransform);
+    console.log(`${LOG_PREFIX}   Applied Content Group Transform: ${contentTransform}`);
     viewGroup.appendChild(contentGroup);
 
     // Add Border around the content area (positioned relative to viewGroup)
@@ -178,6 +188,7 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
     // --- Render Paths into Transformed Content Group ---
     // Adjust stroke width based on the calculated scale
     const strokeScale = scale > 0 ? 1 / scale : 1;
+    console.log(`${LOG_PREFIX}   Stroke Scale Factor (for dashes): ${strokeScale.toFixed(3)}`);
 
     // Hidden Paths
     (viewData.hidden?.paths || []).forEach(path => {
@@ -230,80 +241,94 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
           // Measurements are rendered in the original coordinate system; the group transform handles scaling/positioning
           contentGroup.appendChild(measurementSvgGroup);
         } else {
-           console.warn(`PDF Export (View: ${viewId}): Could not find geometry for measurement ${measurement.pathId}`);
+           console.warn(`${LOG_PREFIX} PDF Export (View: ${viewId}): Could not find geometry for measurement ${measurement.pathId}`);
         }
       });
+    console.log(`${LOG_PREFIX} Finished Rendering View: ${viewTitle} (ID: ${viewId})`);
   }, [activeMeasurements]); // Dependency: activeMeasurements
 
 
   // --- PDF Export Logic ---
   const exportPdf = useCallback(async () => {
-    console.log("Starting PDF Export...");
+    console.log(`${LOG_PREFIX} Starting PDF Export...`);
+    console.log(`${LOG_PREFIX} Input Projections:`, projections);
+    console.log(`${LOG_PREFIX} Input Measurements:`, activeMeasurements);
 
-    if (!projections || (!projections.standard && (!projections.parts || projections.parts.length === 0))) {
-      console.error("No projection data available for PDF export.");
+
+    // Check if we have standard layout OR parts data
+    if (!projections || (!projections.standardLayout && (!projections.parts || projections.parts.length === 0))) {
+      console.error(`${LOG_PREFIX} No projection data available for PDF export (Requires standardLayout or parts array). Data:`, projections);
       alert("No drawing data found to export.");
       return;
     }
+    // <-- Removed the extra brace here
 
     // PDF Page Layout Constants (mm)
-    const pdfScale = 1; // 1 SVG unit = 1 PDF unit (mm)
-    const pageMargin = 10;
-    const viewGap = 10;
-    const mainTitleHeight = 8; // Space for main title (Part name or "Standard Views")
-    const viewTitleHeight = 5; // Space for view name (Front, Top, Right) within its box
-    const mainTitleFontSize = 4; // Font size (mm)
-    const viewTitleFontSize = 3; // View name font size (mm)
+    console.log(`${LOG_PREFIX} Defining Page Layout Constants...`);
+    const pdfScale = 1; // 1 SVG unit = 1 PDF unit (mm) - Assuming SVG units are mm
+    const pageMargin = 10; // mm
+    const viewGap = 10; // mm
+    const mainTitleHeight = 8; // mm
+    const viewTitleHeight = 5; // mm
+    const mainTitleFontSize = 4; // mm
+    const viewTitleFontSize = 3; // mm
+    console.log(`${LOG_PREFIX}   Constants: pdfScale=${pdfScale}, pageMargin=${pageMargin}, viewGap=${viewGap}, mainTitleHeight=${mainTitleHeight}, viewTitleHeight=${viewTitleHeight}`);
 
     let pdf;
     let pdfFilename = 'technical-drawing.pdf';
 
     try {
-      // --- Case 1: Standard Views (Single Part) ---
-      if (projections.standard) {
-        console.log("Exporting Standard Views (Single Page)...");
+      // --- Case 1: Standard Layout (Single Component) ---
+      if (projections.standardLayout) {
+        console.log(`${LOG_PREFIX} Exporting Standard Layout (Single Page)...`);
         pdfFilename = 'technical-drawing-standard.pdf';
-        const standardViews = projections.standard;
+        const standardLayout = projections.standardLayout;
+        console.log(`${LOG_PREFIX}   Standard Layout Data:`, standardLayout);
 
-        const frontView = standardViews.frontView;
-        const topView = standardViews.topView;
-        const rightView = standardViews.rightView;
-
-        if (!frontView && !topView && !rightView) {
-          throw new Error("Standard views data is missing.");
+        if (!standardLayout.combinedViewBox) {
+           console.error(`${LOG_PREFIX} Standard layout is missing combinedViewBox.`);
+           throw new Error("Standard layout data is incomplete.");
         }
 
-        // Calculate layout for standard views
-        let frontVB = frontView ? parseViewBox(frontView.combinedViewBox) : null;
-        let topVB = topView ? parseViewBox(topView.combinedViewBox) : null;
-        let rightVB = rightView ? parseViewBox(rightView.combinedViewBox) : null;
+        // Calculate layout based on the combined viewBox of the standard layout
+        console.log(`${LOG_PREFIX}   Calculating layout for standard layout...`);
+        const layoutVB = parseViewBox(standardLayout.combinedViewBox);
+        if (!layoutVB || layoutVB.width <= 0 || layoutVB.height <= 0) {
+            console.error(`${LOG_PREFIX} Invalid combinedViewBox in standard layout:`, standardLayout.combinedViewBox);
+            throw new Error("Invalid view dimensions in standard layout.");
+        }
+        console.log(`${LOG_PREFIX}     Layout ViewBox:`, layoutVB);
 
-        let frontW = frontVB ? frontVB.width * pdfScale : 0;
-        let frontH = frontVB ? frontVB.height * pdfScale : 0;
-        let topW = topVB ? topVB.width * pdfScale : 0;
-        let topH = topVB ? topVB.height * pdfScale : 0;
-        let rightW = rightVB ? rightVB.width * pdfScale : 0;
-        let rightH = rightVB ? rightVB.height * pdfScale : 0;
+        // Determine page size needed to fit the entire layout
+        const layoutWidth = layoutVB.width * pdfScale;
+        const layoutHeight = layoutVB.height * pdfScale;
+        console.log(`${LOG_PREFIX}     Scaled Layout Dimensions (WxH): ${layoutWidth.toFixed(2)}x${layoutHeight.toFixed(2)}`);
 
         const contentStartX = pageMargin;
         const contentStartY = pageMargin + mainTitleHeight;
+        console.log(`${LOG_PREFIX}     Content Area Start: x=${contentStartX}, y=${contentStartY}`);
 
-        // Calculate positions including the view title height
-        const frontPos = [contentStartX, contentStartY];
-        const topPos = [contentStartX + (frontW - topW) / 2, contentStartY + frontH + viewTitleHeight + viewGap];
-        const rightPos = [contentStartX + frontW + viewTitleHeight + viewGap, contentStartY + (frontH - rightH) / 2];
+        // The entire layout will be rendered starting at contentStartX, contentStartY
+        const layoutPos = [contentStartX, contentStartY];
+        const layoutDimensions = { width: layoutWidth, height: layoutHeight };
 
         // Calculate required page dimensions
-        const pageContentWidth = Math.max(frontW, topW, rightPos[0] + rightW - contentStartX);
-        const pageContentHeight = Math.max(frontH + viewTitleHeight, topPos[1] + topH + viewTitleHeight - contentStartY, rightH + viewTitleHeight + (frontH - rightH) / 2);
+        console.log(`${LOG_PREFIX}     Calculating required page dimensions...`);
+        const pageContentWidth = layoutWidth;
+        const pageContentHeight = layoutHeight + viewTitleHeight; // Add space for the single title
+        console.log(`${LOG_PREFIX}       Page Content Area Size (WxH): ${pageContentWidth.toFixed(2)}x${pageContentHeight.toFixed(2)}`);
         const totalPageWidth = pageContentWidth + 2 * pageMargin;
         const totalPageHeight = pageContentHeight + mainTitleHeight + 2 * pageMargin;
+        console.log(`${LOG_PREFIX}     Total Page Size (WxH): ${totalPageWidth.toFixed(2)}x${totalPageHeight.toFixed(2)} mm`);
 
         // Initialize PDF
         const orientation = totalPageWidth > totalPageHeight ? 'l' : 'p';
-        pdf = new jsPDF({ orientation, unit: 'mm', format: [totalPageWidth, totalPageHeight] });
+        const format = [totalPageWidth, totalPageHeight];
+        console.log(`${LOG_PREFIX}   Initializing jsPDF: orientation='${orientation}', unit='mm', format=[${format.map(d => d.toFixed(2))}]`);
+        pdf = new jsPDF({ orientation, unit: 'mm', format });
 
         // Create Temporary SVG for the page
+        console.log(`${LOG_PREFIX}   Creating temporary SVG container (${totalPageWidth.toFixed(2)}x${totalPageHeight.toFixed(2)})...`);
         const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         tempSvg.setAttribute('width', totalPageWidth);
         tempSvg.setAttribute('height', totalPageHeight);
@@ -311,7 +336,9 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         const svgPageGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         tempSvg.appendChild(svgPageGroup);
 
-        // Add Main Title
+        // Add Main Title (Could potentially use a model name if available)
+        const mainTitleContent = "Standard Layout"; // Generic title for now
+        console.log(`${LOG_PREFIX}     Adding Main Title: "${mainTitleContent}"`);
         const mainTitleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         mainTitleText.setAttribute('x', totalPageWidth / 2);
         mainTitleText.setAttribute('y', pageMargin + mainTitleHeight / 2);
@@ -321,120 +348,141 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         mainTitleText.setAttribute('dominant-baseline', 'middle');
         mainTitleText.setAttribute('fill', '#000000');
         mainTitleText.setAttribute('font-weight', 'bold');
-        mainTitleText.textContent = "Standard Views"; // Or potentially a model name if available
+        mainTitleText.textContent = mainTitleContent;
         svgPageGroup.appendChild(mainTitleText);
 
-        // Render views using the helper
-        const stdFrontId = "standard_front";
-        const stdTopId = "standard_top";
-        const stdRightId = "standard_right";
-        if (frontView && frontVB) renderViewToPdfSvg(svgPageGroup, frontView, "Front View", frontPos, { width: frontW, height: frontH }, stdFrontId);
-        if (topView && topVB) renderViewToPdfSvg(svgPageGroup, topView, "Top View", topPos, { width: topW, height: topH }, stdTopId);
-        if (rightView && rightVB) renderViewToPdfSvg(svgPageGroup, rightView, "Right View", rightPos, { width: rightW, height: rightH }, stdRightId);
+        // Render the entire standard layout as one view
+        console.log(`${LOG_PREFIX}     Rendering standard layout into SVG...`);
+        const layoutId = "standard_layout"; // Unique ID for measurements if needed later
+        // Construct the expected viewData structure for the rendering function
+        const standardLayoutViewData = {
+          combinedViewBox: standardLayout.combinedViewBox,
+          visible: { paths: standardLayout.paths || [] }, // Ensure paths array exists
+          hidden: { paths: [] } // Assume no hidden paths for combined layout
+        };
+        renderViewToPdfSvg(svgPageGroup, standardLayoutViewData, mainTitleContent, layoutPos, layoutDimensions, layoutId);
 
-        // Add SVG element to PDF (Reverted to await + element)
-        console.log("Attempting to add single page SVG element to PDF:", tempSvg);
+        // Add SVG element to PDF
+        console.log(`${LOG_PREFIX}   Attempting to add single page SVG element to PDF...`);
         try {
             await pdf.svg(tempSvg, { x: 0, y: 0, width: totalPageWidth, height: totalPageHeight });
-            console.log("Successfully added single page SVG element.");
+            console.log(`${LOG_PREFIX}   Successfully added single page SVG element.`);
         } catch (svgError) {
-            console.error("Error adding single page SVG element:", svgError);
-            throw svgError; // Re-throw error to be caught by outer try-catch
+            console.error(`${LOG_PREFIX} Error adding single page SVG element:`, svgError);
+            throw svgError;
         }
-
       }
       // --- Case 2: Part Views (Assembly) ---
       else if (projections.parts && projections.parts.length > 0) {
-        console.log("Exporting Part Views (Multi-Page)...");
+        console.log(`${LOG_PREFIX} Exporting Part Views (Multi-Page)...`);
         pdfFilename = 'technical-drawing-parts.pdf';
+        console.log(`${LOG_PREFIX}   Parts Data:`, projections.parts);
 
         // Initialize PDF with first page's settings (calculate first page dimensions outside loop)
+        console.log(`${LOG_PREFIX}   Calculating dimensions for the first valid part to initialize PDF...`);
         let firstPartIndex = projections.parts.findIndex(part => part.views?.front || part.views?.top || part.views?.right);
         if (firstPartIndex === -1) {
+            console.error(`${LOG_PREFIX} No parts with valid views found for PDF export.`);
             throw new Error("No parts with valid views found for PDF export.");
         }
         const firstPart = projections.parts[firstPartIndex];
+        console.log(`${LOG_PREFIX}     First valid part found at index ${firstPartIndex}: ${firstPart.name}`);
         const fpFrontView = firstPart.views?.front;
         const fpTopView = firstPart.views?.top;
         const fpRightView = firstPart.views?.right;
-        let fpFrontVB = fpFrontView ? parseViewBox(fpFrontView.combinedViewBox) : null;
-        let fpTopVB = fpTopView ? parseViewBox(fpTopView.combinedViewBox) : null;
-        let fpRightVB = fpRightView ? parseViewBox(fpRightView.combinedViewBox) : null;
-        let fpFrontW = fpFrontVB ? fpFrontVB.width * pdfScale : 0;
-        let fpFrontH = fpFrontVB ? fpFrontVB.height * pdfScale : 0;
-        let fpTopW = fpTopVB ? fpTopVB.width * pdfScale : 0;
-        let fpTopH = fpTopVB ? fpTopVB.height * pdfScale : 0;
-        let fpRightW = fpRightVB ? fpRightVB.width * pdfScale : 0;
-        let fpRightH = fpRightVB ? fpRightVB.height * pdfScale : 0;
+        let fpFrontVB = fpFrontView ? parseViewBox(fpFrontView.combinedViewBox) : { x:0, y:0, width:0, height:0 };
+        let fpTopVB = fpTopView ? parseViewBox(fpTopView.combinedViewBox) : { x:0, y:0, width:0, height:0 };
+        let fpRightVB = fpRightView ? parseViewBox(fpRightView.combinedViewBox) : { x:0, y:0, width:0, height:0 };
+        let fpFrontW = fpFrontVB.width * pdfScale;
+        let fpFrontH = fpFrontVB.height * pdfScale;
+        let fpTopW = fpTopVB.width * pdfScale;
+        let fpTopH = fpTopVB.height * pdfScale;
+        let fpRightW = fpRightVB.width * pdfScale;
+        let fpRightH = fpRightVB.height * pdfScale;
         const fpContentStartX = pageMargin;
         const fpContentStartY = pageMargin + mainTitleHeight;
-        const fpRightPosCalcX = fpContentStartX + fpFrontW + viewTitleHeight + viewGap; // Calculate X pos of right view relative to start
+        const fpRightPosCalcX = fpContentStartX + fpFrontW + viewTitleHeight + viewGap;
         const fpPageContentWidth = Math.max(fpFrontW, fpTopW, fpRightPosCalcX + fpRightW - fpContentStartX);
-        const fpTopPosCalcY = fpContentStartY + fpFrontH + viewTitleHeight + viewGap; // Calculate Y pos of top view relative to start
-        const fpPageContentHeight = Math.max(fpFrontH + viewTitleHeight, fpTopPosCalcY + fpTopH - fpContentStartY, fpRightH + viewTitleHeight + (fpFrontH - fpRightH) / 2);
+        const fpTopPosCalcY = fpContentStartY + fpFrontH + viewTitleHeight + viewGap;
+        const fpPageContentHeight = Math.max(fpFrontH + viewTitleHeight, fpTopPosCalcY + fpTopH - fpContentStartY, fpContentStartY + (fpFrontH - fpRightH) / 2 + fpRightH + viewTitleHeight - fpContentStartY); // Corrected height calc
         const fpTotalPageWidth = fpPageContentWidth + 2 * pageMargin;
         const fpTotalPageHeight = fpPageContentHeight + mainTitleHeight + 2 * pageMargin;
         const fpOrientation = fpTotalPageWidth > fpTotalPageHeight ? 'l' : 'p';
         const fpFormat = [fpTotalPageWidth, fpTotalPageHeight];
-
+        console.log(`${LOG_PREFIX}     First Page Calculated Size (WxH): ${fpTotalPageWidth.toFixed(2)}x${fpTotalPageHeight.toFixed(2)} mm`);
+        console.log(`${LOG_PREFIX}   Initializing jsPDF for Multi-Part: orientation='${fpOrientation}', unit='mm', format=[${fpFormat.map(d => d.toFixed(2))}]`);
         pdf = new jsPDF({ orientation: fpOrientation, unit: 'mm', format: fpFormat });
 
         // Loop through parts asynchronously to generate and add pages
+        console.log(`${LOG_PREFIX}   Starting loop through parts...`);
         for (const [index, part] of projections.parts.entries()) { // Use for...of for async/await
           // Skip check if firstPartIndex logic already handled initialization correctly
           // We need the index relative to the original array if parts were skipped
-          const originalIndex = projections.parts.indexOf(part);
+          const originalIndex = projections.parts.indexOf(part); // Get original index in case some were skipped
 
-          console.log(`Processing Part ${originalIndex + 1}: ${part.name}`);
+          console.log(`${LOG_PREFIX} Processing Part ${originalIndex + 1}/${projections.parts.length}: ${part.name}`);
 
           const frontView = part.views?.front;
           const topView = part.views?.top;
           const rightView = part.views?.right;
+          console.log(`${LOG_PREFIX}   Part Views Data:`, { frontView, topView, rightView });
 
           if (!frontView && !topView && !rightView) {
-            console.warn(`Skipping part ${part.name} as it has no standard views.`);
+            console.warn(`${LOG_PREFIX} Skipping part ${part.name} (Index ${originalIndex}) as it has no standard views.`);
             continue; // Skip this part using continue in for...of
           }
 
           // Calculate layout for this part's page
-          let frontVB = frontView ? parseViewBox(frontView.combinedViewBox) : null;
-          let topVB = topView ? parseViewBox(topView.combinedViewBox) : null;
-          let rightVB = rightView ? parseViewBox(rightView.combinedViewBox) : null;
+          console.log(`${LOG_PREFIX}     Calculating layout for part ${part.name}...`);
+          let frontVB = frontView ? parseViewBox(frontView.combinedViewBox) : { x:0, y:0, width:0, height:0 };
+          let topVB = topView ? parseViewBox(topView.combinedViewBox) : { x:0, y:0, width:0, height:0 };
+          let rightVB = rightView ? parseViewBox(rightView.combinedViewBox) : { x:0, y:0, width:0, height:0 };
+          console.log(`${LOG_PREFIX}       Part ViewBoxes: Front=`, frontVB, `Top=`, topVB, `Right=`, rightVB);
 
-          let frontW = frontVB ? frontVB.width * pdfScale : 0;
-          let frontH = frontVB ? frontVB.height * pdfScale : 0;
-          let topW = topVB ? topVB.width * pdfScale : 0;
-          let topH = topVB ? topVB.height * pdfScale : 0;
-          let rightW = rightVB ? rightVB.width * pdfScale : 0;
-          let rightH = rightVB ? rightVB.height * pdfScale : 0;
+          let frontW = frontVB.width * pdfScale;
+          let frontH = frontVB.height * pdfScale;
+          let topW = topVB.width * pdfScale;
+          let topH = topVB.height * pdfScale;
+          let rightW = rightVB.width * pdfScale;
+          let rightH = rightVB.height * pdfScale;
+          console.log(`${LOG_PREFIX}       Part Scaled View Dimensions (WxH): Front=${frontW.toFixed(2)}x${frontH.toFixed(2)}, Top=${topW.toFixed(2)}x${topH.toFixed(2)}, Right=${rightW.toFixed(2)}x${rightH.toFixed(2)}`);
 
           const contentStartX = pageMargin;
           const contentStartY = pageMargin + mainTitleHeight;
           const frontPos = [contentStartX, contentStartY];
           const topPos = [contentStartX + (frontW - topW) / 2, contentStartY + frontH + viewTitleHeight + viewGap];
           const rightPos = [contentStartX + frontW + viewTitleHeight + viewGap, contentStartY + (frontH - rightH) / 2];
+          console.log(`${LOG_PREFIX}       Part Calculated View Positions [x, y]: Front=[${frontPos.map(p => p.toFixed(2))}], Top=[${topPos.map(p => p.toFixed(2))}], Right=[${rightPos.map(p => p.toFixed(2))}]`);
 
           const pageContentWidth = Math.max(frontW, topW, rightPos[0] + rightW - contentStartX);
-          const pageContentHeight = Math.max(frontH + viewTitleHeight, topPos[1] + topH + viewTitleHeight - contentStartY, rightH + viewTitleHeight + (frontH - rightH) / 2);
+          const pageContentHeight = Math.max(frontH + viewTitleHeight, topPos[1] + topH + viewTitleHeight - contentStartY, rightPos[1] + rightH + viewTitleHeight - contentStartY); // Corrected height calc
           const totalPageWidth = pageContentWidth + 2 * pageMargin;
           const totalPageHeight = pageContentHeight + mainTitleHeight + 2 * pageMargin;
+          console.log(`${LOG_PREFIX}     Part Page Size (WxH): ${totalPageWidth.toFixed(2)}x${totalPageHeight.toFixed(2)} mm`);
 
           const orientation = totalPageWidth > totalPageHeight ? 'l' : 'p';
           const format = [totalPageWidth, totalPageHeight];
 
-          // Add new page if it's not the first part
-          if (index > firstPartIndex) { // Use the found index of the first valid part
-             console.log(`Adding Page ${index + 1} to PDF`);
+          // Add new page if it's not the first part being *processed*
+          const isFirstProcessedPage = (index === firstPartIndex);
+          if (!isFirstProcessedPage) {
+             console.log(`${LOG_PREFIX}   Adding Page ${originalIndex + 1} to PDF with format=[${format.map(d => d.toFixed(2))}], orientation='${orientation}'`);
              pdf.addPage(format, orientation);
-          } else if (index === firstPartIndex && index > 0) {
-             // This handles the case where initial parts were skipped,
-             // ensuring the first *valid* part uses the pre-calculated format/orientation
-             // but doesn't call addPage if it's truly the first page being added.
-             console.log(`Processing first valid part (index ${index + 1}) for PDF`);
+          } else {
+             // If it IS the first processed page, but not the very first item in the array,
+             // we need to ensure the PDF object matches this part's dimensions.
+             // This scenario is less likely if the firstPartIndex logic works correctly, but good to log.
+             if (index > 0) {
+                console.log(`${LOG_PREFIX}   Processing first *valid* part (original index ${originalIndex + 1}) which is not the first item in the array. PDF already initialized.`);
+             } else {
+                console.log(`${LOG_PREFIX}   Processing first part (original index ${originalIndex + 1}). PDF already initialized.`);
+             }
           }
 
 
           // Create Temporary SVG for this page
+          console.log(`${LOG_PREFIX}     Creating temporary SVG container for part ${part.name} (${totalPageWidth.toFixed(2)}x${totalPageHeight.toFixed(2)})...`);
+          console.log(`${LOG_PREFIX}     Creating temporary SVG container for part ${part.name} (${totalPageWidth.toFixed(2)}x${totalPageHeight.toFixed(2)})...`);
           const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
           tempSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
           tempSvg.setAttribute('width', totalPageWidth);
@@ -444,6 +492,7 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
           tempSvg.appendChild(svgPageGroup);
 
           // Add Part Name Title
+          console.log(`${LOG_PREFIX}       Adding Main Title: "${part.name}"`);
           const mainTitleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
           mainTitleText.setAttribute('x', totalPageWidth / 2);
           mainTitleText.setAttribute('y', pageMargin + mainTitleHeight / 2);
@@ -457,6 +506,7 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
           svgPageGroup.appendChild(mainTitleText);
 
           // Render views using the helper
+          console.log(`${LOG_PREFIX}       Rendering individual views for part ${part.name} into SVG...`);
           const partIdBase = part.name.replace(/\s+/g, '_');
           const frontId = `${partIdBase}_front`;
           const topId = `${partIdBase}_top`;
@@ -467,24 +517,26 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
           if (rightView && rightVB) renderViewToPdfSvg(svgPageGroup, rightView, "Right View", rightPos, { width: rightW, height: rightH }, rightId);
 
           // Add SVG element to PDF page (with await)
-          console.log(`Adding SVG element for page ${originalIndex + 1} (${part.name}) to PDF:`, tempSvg);
+          console.log(`${LOG_PREFIX}     Attempting to add SVG element for page ${originalIndex + 1} (${part.name}) to PDF...`);
           await pdf.svg(tempSvg, { x: 0, y: 0, width: totalPageWidth, height: totalPageHeight });
-          console.log(`Finished adding SVG for page ${originalIndex + 1}`);
+          console.log(`${LOG_PREFIX}     Finished adding SVG for page ${originalIndex + 1}`);
 
         } // End for...of loop
+        console.log(`${LOG_PREFIX}   Finished processing all parts.`);
       }
 
       // --- Save the PDF ---
       if (pdf) {
+        console.log(`${LOG_PREFIX} Saving PDF as "${pdfFilename}"...`);
         pdf.save(pdfFilename);
-        console.log("PDF Export Successful:", pdfFilename);
+        console.log(`${LOG_PREFIX} PDF Export Successful: ${pdfFilename}`);
       } else {
-         console.warn("PDF object not initialized (likely no valid parts/views found). No export occurred.");
+         console.warn(`${LOG_PREFIX} PDF object not initialized (likely no valid parts/views found). No export occurred.`);
          alert("Could not generate PDF: No valid views found.");
       }
 
     } catch (error) {
-      console.error("Error during PDF generation:", error);
+      console.error(`${LOG_PREFIX} Error during PDF generation:`, error);
       alert(`Failed to export PDF: ${error.message}. See console for details.`);
     }
 
