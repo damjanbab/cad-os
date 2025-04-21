@@ -77,27 +77,18 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
         {frontView && frontViewData && (
           <div style={{
             position: 'absolute',
-            top: '0',
+            top: '0', // Keep positioning relative to the parent
             left: '0',
             width: `${frontWidth}px`,
-            height: `${frontHeight + titleHeight}px`,
-            border: '1px solid #ddd',
-            display: 'flex',
-            flexDirection: 'column'
+            height: `${frontHeight}px`, // Use only content height
+            // border: '1px solid #ddd', // Removed border
+            // display: 'flex', // No longer needed
+            // flexDirection: 'column' // No longer needed
           }}>
-            <div style={{
-              padding: '3px',
-              height: `${titleHeight}px`,
-              borderBottom: '1px solid #ddd',
-              fontSize: '10px',
-              boxSizing: 'border-box',
-              flexShrink: 0
-            }}>
-              Front
-            </div>
+            {/* Removed Title Div */}
             <div style={{
               width: '100%',
-              flexGrow: 1,
+              height: '100%', // Occupy the adjusted height
               position: 'relative'
             }}>
               <svg
@@ -189,27 +180,18 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
         {topView && topViewData && (
           <div style={{
             position: 'absolute',
-            top: `${frontHeight + titleHeight + layoutGap}px`,
+            top: `${frontHeight + layoutGap}px`, // Adjusted top position (removed titleHeight)
             left: `${(frontWidth - topWidth) / 2}px`, // Center below front view
             width: `${topWidth}px`,
-            height: `${topHeight + titleHeight}px`,
-            border: '1px solid #ddd',
-            display: 'flex',
-            flexDirection: 'column'
+            height: `${topHeight}px`, // Use only content height
+            // border: '1px solid #ddd', // Removed border
+            // display: 'flex', // No longer needed
+            // flexDirection: 'column' // No longer needed
           }}>
-            <div style={{
-              padding: '3px',
-              height: `${titleHeight}px`,
-              borderBottom: '1px solid #ddd',
-              fontSize: '10px',
-              boxSizing: 'border-box',
-              flexShrink: 0
-            }}>
-              Top
-            </div>
+            {/* Removed Title Div */}
             <div style={{
               width: '100%',
-              flexGrow: 1,
+              height: '100%', // Occupy the adjusted height
               position: 'relative'
             }}>
               <svg
@@ -301,27 +283,18 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
         {rightView && rightViewData && (
           <div style={{
             position: 'absolute',
-            top: `${(frontHeight - rightHeight) / 2}px`, // Center vertically relative to front view
+            top: `${(frontHeight - rightHeight) / 2}px`, // Center vertically relative to front view content height
             left: `${frontWidth + layoutGap}px`, // To the right of front view
             width: `${rightWidth}px`,
-            height: `${rightHeight + titleHeight}px`,
-            border: '1px solid #ddd',
-            display: 'flex',
-            flexDirection: 'column'
+            height: `${rightHeight}px`, // Use only content height
+            // border: '1px solid #ddd', // Removed border
+            // display: 'flex', // No longer needed
+            // flexDirection: 'column' // No longer needed
           }}>
-            <div style={{
-              padding: '3px',
-              height: `${titleHeight}px`,
-              borderBottom: '1px solid #ddd',
-              fontSize: '10px',
-              boxSizing: 'border-box',
-              flexShrink: 0
-            }}>
-              Right
-            </div>
+            {/* Removed Title Div */}
             <div style={{
               width: '100%',
-              flexGrow: 1,
+              height: '100%', // Occupy the adjusted height
               position: 'relative'
             }}>
               <svg
