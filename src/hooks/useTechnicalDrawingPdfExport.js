@@ -1,10 +1,27 @@
 import { useCallback } from 'react';
 import { jsPDF } from "jspdf";
 import 'svg2pdf.js'; // Side-effect import
-import { parseViewBox, combineViewBoxes } from '../utils/svgUtils.js'; // Added combineViewBoxes
+import { parseViewBox } from '../utils/svgUtils.js'; // Removed combineViewBoxes as it's not used directly here
 import { vec } from '../utils/geometryUtils.js'; // Although not directly used here, it was in the original file, keeping for potential future use or if renderMeasurementToSvg needs it implicitly.
 
 const LOG_PREFIX = "[PDF Export]";
+
+// --- Standard Paper Sizes (mm) ---
+const PAPER_SIZES = {
+  a4: { width: 210, height: 297 },
+  letter: { width: 215.9, height: 279.4 },
+  // Add more sizes if needed
+};
+
+// --- PDF Page Layout Constants (mm) ---
+const DEFAULT_PAPER_SIZE = 'a4'; // Or 'letter'
+const PAGE_MARGIN = 10; // mm
+const MAIN_TITLE_HEIGHT = 8; // mm
+const VIEW_TITLE_HEIGHT = 5; // mm // Height allocated for individual view titles (used within renderViewToPdfSvg)
+const MAIN_TITLE_FONT_SIZE = 4; // mm
+const VIEW_TITLE_FONT_SIZE = 3; // mm
+const VIEW_GAP = 10; // mm // Gap between views in combined part layouts
+const PDF_SCALE = 1; // 1 SVG unit = 1 PDF unit (mm) - Assuming SVG units are mm
 
 // --- SVG Path Transformation Helpers (Copied from technicalDrawingProcessor.js) ---
 
@@ -130,6 +147,54 @@ function serializePathData(pathDataArray) {
 
 // --- End SVG Path Transformation Helpers ---
 
+
+// --- Helper Function to Determine Optimal Page Layout ---
+/**
+ * Determines the optimal standard paper orientation and dimensions based on content aspect ratio.
+ * @param {number} contentWidth - Width of the drawing content (mm).
+ * @param {number} contentHeight - Height of the drawing content (mm).
+ * @param {string} paperSizeKey - Key for the desired paper size (e.g., 'a4').
+ * @returns {{orientation: 'p'|'l', width: number, height: number, printableWidth: number, printableHeight: number}}
+ */
+const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAULT_PAPER_SIZE) => {
+  const paper = PAPER_SIZES[paperSizeKey] || PAPER_SIZES.a4;
+  const contentAspectRatio = contentWidth > 1e-6 ? contentWidth / contentHeight : 1;
+
+  // Dimensions for portrait and landscape
+  const portrait = { width: paper.width, height: paper.height };
+  const landscape = { width: paper.height, height: paper.width };
+
+  // Printable area dimensions
+  const pPrintable = { width: portrait.width - 2 * PAGE_MARGIN, height: portrait.height - 2 * PAGE_MARGIN - MAIN_TITLE_HEIGHT };
+  const lPrintable = { width: landscape.width - 2 * PAGE_MARGIN, height: landscape.height - 2 * PAGE_MARGIN - MAIN_TITLE_HEIGHT };
+
+  // Calculate scaling factors for both orientations
+  const scaleP = Math.min(pPrintable.width / contentWidth, pPrintable.height / contentHeight);
+  const scaleL = Math.min(lPrintable.width / contentWidth, lPrintable.height / contentHeight);
+
+  // Choose orientation that gives better scale (less wasted space)
+  if (scaleL > scaleP) {
+    // Landscape is better fit
+    return {
+      orientation: 'l',
+      width: landscape.width,
+      height: landscape.height,
+      printableWidth: lPrintable.width,
+      printableHeight: lPrintable.height,
+    };
+  } else {
+    // Portrait is better or equal fit
+    return {
+      orientation: 'p',
+      width: portrait.width,
+      height: portrait.height,
+      printableWidth: pPrintable.width,
+      printableHeight: pPrintable.height,
+    };
+  }
+};
+
+
 // --- Helper Function for Measurement SVG Rendering (for PDF) ---
 // Replicates MeasurementDisplay logic but creates SVG elements directly
 const renderMeasurementToSvg = (measurementData, geometry) => {
@@ -235,158 +300,181 @@ const renderMeasurementToSvg = (measurementData, geometry) => {
 };
 
 
+
 export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
 
-  // --- PDF Rendering Helper (Modified to handle combined part layouts) ---
+  // --- PDF Rendering Helper (Modified for Standard Page Size & Printable Area) ---
   // Wrapped in useCallback to ensure stability if passed as dependency
-  const renderViewToPdfSvg = useCallback((targetSvgGroup, viewData, viewTitle, position, dimensions, viewId, isPartLayout = false, layoutOffsets = {}) => {
+  // Ensure constants defined outside the hook are accessible or passed if needed.
+  const renderViewToPdfSvg = useCallback((targetSvgGroup, viewData, viewTitle, position, printableDimensions, viewId, isPartLayout = false, layoutOffsets = {}) => {
     const logPrefixRender = `${LOG_PREFIX} Render[${viewId || viewTitle}]`;
-    console.log(`${logPrefixRender} Rendering ${isPartLayout ? 'Part Layout' : 'View'} at [${position}] target ${dimensions.width}x${dimensions.height}mm`);
+    // position is the top-left of the printable area (e.g., [PAGE_MARGIN, PAGE_MARGIN + MAIN_TITLE_HEIGHT])
+    // printableDimensions is the { width, height } of the area *within* margins where content should be drawn
+    console.log(`${logPrefixRender} Rendering ${isPartLayout ? 'Part Layout' : 'View'} into printable area at [${position}] target ${printableDimensions.width}x${printableDimensions.height}mm`);
 
-    if (!viewData || !dimensions || !viewData.combinedViewBox) {
-      console.warn(`${logPrefixRender} Skipping render due to missing data:`, { viewData, dimensions });
+    if (!viewData || !printableDimensions || !viewData.combinedViewBox) {
+      console.warn(`${logPrefixRender} Skipping render due to missing data:`, { viewData, printableDimensions });
       return;
     }
-    const [x, y] = position;
-    const { width: targetWidth, height: targetHeight } = dimensions; // Target area on PDF page (mm)
-    console.log(`${LOG_PREFIX}   View Target Area: x=${x}, y=${y}, width=${targetWidth}, height=${targetHeight}`);
+    const [printableX, printableY] = position;
+    const { width: targetWidth, height: targetHeight } = printableDimensions; // Target *printable* area on PDF page (mm)
+    console.log(`${LOG_PREFIX}   View Printable Area: x=${printableX}, y=${printableY}, width=${targetWidth}, height=${targetHeight}`);
 
     const combinedViewBoxData = parseViewBox(viewData.combinedViewBox);
-    console.log(`${logPrefixRender}   Layout Combined ViewBox: ${viewData.combinedViewBox}`, combinedViewBoxData);
+    console.log(`${logPrefixRender}   Layout Combined ViewBox (Content Source): ${viewData.combinedViewBox}`, combinedViewBoxData);
     if (!combinedViewBoxData || combinedViewBoxData.width <= 0 || combinedViewBoxData.height <= 0) {
       console.warn(`${logPrefixRender} Skipping render due to invalid combined viewBox: ${viewData.combinedViewBox}`);
       return;
     }
 
-    // Create a group for this whole layout/view (title + content)
-    const layoutGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    layoutGroup.setAttribute('transform', `translate(${x}, ${y})`);
-    targetSvgGroup.appendChild(layoutGroup);
+    // Create a group for this whole view, positioned at the top-left of the printable area
+    const viewGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    viewGroup.setAttribute('transform', `translate(${printableX}, ${printableY})`);
+    targetSvgGroup.appendChild(viewGroup);
 
-    // --- Add Title (Main title for the layout/view) ---
-    const titleHeight = 5; // Use consistent height for the title area above the content
-    const viewTitleFontSize = 3; // Font size (mm)
+    // --- Add View Title (Optional, maybe remove if main title is enough?) ---
+    // If keeping, position it relative to the viewGroup (printable area)
+    // Accessing VIEW_TITLE_HEIGHT and VIEW_TITLE_FONT_SIZE from constants defined outside the hook
     const titleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    titleText.setAttribute('x', targetWidth / 2);
-    titleText.setAttribute('y', titleHeight / 2); // Center in title area - FIX: Use titleHeight
-    titleText.setAttribute('font-size', viewTitleFontSize);
+    titleText.setAttribute('x', targetWidth / 2); // Center within printable width
+    titleText.setAttribute('y', VIEW_TITLE_HEIGHT / 2); // Position within its allocated height
+    titleText.setAttribute('font-size', VIEW_TITLE_FONT_SIZE);
     titleText.setAttribute('font-family', 'Arial, sans-serif');
     titleText.setAttribute('text-anchor', 'middle');
     titleText.setAttribute('dominant-baseline', 'middle');
     titleText.setAttribute('fill', '#333333');
     titleText.textContent = viewTitle; // Use the passed title (e.g., "Part Name" or "Standard Layout")
-    layoutGroup.appendChild(titleText);
+    // viewGroup.appendChild(titleText); // Decide if needed - maybe only for multi-part pages?
 
-    // --- Calculate Base Transformation (Scale & Center the Combined Layout) ---
+    // --- Calculate Transformation (Scale & Center Content within Printable Area) ---
+    const contentAreaY = 0; // Start content drawing from the top of the printable area (title space is handled by MAIN_TITLE_HEIGHT)
+    const contentAreaHeight = targetHeight; // Use full printable height
+
     const scaleX = targetWidth / combinedViewBoxData.width;
-    const scaleY = (combinedViewBoxData.height > 1e-6) ? targetHeight / combinedViewBoxData.height : 1;
-    const scale = Math.min(scaleX, scaleY);
-    console.log(`${logPrefixRender}   Calculated Base Scale: scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}, finalScale=${scale.toFixed(4)}`);
+    const scaleY = (combinedViewBoxData.height > 1e-6) ? contentAreaHeight / combinedViewBoxData.height : 1;
+    const scale = Math.min(scaleX, scaleY); // Scale to fit *within* printable area
+    console.log(`${logPrefixRender}   Calculated Content Scale: scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}, finalScale=${scale.toFixed(4)}`);
 
     const scaledContentWidth = combinedViewBoxData.width * scale;
     const scaledContentHeight = combinedViewBoxData.height * scale;
-    const baseTranslateX = (targetWidth - scaledContentWidth) / 2 - combinedViewBoxData.x * scale;
-    const baseTranslateY = (targetHeight - scaledContentHeight) / 2 - combinedViewBoxData.y * scale;
-    console.log(`${logPrefixRender}   Calculated Base Translation: dX=${baseTranslateX.toFixed(2)}, dY=${baseTranslateY.toFixed(2)}`);
-    console.log(`${logPrefixRender}   Scaled Layout Size: ${scaledContentWidth.toFixed(2)}x${scaledContentHeight.toFixed(2)}mm`);
+    // Center the scaled content within the printable area
+    const contentTranslateX = (targetWidth - scaledContentWidth) / 2 - combinedViewBoxData.x * scale;
+    const contentTranslateY = contentAreaY + (contentAreaHeight - scaledContentHeight) / 2 - combinedViewBoxData.y * scale;
+    console.log(`${logPrefixRender}   Calculated Content Translation (within printable area): dX=${contentTranslateX.toFixed(2)}, dY=${contentTranslateY.toFixed(2)}`);
+    console.log(`${logPrefixRender}   Scaled Content Size: ${scaledContentWidth.toFixed(2)}x${scaledContentHeight.toFixed(2)}mm`);
 
-    // --- Create Main Content Group with Base Transform ---
-    // This group holds all view sub-groups (Front, Top, Right) or the combined paths
+    // --- Create Main Content Group with Calculated Transform ---
+    // This group holds all drawing paths and measurements, scaled and centered
     const mainContentGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    const mainContentTransform = `translate(0, ${titleHeight}) translate(${baseTranslateX}, ${baseTranslateY}) scale(${scale})`; // FIX: Use titleHeight
+    const mainContentTransform = `translate(${contentTranslateX}, ${contentTranslateY}) scale(${scale})`;
     mainContentGroup.setAttribute('transform', mainContentTransform);
     console.log(`${logPrefixRender}   Applied Main Content Group Transform: ${mainContentTransform}`);
-    layoutGroup.appendChild(mainContentGroup);
+    viewGroup.appendChild(mainContentGroup); // Append to the viewGroup
 
-    // Add SINGLE Border around the entire content area
+    // Add Border around the *printable area* (relative to viewGroup)
     const borderRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     borderRect.setAttribute('x', 0);
-    borderRect.setAttribute('y', titleHeight); // Position below title area
+    borderRect.setAttribute('y', 0); // Border starts at top-left of printable area
     borderRect.setAttribute('width', targetWidth);
-    borderRect.setAttribute('height', targetHeight);
+    borderRect.setAttribute('height', targetHeight); // Use full printable height
     borderRect.setAttribute('fill', 'none');
     borderRect.setAttribute('stroke', '#cccccc');
-    borderRect.setAttribute('stroke-width', 0.2);
-    layoutGroup.appendChild(borderRect); // Add border relative to the layoutGroup
+    borderRect.setAttribute('stroke-width', 0.2); // Use a fixed stroke width, non-scaling-stroke might not be needed here
+    viewGroup.appendChild(borderRect); // Add border relative to the viewGroup
 
-    // --- Render Paths into Main Content Group (with nested transforms if part layout) ---
-    const strokeScale = scale > 0 ? 1 / scale : 1; // For dash scaling
-    console.log(`${logPrefixRender}   Stroke Scale Factor (for dashes): ${strokeScale.toFixed(3)}`);
+    // --- Render Paths into Main Content Group ---
+    // Stroke width needs to be scaled inversely if not using vector-effect
+    const baseStrokeWidth = 0.15; // Base visible stroke width in mm
+    const hiddenStrokeWidth = 0.1; // Base hidden stroke width in mm
+    const effectiveStrokeWidth = scale > 0 ? baseStrokeWidth / scale : baseStrokeWidth;
+    const effectiveHiddenStrokeWidth = scale > 0 ? hiddenStrokeWidth / scale : hiddenStrokeWidth;
+    const strokeScale = scale > 0 ? 1 / scale : 1; // For dash scaling relative to scaled view
+    console.log(`${logPrefixRender}   Effective Stroke Widths: Visible=${effectiveStrokeWidth.toFixed(4)}, Hidden=${effectiveHiddenStrokeWidth.toFixed(4)}, DashScale=${strokeScale.toFixed(3)}`);
 
     const renderPaths = (paths, targetGroup) => {
-        if (!paths || !Array.isArray(paths)) return;
-        paths.forEach(path => {
-            const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            pathEl.setAttribute('d', path.data);
-            const isHidden = path.visibility === 'hidden'; // Check visibility flag added in calculatePartLayout
-            pathEl.setAttribute('stroke', isHidden ? '#777777' : '#000000');
-            pathEl.setAttribute('stroke-width', isHidden ? 0.1 : 0.15);
-            pathEl.setAttribute('stroke-linecap', 'round');
-            pathEl.setAttribute('stroke-linejoin', 'round');
-            if (isHidden) {
-                pathEl.setAttribute('stroke-dasharray', `${2 * strokeScale},${1 * strokeScale}`);
-            }
-            pathEl.setAttribute('fill', 'none');
-            pathEl.setAttribute('vector-effect', 'non-scaling-stroke');
-            targetGroup.appendChild(pathEl);
-        });
+      if (!paths || !Array.isArray(paths)) return;
+      paths.forEach(path => {
+        const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathEl.setAttribute('d', path.data);
+        const isHidden = path.visibility === 'hidden'; // Check visibility flag
+        pathEl.setAttribute('stroke', isHidden ? '#777777' : '#000000');
+        // Set stroke width in the original coordinate system (before scaling)
+        pathEl.setAttribute('stroke-width', isHidden ? effectiveHiddenStrokeWidth : effectiveStrokeWidth);
+        pathEl.setAttribute('stroke-linecap', 'round');
+        pathEl.setAttribute('stroke-linejoin', 'round');
+        if (isHidden) {
+          // Dash array values are also in the original coordinate system
+          pathEl.setAttribute('stroke-dasharray', `${2 * strokeScale},${1 * strokeScale}`);
+        }
+        pathEl.setAttribute('fill', 'none');
+        // vector-effect='non-scaling-stroke' is crucial for maintaining constant stroke width visually after scaling
+        pathEl.setAttribute('vector-effect', 'non-scaling-stroke');
+        targetGroup.appendChild(pathEl);
+      });
     };
 
+    // Render paths based on layout type
     if (isPartLayout) {
-        console.log(`${logPrefixRender}   Rendering Part Layout Views with Offsets...`);
-        // Front View (no additional offset relative to combined layout origin)
-        const frontGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        // Apply offset needed to place front view correctly within the combined layout
-        frontGroup.setAttribute('transform', `translate(${layoutOffsets.front.x}, ${layoutOffsets.front.y})`);
-        mainContentGroup.appendChild(frontGroup);
-        renderPaths(viewData.frontPaths, frontGroup);
+      console.log(`${logPrefixRender}   Rendering Part Layout Views with Offsets...`);
+      // Create groups for each view, applying the calculated offsets relative to the combined layout's origin
+      // These offsets were calculated in `calculatePartLayout` based on viewGaps etc.
+      // The mainContentGroup already handles the overall scaling and centering of the combined layout.
 
-        // Top View (with topOffset relative to combined layout origin)
-        if (viewData.topPaths && layoutOffsets.top) {
-            const topGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            topGroup.setAttribute('transform', `translate(${layoutOffsets.top.x}, ${layoutOffsets.top.y})`);
-            mainContentGroup.appendChild(topGroup);
-            renderPaths(viewData.topPaths, topGroup);
-        }
+      // Front View
+      const frontGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      frontGroup.setAttribute('transform', `translate(${layoutOffsets.front.x}, ${layoutOffsets.front.y})`);
+      mainContentGroup.appendChild(frontGroup);
+      renderPaths(viewData.frontPaths, frontGroup);
 
-        // Right View (with rightOffset relative to combined layout origin)
-        if (viewData.rightPaths && layoutOffsets.right) {
-            const rightGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            rightGroup.setAttribute('transform', `translate(${layoutOffsets.right.x}, ${layoutOffsets.right.y})`);
-            mainContentGroup.appendChild(rightGroup);
-            renderPaths(viewData.rightPaths, rightGroup);
-        }
+      // Top View
+      if (viewData.topPaths && layoutOffsets.top) {
+        const topGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        topGroup.setAttribute('transform', `translate(${layoutOffsets.top.x}, ${layoutOffsets.top.y})`);
+        mainContentGroup.appendChild(topGroup);
+        renderPaths(viewData.topPaths, topGroup);
+      }
+
+      // Right View
+      if (viewData.rightPaths && layoutOffsets.right) {
+        const rightGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        rightGroup.setAttribute('transform', `translate(${layoutOffsets.right.x}, ${layoutOffsets.right.y})`);
+        mainContentGroup.appendChild(rightGroup);
+        renderPaths(viewData.rightPaths, rightGroup);
+      }
     } else {
-        // Standard Layout: Render all paths directly into mainContentGroup
-        console.log(`${logPrefixRender}   Rendering Standard Layout Paths...`);
-        renderPaths(viewData.visible?.paths, mainContentGroup); // Assuming standard layout only has visible combined paths
-        renderPaths(viewData.hidden?.paths, mainContentGroup); // Render hidden if they exist
+      // Standard Layout: Render all paths directly into the scaled/centered mainContentGroup
+      console.log(`${logPrefixRender}   Rendering Standard Layout Paths...`);
+      // Combine visible and hidden paths for rendering
+      const allPaths = [
+          ...(viewData.visible?.paths?.map(p => ({ ...p, visibility: 'visible' })) || []),
+          ...(viewData.hidden?.paths?.map(p => ({ ...p, visibility: 'hidden' })) || [])
+      ];
+      renderPaths(allPaths, mainContentGroup);
     }
 
 
-    // --- Render Measurements (Needs Adjustment for Part Layouts) ---
-    // TODO: Measurements need to be associated with their original view (front/top/right)
-    // and rendered within the correctly transformed nested group (frontGroup, topGroup, rightGroup).
-    // This requires passing the original view context with measurements or adjusting the filtering.
-    // For now, measurements might not render correctly for part layouts.
+    // --- Render Measurements ---
+    // Measurements are rendered within the mainContentGroup, which is already scaled and positioned.
+    // The measurement rendering logic itself (renderMeasurementToSvg) uses absolute coordinates
+    // derived from the geometry, so they should appear correctly relative to the scaled paths.
+    // TODO: Confirm measurement rendering works correctly with part layouts and nested transforms.
     Object.values(activeMeasurements)
-      .filter(m => m.viewId === viewId || m.viewId?.startsWith(viewId)) // Basic filter, needs refinement
+      .filter(m => m.viewId === viewId || m.viewId?.startsWith(viewId)) // Basic filter, needs refinement for part layouts
       .forEach(measurement => {
-        // Determine which group (front, top, right) the measurement belongs to
-        // This requires knowing the original path ID structure or adding view info to measurement
-        // Placeholder: Render all into main group for now
-        let targetMeasurementGroup = mainContentGroup;
-        let associatedPath = null; // Find the path the measurement is attached to
+        let targetMeasurementGroup = mainContentGroup; // Render directly into the main scaled group
+        let associatedPath = null;
 
-        // Simplified path finding (needs improvement based on actual path IDs)
-        const findPath = (paths) => paths?.find(p => measurement.pathId.startsWith(p.id));
+        // Find the associated path geometry (needs robust way to link measurement to path/view)
+        const findPath = (paths) => paths?.find(p => measurement.pathId.startsWith(p.id)); // Example matching logic
         associatedPath = findPath(viewData.frontPaths) || findPath(viewData.topPaths) || findPath(viewData.rightPaths) || findPath(viewData.visible?.paths) || findPath(viewData.hidden?.paths);
 
         if (associatedPath?.geometry) {
           const measurementSvgGroup = renderMeasurementToSvg(measurement, associatedPath.geometry);
-          // Append to the correct nested group if possible, otherwise main group
-          // This logic needs refinement based on how path IDs relate to views
-          targetMeasurementGroup.appendChild(measurementSvgGroup);
+          if (measurementSvgGroup) {
+              // Apply vector-effect to measurement lines/text if needed, or adjust stroke widths in renderMeasurementToSvg
+              // For simplicity, let's assume renderMeasurementToSvg handles visual consistency for now.
+              targetMeasurementGroup.appendChild(measurementSvgGroup);
+          }
         } else {
            console.warn(`${logPrefixRender} Could not find geometry for measurement ${measurement.pathId}`);
         }
@@ -410,20 +498,12 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
       return;
     }
 
-    // PDF Page Layout Constants (mm)
-    console.log(`${LOG_PREFIX} Defining Page Layout Constants...`);
-    const pdfScale = 1; // 1 SVG unit = 1 PDF unit (mm) - Assuming SVG units are mm
-    const pageMargin = 10; // mm
-    const viewGap = 10; // mm // Gap between views in combined layouts
-    const mainTitleHeight = 8; // mm
-    const viewTitleHeight = 5; // mm // Height allocated for individual view titles (now only used for main title)
-    const mainTitleFontSize = 4; // mm
-    const viewTitleFontSize = 3; // mm
-    console.log(`${LOG_PREFIX}   Constants: pdfScale=${pdfScale}, pageMargin=${pageMargin}, viewGap=${viewGap}, mainTitleHeight=${mainTitleHeight}, viewTitleHeight=${viewTitleHeight}`);
+    // Constants defined outside the hook are used here (e.g., PDF_SCALE, PAGE_MARGIN, MAIN_TITLE_HEIGHT, DEFAULT_PAPER_SIZE, VIEW_GAP)
 
     let pdf;
     let pdfFilename = 'technical-drawing.pdf';
     let isMultiPage = false; // Flag to track if we are generating multiple pages
+    let firstValidPartIndex = -1; // Declare here for broader scope
 
     try {
       // --- Determine Export Mode ---
@@ -437,39 +517,39 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         isMultiPage = true;
         const standardLayout = projections.standardLayout;
 
-        // --- Initialize PDF with Standard Layout Page ---
-        console.log(`${LOG_PREFIX}   Calculating dimensions for Standard Layout page...`);
+        // --- Determine Page Layout for Standard Layout ---
+        console.log(`${LOG_PREFIX}   Calculating page layout for Standard Layout...`);
         const layoutVB = parseViewBox(standardLayout.combinedViewBox);
         if (!layoutVB || layoutVB.width <= 0 || layoutVB.height <= 0) {
-            throw new Error("Invalid combinedViewBox in standard layout.");
+          throw new Error("Invalid combinedViewBox in standard layout.");
         }
-        const layoutWidth = layoutVB.width * pdfScale;
-        const layoutHeight = layoutVB.height * pdfScale;
-        const pageContentWidth = layoutWidth;
-        const pageContentHeight = layoutHeight + viewTitleHeight; // Space for the single title
-        const totalPageWidth = pageContentWidth + 2 * pageMargin;
-        const totalPageHeight = pageContentHeight + mainTitleHeight + 2 * pageMargin;
-        const orientation = totalPageWidth > totalPageHeight ? 'l' : 'p';
-        const format = [totalPageWidth, totalPageHeight];
-        console.log(`${LOG_PREFIX}   Initializing jsPDF for Assembly: orientation='${orientation}', unit='mm', format=[${format.map(d => d.toFixed(2))}]`);
-        pdf = new jsPDF({ orientation, unit: 'mm', format });
+        const contentWidth = layoutVB.width * PDF_SCALE;
+        const contentHeight = layoutVB.height * PDF_SCALE;
+        // Use the helper function defined outside
+        const pageLayout = getStandardPageLayout(contentWidth, contentHeight);
+        console.log(`${LOG_PREFIX}   Standard Layout Page: size=${DEFAULT_PAPER_SIZE}, orientation=${pageLayout.orientation}, W=${pageLayout.width}mm, H=${pageLayout.height}mm`);
+        console.log(`${LOG_PREFIX}   Printable Area: W=${pageLayout.printableWidth}mm, H=${pageLayout.printableHeight}mm`);
+
+        // --- Initialize PDF ---
+        console.log(`${LOG_PREFIX}   Initializing jsPDF for Assembly: format='${DEFAULT_PAPER_SIZE}', orientation='${pageLayout.orientation}', unit='mm'`);
+        pdf = new jsPDF({ orientation: pageLayout.orientation, unit: 'mm', format: DEFAULT_PAPER_SIZE });
 
         // --- Render Standard Layout on Page 1 ---
-        console.log(`${LOG_PREFIX}   Creating temporary SVG for Standard Layout page...`);
+        console.log(`${LOG_PREFIX}   Creating temporary SVG for Standard Layout page (${pageLayout.width}x${pageLayout.height}mm)...`);
         const tempSvgStd = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        tempSvgStd.setAttribute('width', totalPageWidth);
-        tempSvgStd.setAttribute('height', totalPageHeight);
-        tempSvgStd.setAttribute('viewBox', `0 0 ${totalPageWidth} ${totalPageHeight}`);
-        const svgPageGroupStd = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        tempSvgStd.setAttribute('width', pageLayout.width);
+        tempSvgStd.setAttribute('height', pageLayout.height);
+        tempSvgStd.setAttribute('viewBox', `0 0 ${pageLayout.width} ${pageLayout.height}`);
+        const svgPageGroupStd = document.createElementNS('http://www.w3.org/2000/svg', 'g'); // Group for page content (title + drawing)
         tempSvgStd.appendChild(svgPageGroupStd);
 
         // Add Main Title for Standard Layout
         const mainTitleContentStd = "Assembly - Standard Layout";
         console.log(`${LOG_PREFIX}     Adding Main Title: "${mainTitleContentStd}"`);
         const mainTitleTextStd = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        mainTitleTextStd.setAttribute('x', totalPageWidth / 2);
-        mainTitleTextStd.setAttribute('y', pageMargin + mainTitleHeight / 2);
-        mainTitleTextStd.setAttribute('font-size', mainTitleFontSize);
+        mainTitleTextStd.setAttribute('x', pageLayout.width / 2); // Center on page
+        mainTitleTextStd.setAttribute('y', PAGE_MARGIN + MAIN_TITLE_HEIGHT / 2); // Position below top margin
+        mainTitleTextStd.setAttribute('font-size', MAIN_TITLE_FONT_SIZE); // Use constant
         mainTitleTextStd.setAttribute('font-family', 'Arial, sans-serif');
         mainTitleTextStd.setAttribute('text-anchor', 'middle');
         mainTitleTextStd.setAttribute('dominant-baseline', 'middle');
@@ -478,21 +558,23 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         mainTitleTextStd.textContent = mainTitleContentStd;
         svgPageGroupStd.appendChild(mainTitleTextStd);
 
-        // Render the standard layout
-        console.log(`${LOG_PREFIX}     Rendering standard layout into SVG...`);
+        // Render the standard layout into the printable area
+        console.log(`${LOG_PREFIX}     Rendering standard layout into SVG printable area...`);
         const layoutId = "assembly_standard_layout";
         const standardLayoutViewData = {
           combinedViewBox: standardLayout.combinedViewBox,
-          visible: { paths: standardLayout.paths || [] },
-          hidden: { paths: [] }
+          // Pass paths grouped by visibility for renderPaths logic
+          visible: { paths: standardLayout.paths?.filter(p => p.visibility !== 'hidden') || [] },
+          hidden: { paths: standardLayout.paths?.filter(p => p.visibility === 'hidden') || [] }
         };
-        const layoutPos = [pageMargin, pageMargin + mainTitleHeight];
-        const layoutDimensions = { width: layoutWidth, height: layoutHeight };
-        renderViewToPdfSvg(svgPageGroupStd, standardLayoutViewData, mainTitleContentStd, layoutPos, layoutDimensions, layoutId);
+        // Position the drawing within the printable area
+        const printableAreaPos = [PAGE_MARGIN, PAGE_MARGIN + MAIN_TITLE_HEIGHT];
+        const printableDimensions = { width: pageLayout.printableWidth, height: pageLayout.printableHeight };
+        renderViewToPdfSvg(svgPageGroupStd, standardLayoutViewData, mainTitleContentStd, printableAreaPos, printableDimensions, layoutId);
 
         // Add SVG to PDF Page 1
         console.log(`${LOG_PREFIX}   Attempting to add Standard Layout SVG to PDF Page 1...`);
-        await pdf.svg(tempSvgStd, { x: 0, y: 0, width: totalPageWidth, height: totalPageHeight });
+        await pdf.svg(tempSvgStd, { x: 0, y: 0, width: pageLayout.width, height: pageLayout.height });
         console.log(`${LOG_PREFIX}   Successfully added Standard Layout SVG.`);
 
         // --- Now Loop Through Parts for Subsequent Pages ---
@@ -505,33 +587,37 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         console.log(`${LOG_PREFIX} Exporting Standard Layout Only (Single Page)...`);
         pdfFilename = 'technical-drawing-standard.pdf';
         const standardLayout = projections.standardLayout;
-        // (Standard Layout Only logic remains the same as before)
         console.log(`${LOG_PREFIX}   Standard Layout Data:`, standardLayout);
+
+        // Determine Page Layout
         const layoutVB = parseViewBox(standardLayout.combinedViewBox);
         if (!layoutVB || layoutVB.width <= 0 || layoutVB.height <= 0) {
-            throw new Error("Invalid combinedViewBox in standard layout.");
+          throw new Error("Invalid combinedViewBox in standard layout.");
         }
-        const layoutWidth = layoutVB.width * pdfScale;
-        const layoutHeight = layoutVB.height * pdfScale;
-        const pageContentWidth = layoutWidth;
-        const pageContentHeight = layoutHeight + viewTitleHeight;
-        const totalPageWidth = pageContentWidth + 2 * pageMargin;
-        const totalPageHeight = pageContentHeight + mainTitleHeight + 2 * pageMargin;
-        const orientation = totalPageWidth > totalPageHeight ? 'l' : 'p';
-        const format = [totalPageWidth, totalPageHeight];
-        console.log(`${LOG_PREFIX}   Initializing jsPDF: orientation='${orientation}', unit='mm', format=[${format.map(d => d.toFixed(2))}]`);
-        pdf = new jsPDF({ orientation, unit: 'mm', format });
+        const contentWidth = layoutVB.width * PDF_SCALE;
+        const contentHeight = layoutVB.height * PDF_SCALE;
+        const pageLayout = getStandardPageLayout(contentWidth, contentHeight); // Use helper
+        console.log(`${LOG_PREFIX}   Page: size=${DEFAULT_PAPER_SIZE}, orientation=${pageLayout.orientation}, W=${pageLayout.width}mm, H=${pageLayout.height}mm`);
+        console.log(`${LOG_PREFIX}   Printable Area: W=${pageLayout.printableWidth}mm, H=${pageLayout.printableHeight}mm`);
+
+        // Initialize PDF
+        console.log(`${LOG_PREFIX}   Initializing jsPDF: format='${DEFAULT_PAPER_SIZE}', orientation='${pageLayout.orientation}', unit='mm'`);
+        pdf = new jsPDF({ orientation: pageLayout.orientation, unit: 'mm', format: DEFAULT_PAPER_SIZE });
+
+        // Create Temporary SVG
         const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        tempSvg.setAttribute('width', totalPageWidth);
-        tempSvg.setAttribute('height', totalPageHeight);
-        tempSvg.setAttribute('viewBox', `0 0 ${totalPageWidth} ${totalPageHeight}`);
+        tempSvg.setAttribute('width', pageLayout.width);
+        tempSvg.setAttribute('height', pageLayout.height);
+        tempSvg.setAttribute('viewBox', `0 0 ${pageLayout.width} ${pageLayout.height}`);
         const svgPageGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         tempSvg.appendChild(svgPageGroup);
+
+        // Add Main Title
         const mainTitleContent = "Standard Layout";
         const mainTitleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        mainTitleText.setAttribute('x', totalPageWidth / 2);
-        mainTitleText.setAttribute('y', pageMargin + mainTitleHeight / 2);
-        mainTitleText.setAttribute('font-size', mainTitleFontSize);
+        mainTitleText.setAttribute('x', pageLayout.width / 2);
+        mainTitleText.setAttribute('y', PAGE_MARGIN + MAIN_TITLE_HEIGHT / 2);
+        mainTitleText.setAttribute('font-size', MAIN_TITLE_FONT_SIZE); // Use constant
         mainTitleText.setAttribute('font-family', 'Arial, sans-serif');
         mainTitleText.setAttribute('text-anchor', 'middle');
         mainTitleText.setAttribute('dominant-baseline', 'middle');
@@ -539,16 +625,20 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         mainTitleText.setAttribute('font-weight', 'bold');
         mainTitleText.textContent = mainTitleContent;
         svgPageGroup.appendChild(mainTitleText);
+
+        // Render Layout
         const layoutId = "standard_layout";
         const standardLayoutViewData = {
           combinedViewBox: standardLayout.combinedViewBox,
-          visible: { paths: standardLayout.paths || [] },
-          hidden: { paths: [] }
+          visible: { paths: standardLayout.paths?.filter(p => p.visibility !== 'hidden') || [] },
+          hidden: { paths: standardLayout.paths?.filter(p => p.visibility === 'hidden') || [] }
         };
-        const layoutPos = [pageMargin, pageMargin + mainTitleHeight];
-        const layoutDimensions = { width: layoutWidth, height: layoutHeight };
-        renderViewToPdfSvg(svgPageGroup, standardLayoutViewData, mainTitleContent, layoutPos, layoutDimensions, layoutId);
-        await pdf.svg(tempSvg, { x: 0, y: 0, width: totalPageWidth, height: totalPageHeight });
+        const printableAreaPos = [PAGE_MARGIN, PAGE_MARGIN + MAIN_TITLE_HEIGHT];
+        const printableDimensions = { width: pageLayout.printableWidth, height: pageLayout.printableHeight };
+        renderViewToPdfSvg(svgPageGroup, standardLayoutViewData, mainTitleContent, printableAreaPos, printableDimensions, layoutId);
+
+        // Add SVG to PDF
+        await pdf.svg(tempSvg, { x: 0, y: 0, width: pageLayout.width, height: pageLayout.height });
         console.log(`${LOG_PREFIX}   Successfully added single page SVG element.`);
       }
       // --- Case 3: Part Views Only ---
@@ -558,112 +648,138 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         isMultiPage = true;
         console.log(`${LOG_PREFIX}   Parts Data:`, projections.parts);
 
-        // Initialize PDF with first page's settings
-        console.log(`${LOG_PREFIX}   Calculating dimensions for the first valid part to initialize PDF...`);
-        let firstPartIndex = projections.parts.findIndex(part => part.views?.front || part.views?.top || part.views?.right);
-        if (firstPartIndex === -1) {
-            throw new Error("No parts with valid views found for PDF export.");
-        }
-        const firstPart = projections.parts[firstPartIndex];
-        console.log(`${LOG_PREFIX}     First valid part found at index ${firstPartIndex}: ${firstPart.name}`);
-        const firstPartData = calculatePartLayout(firstPart, pdfScale, pageMargin, mainTitleHeight, viewGap);
-        if (!firstPartData) {
-            throw new Error("Failed to calculate layout for initial part.");
-        }
-        const { totalPageWidth: fpTotalPageWidth, totalPageHeight: fpTotalPageHeight } = firstPartData;
-        const fpOrientation = fpTotalPageWidth > fpTotalPageHeight ? 'l' : 'p';
-        const fpFormat = [fpTotalPageWidth, fpTotalPageHeight];
-        console.log(`${LOG_PREFIX}     First Page Calculated Size (WxH): ${fpTotalPageWidth.toFixed(2)}x${fpTotalPageHeight.toFixed(2)} mm`);
-        console.log(`${LOG_PREFIX}   Initializing jsPDF for Multi-Part: orientation='${fpOrientation}', unit='mm', format=[${fpFormat.map(d => d.toFixed(2))}]`);
-        pdf = new jsPDF({ orientation: fpOrientation, unit: 'mm', format: fpFormat });
-        // Proceed to the part processing logic below
-      }
-
-      // --- Process Parts (Common logic for Case 1 and Case 3) ---
-      if (isMultiPage && hasParts) {
-        let firstPartIndex = projections.parts.findIndex(part => part.views?.front || part.views?.top || part.views?.right); // Recalculate just in case
+        // Find the first valid part to determine initial page layout
+        console.log(`${LOG_PREFIX}   Calculating layout for the first valid part to initialize PDF...`);
+        // let firstValidPartIndex = -1; // Declaration moved up
+        let initialPageLayout = null;
 
         for (const [index, part] of projections.parts.entries()) {
-          const originalIndex = projections.parts.indexOf(part); // Get original index
-
-          console.log(`${LOG_PREFIX} Processing Part ${originalIndex + 1}/${projections.parts.length}: ${part.name}`);
-
-          const partLayoutData = calculatePartLayout(part, pdfScale, pageMargin, mainTitleHeight, viewGap);
-
-          if (!partLayoutData) {
-            console.warn(`${LOG_PREFIX} Skipping part ${part.name} (Index ${originalIndex}) due to layout calculation error or missing views.`);
-            continue;
+          // Use the helper function defined outside
+          const partLayoutData = calculatePartLayout(part, VIEW_GAP); // Calculate content layout first
+          if (partLayoutData) {
+            const { combinedLayoutViewBox } = partLayoutData;
+            const contentVB = parseViewBox(combinedLayoutViewBox);
+            if (contentVB && contentVB.width > 0 && contentVB.height > 0) {
+              const contentWidth = contentVB.width * PDF_SCALE;
+              const contentHeight = contentVB.height * PDF_SCALE;
+              // Use the helper function defined outside
+              initialPageLayout = getStandardPageLayout(contentWidth, contentHeight);
+              firstValidPartIndex = index;
+              console.log(`${LOG_PREFIX}     First valid part found: ${part.name} (Index ${index})`);
+              console.log(`${LOG_PREFIX}     Initial Page Layout: size=${DEFAULT_PAPER_SIZE}, orientation=${initialPageLayout.orientation}, W=${initialPageLayout.width}mm, H=${initialPageLayout.height}mm`);
+              break; // Found the first valid part
+            }
           }
+        }
 
-          const {
-            totalPageWidth, totalPageHeight, combinedLayoutViewBox,
-            pathGroups, // Changed from allPartPaths
-            layoutOffsets, // Added offsets
-            layoutWidth, layoutHeight
-          } = partLayoutData;
+        if (!initialPageLayout) {
+          throw new Error("No parts with valid views/dimensions found for PDF export.");
+        }
 
-          const orientation = totalPageWidth > totalPageHeight ? 'l' : 'p';
-          const format = [totalPageWidth, totalPageHeight];
+        // Initialize PDF with the first part's layout
+        console.log(`${LOG_PREFIX}   Initializing jsPDF for Multi-Part: format='${DEFAULT_PAPER_SIZE}', orientation='${initialPageLayout.orientation}', unit='mm'`);
+        pdf = new jsPDF({ orientation: initialPageLayout.orientation, unit: 'mm', format: DEFAULT_PAPER_SIZE });
+        // Proceed to the part processing logic below, using firstValidPartIndex
+      }
 
-          // Add new page if needed (not the first part overall, or if we already added the standard layout page)
-          const isFirstPartPage = (index === firstPartIndex);
-          if (!isFirstPartPage || (hasStandard && hasParts)) { // Add page if not first part OR if assembly mode
-             console.log(`${LOG_PREFIX}   Adding Page ${pdf.internal.getNumberOfPages() + 1} to PDF with format=[${format.map(d => d.toFixed(2))}], orientation='${orientation}'`);
-             pdf.addPage(format, orientation);
-          } else {
-             console.log(`${LOG_PREFIX}   Processing first part page (original index ${originalIndex + 1}). PDF already initialized.`);
-          }
+      // --- Process Parts (Common logic for Case 1 and Case 3, using Standard Page Size) ---
+      if (isMultiPage && hasParts) {
+        // Use firstValidPartIndex determined earlier (now accessible)
+        if (firstValidPartIndex === -1 && !hasStandard) { // Check if it wasn't set (only possible in parts-only mode)
+           // This case should ideally be caught by the check throwing an error earlier,
+           // but adding a safeguard here.
+           console.warn(`${LOG_PREFIX} No valid parts found to process, skipping part loop.`);
+        } else {
+          // If hasStandard, firstValidPartIndex remains -1, but the loop should run.
+          // If !hasStandard, firstValidPartIndex should be >= 0.
+          for (const [index, part] of projections.parts.entries()) {
+            console.log(`${LOG_PREFIX} Processing Part ${index + 1}/${projections.parts.length}: ${part.name}`);
 
-          // Create Temporary SVG for this page
-          console.log(`${LOG_PREFIX}     Creating temporary SVG container for part ${part.name} (${totalPageWidth.toFixed(2)}x${totalPageHeight.toFixed(2)})...`);
-          const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          tempSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-          tempSvg.setAttribute('width', totalPageWidth);
-          tempSvg.setAttribute('height', totalPageHeight);
-          tempSvg.setAttribute('viewBox', `0 0 ${totalPageWidth} ${totalPageHeight}`);
-          const svgPageGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-          tempSvg.appendChild(svgPageGroup);
+            // 1. Calculate Part Content Layout (ViewBoxes, Offsets)
+            // Use the helper function defined outside
+            const partLayoutData = calculatePartLayout(part, VIEW_GAP);
+            if (!partLayoutData) {
+              console.warn(`${LOG_PREFIX} Skipping part ${part.name} (Index ${index}) due to layout calculation error or missing views.`);
+              continue;
+            }
+            const { combinedLayoutViewBox, pathGroups, layoutOffsets } = partLayoutData;
 
-          // Add Part Name Title
-          console.log(`${LOG_PREFIX}       Adding Main Title: "${part.name}"`);
-          const mainTitleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          mainTitleText.setAttribute('x', totalPageWidth / 2);
-          mainTitleText.setAttribute('y', pageMargin + mainTitleHeight / 2);
-          mainTitleText.setAttribute('font-size', mainTitleFontSize);
-          mainTitleText.setAttribute('font-family', 'Arial, sans-serif');
-          mainTitleText.setAttribute('text-anchor', 'middle');
-          mainTitleText.setAttribute('dominant-baseline', 'middle');
-          mainTitleText.setAttribute('fill', '#000000');
-          mainTitleText.setAttribute('font-weight', 'bold');
-          mainTitleText.textContent = part.name;
-          svgPageGroup.appendChild(mainTitleText);
+            // 2. Determine Page Layout for this Part's Content
+            const contentVB = parseViewBox(combinedLayoutViewBox);
+            if (!contentVB || contentVB.width <= 0 || contentVB.height <= 0) {
+                console.warn(`${LOG_PREFIX} Skipping part ${part.name} (Index ${index}) due to invalid combined viewBox: ${combinedLayoutViewBox}`);
+                continue;
+            }
+            const contentWidth = contentVB.width * PDF_SCALE;
+            const contentHeight = contentVB.height * PDF_SCALE;
+            // Use the helper function defined outside
+            const pageLayout = getStandardPageLayout(contentWidth, contentHeight);
+            console.log(`${LOG_PREFIX}   Part Page Layout: size=${DEFAULT_PAPER_SIZE}, orientation=${pageLayout.orientation}, W=${pageLayout.width}mm, H=${pageLayout.height}mm`);
+            console.log(`${LOG_PREFIX}   Printable Area: W=${pageLayout.printableWidth}mm, H=${pageLayout.printableHeight}mm`);
 
-          // Render the combined layout for the part using a single call to the modified renderer
-          console.log(`${LOG_PREFIX}       Rendering combined layout for part ${part.name} into SVG...`);
-          const partLayoutId = `${part.name.replace(/\s+/g, '_')}_layout`; // Use simpler ID
-          // Prepare viewData with grouped paths
-          const partViewData = {
-            combinedViewBox: combinedLayoutViewBox,
-            frontPaths: pathGroups.frontPaths,
-            topPaths: pathGroups.topPaths,
-            rightPaths: pathGroups.rightPaths,
-            // No longer need separate visible/hidden here as renderPaths handles it
-          };
-          const layoutPos = [pageMargin, pageMargin + mainTitleHeight];
-          const layoutDimensions = { width: layoutWidth, height: layoutHeight };
+            // 3. Add New Page if Necessary
+            // Add page if not the very first part processed OR if in assembly mode (where page 1 was standard layout)
+            const isFirstPartProcessed = (index === firstValidPartIndex);
+            if (!isFirstPartProcessed || (hasStandard && hasParts)) {
+              console.log(`${LOG_PREFIX}   Adding Page ${pdf.internal.getNumberOfPages() + 1} to PDF: format='${DEFAULT_PAPER_SIZE}', orientation='${pageLayout.orientation}'`);
+              pdf.addPage(DEFAULT_PAPER_SIZE, pageLayout.orientation);
+            } else {
+              console.log(`${LOG_PREFIX}   Processing first part page (Index ${index}). PDF already initialized/page exists.`);
+              // Ensure the current page matches the required layout (jsPDF might handle this, but good to be aware)
+              // pdf.setPage(1); // Or the correct page number if assembly
+              // We might need to adjust jsPDF page format if the first part needs a different orientation than calculated initially.
+              // For simplicity, assume jsPDF handles orientation changes on addPage correctly.
+            }
 
-          // Call renderViewToPdfSvg ONCE for the entire part layout, passing isPartLayout and offsets
-          renderViewToPdfSvg(svgPageGroup, partViewData, part.name, layoutPos, layoutDimensions, partLayoutId, true, layoutOffsets);
+            // 4. Create Temporary SVG for this page
+            console.log(`${LOG_PREFIX}     Creating temporary SVG container for part ${part.name} (${pageLayout.width}x${pageLayout.height}mm)...`);
+            const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            tempSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            tempSvg.setAttribute('width', pageLayout.width);
+            tempSvg.setAttribute('height', pageLayout.height);
+            tempSvg.setAttribute('viewBox', `0 0 ${pageLayout.width} ${pageLayout.height}`);
+            const svgPageGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            tempSvg.appendChild(svgPageGroup);
 
+            // 5. Add Part Name Title
+            console.log(`${LOG_PREFIX}       Adding Main Title: "${part.name}"`);
+            const mainTitleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            mainTitleText.setAttribute('x', pageLayout.width / 2);
+            mainTitleText.setAttribute('y', PAGE_MARGIN + MAIN_TITLE_HEIGHT / 2);
+            mainTitleText.setAttribute('font-size', MAIN_TITLE_FONT_SIZE); // Use constant
+            mainTitleText.setAttribute('font-family', 'Arial, sans-serif');
+            mainTitleText.setAttribute('text-anchor', 'middle');
+            mainTitleText.setAttribute('dominant-baseline', 'middle');
+            mainTitleText.setAttribute('fill', '#000000');
+            mainTitleText.setAttribute('font-weight', 'bold');
+            mainTitleText.textContent = part.name;
+            svgPageGroup.appendChild(mainTitleText);
 
-          // Add SVG element to PDF page
-          const currentPageNum = pdf.internal.getNumberOfPages();
-          console.log(`${LOG_PREFIX}     Attempting to add SVG element for page ${currentPageNum} (${part.name}) to PDF...`);
-          await pdf.svg(tempSvg, { x: 0, y: 0, width: totalPageWidth, height: totalPageHeight });
-          console.log(`${LOG_PREFIX}     Finished adding SVG for page ${currentPageNum}`);
+            // 6. Render the Part Layout into Printable Area
+            console.log(`${LOG_PREFIX}       Rendering combined layout for part ${part.name} into SVG printable area...`);
+            const partLayoutId = `${part.name.replace(/\s+/g, '_')}_layout_${index}`; // Ensure unique ID
+            const partViewData = {
+              combinedViewBox: combinedLayoutViewBox,
+              frontPaths: pathGroups.frontPaths,
+              topPaths: pathGroups.topPaths,
+              rightPaths: pathGroups.rightPaths,
+            };
+            const printableAreaPos = [PAGE_MARGIN, PAGE_MARGIN + MAIN_TITLE_HEIGHT];
+            const printableDimensions = { width: pageLayout.printableWidth, height: pageLayout.printableHeight };
 
-        } // End for...of loop
-        console.log(`${LOG_PREFIX}   Finished processing all parts.`);
+            renderViewToPdfSvg(svgPageGroup, partViewData, part.name, printableAreaPos, printableDimensions, partLayoutId, true, layoutOffsets);
+
+            // 7. Add SVG element to the *current* PDF page
+            const currentPageNum = pdf.internal.getNumberOfPages();
+            console.log(`${LOG_PREFIX}     Attempting to add SVG element for page ${currentPageNum} (${part.name}) to PDF...`);
+            // Ensure we're adding to the correct page (might be redundant if addPage sets context)
+            pdf.setPage(currentPageNum);
+            await pdf.svg(tempSvg, { x: 0, y: 0, width: pageLayout.width, height: pageLayout.height });
+            console.log(`${LOG_PREFIX}     Finished adding SVG for page ${currentPageNum}`);
+
+          } // End for...of loop
+          console.log(`${LOG_PREFIX}   Finished processing all parts.`);
+        } // End else (valid parts found)
       } // End if (isMultiPage && hasParts)
 
       // --- Save the PDF ---
@@ -687,120 +803,119 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
 }
 
 
-// --- Helper Function to Calculate Part Layout and Transform Paths ---
-function calculatePartLayout(part, pdfScale, pageMargin, mainTitleHeight, viewGap) {
-    console.log(`${LOG_PREFIX}     Calculating layout for part ${part.name}...`);
+// --- Helper Function to Calculate Part *Content* Layout (ViewBoxes, Offsets) ---
+// This function NO LONGER calculates page size. It focuses on arranging the views
+// relative to each other and determining the combined bounding box of the content.
+// It uses VIEW_GAP constant defined outside the hook.
+function calculatePartLayout(part, viewGap) {
+    const logPrefixPart = `${LOG_PREFIX} PartLayout[${part.name}]`;
+    console.log(`${logPrefixPart} Calculating content layout...`);
     const frontView = part.views?.front;
     const topView = part.views?.top;
     const rightView = part.views?.right;
 
     if (!frontView && !topView && !rightView) {
-        console.warn(`${LOG_PREFIX} Part ${part.name} has no standard views.`);
+        console.warn(`${logPrefixPart} Part has no standard views.`);
         return null;
     }
 
-    // --- 1. Get Data & ViewBoxes ---
-    // Use normalizedViewBox if available, otherwise fallback to combinedViewBox or visible viewBox
+    // --- 1. Get ViewBoxes & Check Validity ---
     const getSafeViewBox = (view) => {
-        if (!view) return { x: 0, y: 0, width: 0, height: 0 };
-        const vbString = view.normalizedViewBox || view.combinedViewBox || view.visible?.viewBox || view.hidden?.viewBox;
-        return parseViewBox(vbString || "0 0 0 0");
+      if (!view) return { x: 0, y: 0, width: 0, height: 0 };
+      // Prefer normalizedViewBox if available, as it should represent the view's content bounds accurately
+      const vbString = view.normalizedViewBox || view.combinedViewBox || view.visible?.viewBox || view.hidden?.viewBox;
+      return parseViewBox(vbString || "0 0 0 0");
     };
 
     const frontVB = getSafeViewBox(frontView);
     const topVB = getSafeViewBox(topView);
     const rightVB = getSafeViewBox(rightView);
-    console.log(`${LOG_PREFIX}       Part ViewBoxes (Original): Front=`, frontVB, `Top=`, topVB, `Right=`, rightVB);
+    console.log(`${logPrefixPart}   ViewBoxes (Original Content): Front=`, frontVB, `Top=`, topVB, `Right=`, rightVB);
 
-    if (frontVB.width <= 0 && frontVB.height <= 0 && topVB.width <= 0 && topVB.height <= 0 && rightVB.width <= 0 && rightVB.height <= 0) {
-        console.warn(`${LOG_PREFIX} Part ${part.name} has no valid view dimensions.`);
-        return null;
+    // Need at least one view with dimensions to proceed
+    const hasFront = frontVB.width > 1e-6 || frontVB.height > 1e-6;
+    const hasTop = topVB.width > 1e-6 || topVB.height > 1e-6;
+    const hasRight = rightVB.width > 1e-6 || rightVB.height > 1e-6;
+
+    if (!hasFront && !hasTop && !hasRight) {
+      console.warn(`${logPrefixPart} Part has no valid view dimensions.`);
+      return null;
     }
 
-    // --- 2. Calculate Layout & Combined ViewBox (similar to standard layout logic) ---
-    let layoutOriginX = frontVB.x; // Start with front view's origin
-    let layoutOriginY = frontVB.y;
-    let totalLayoutWidth = frontVB.width;
-    let totalLayoutHeight = frontVB.height;
-    let topOffset = { x: 0, y: 0 }; // Relative offset for top view paths
-    let rightOffset = { x: 0, y: 0 }; // Relative offset for right view paths
+    // --- 2. Calculate Relative Positions and Combined ViewBox of Content ---
+    // Assume Front view is the anchor (0,0) in the relative layout *content* space
+    let combinedMinX = 0;
+    let combinedMinY = 0;
+    let combinedMaxX = hasFront ? frontVB.width : 0;
+    let combinedMaxY = hasFront ? frontVB.height : 0;
 
-    // Position Top View below Front View
-    if (topVB.width > 0 || topVB.height > 0) {
-      const topPosX = frontVB.x + (frontVB.width - topVB.width) / 2;
-      const topPosY = frontVB.y + frontVB.height + viewGap;
-      topOffset.x = topPosX - topVB.x; // Translation needed for top paths
-      topOffset.y = topPosY - topVB.y;
-      layoutOriginX = Math.min(layoutOriginX, topPosX); // Adjust overall layout origin
-      layoutOriginY = Math.min(layoutOriginY, frontVB.y); // Top is below front
-      totalLayoutWidth = Math.max(totalLayoutWidth, topVB.width + (topPosX - frontVB.x));
-      totalLayoutHeight = (topPosY + topVB.height) - layoutOriginY;
+    // Offsets for placing Top and Right views relative to Front view's *content* origin (0,0)
+    let topLayoutPos = { x: 0, y: 0 };
+    let rightLayoutPos = { x: 0, y: 0 };
+
+    // Position Top View below Front View (centered horizontally)
+    if (hasTop) {
+      topLayoutPos.x = hasFront ? (frontVB.width - topVB.width) / 2 : 0;
+      topLayoutPos.y = hasFront ? frontVB.height + viewGap : 0; // Use viewGap
+      combinedMinX = Math.min(combinedMinX, topLayoutPos.x);
+      combinedMaxX = Math.max(combinedMaxX, topLayoutPos.x + topVB.width);
+      combinedMaxY = Math.max(combinedMaxY, topLayoutPos.y + topVB.height);
     }
 
-    // Position Right View to the right of Front View
-    if (rightVB.width > 0 || rightVB.height > 0) {
-      const rightPosX = frontVB.x + frontVB.width + viewGap;
-      const rightPosY = frontVB.y + (frontVB.height - rightVB.height) / 2;
-      rightOffset.x = rightPosX - rightVB.x; // Translation needed for right paths
-      rightOffset.y = rightPosY - rightVB.y;
-      layoutOriginX = Math.min(layoutOriginX, frontVB.x); // Right is beside front
-      layoutOriginY = Math.min(layoutOriginY, rightPosY); // Adjust overall layout origin
-      totalLayoutWidth = (rightPosX + rightVB.width) - layoutOriginX;
-      totalLayoutHeight = Math.max(totalLayoutHeight, rightVB.height + (rightPosY - layoutOriginY));
+    // Position Right View to the right of Front View (centered vertically)
+    if (hasRight) {
+      rightLayoutPos.x = hasFront ? frontVB.width + viewGap : (hasTop ? Math.max(topLayoutPos.x + topVB.width + viewGap, viewGap) : 0); // Use viewGap
+      rightLayoutPos.y = hasFront ? (frontVB.height - rightVB.height) / 2 : (hasTop ? Math.max(topLayoutPos.y, 0) : 0); // Align with front if exists, else top
+      combinedMinX = Math.min(combinedMinX, rightLayoutPos.x); // Should usually be 0 or positive
+      combinedMinY = Math.min(combinedMinY, rightLayoutPos.y);
+      combinedMaxX = Math.max(combinedMaxX, rightLayoutPos.x + rightVB.width);
+      combinedMaxY = Math.max(combinedMaxY, rightLayoutPos.y + rightVB.height);
     }
 
-    const combinedLayoutViewBox = `${layoutOriginX} ${layoutOriginY} ${totalLayoutWidth} ${totalLayoutHeight}`;
-    console.log(`[INFO]       Part Calculated Combined Layout ViewBox: ${combinedLayoutViewBox}`);
-    console.log(`[INFO]       Part Top Offset for Transform: (${topOffset.x.toFixed(2)}, ${topOffset.y.toFixed(2)})`);
-    console.log(`[INFO]       Part Top Offset for Render: (${topOffset.x.toFixed(2)}, ${topOffset.y.toFixed(2)})`); // Renamed log
-    console.log(`[INFO]       Part Right Offset for Render: (${rightOffset.x.toFixed(2)}, ${rightOffset.y.toFixed(2)})`); // Renamed log
+    // Calculate the combined viewBox of the arranged content
+    const combinedContentWidth = combinedMaxX - combinedMinX;
+    const combinedContentHeight = combinedMaxY - combinedMinY;
+    // The combinedLayoutViewBox origin is (combinedMinX, combinedMinY) relative to the Front view's origin (0,0)
+    const combinedLayoutViewBox = `${combinedMinX} ${combinedMinY} ${combinedContentWidth} ${combinedContentHeight}`;
+    console.log(`${logPrefixPart}   Calculated Combined Content ViewBox: ${combinedLayoutViewBox}`);
 
-    // --- 3. Collect Original Paths (No Transformation Here) ---
+    // --- 3. Calculate Offsets for Rendering ---
+    // These offsets translate each view's original paths (which are relative to their own viewBox origin, e.g., frontVB.x)
+    // into the combined layout space where the Front view's origin is at (0,0).
+    const layoutOffsets = {
+      front: { x: -frontVB.x, y: -frontVB.y }, // Translate front paths to start at (0,0)
+      top: { x: topLayoutPos.x - topVB.x, y: topLayoutPos.y - topVB.y },
+      right: { x: rightLayoutPos.x - rightVB.x, y: rightLayoutPos.y - rightVB.y }
+    };
+    console.log(`${logPrefixPart}   Calculated Render Offsets: Front=(${layoutOffsets.front.x.toFixed(2)}, ${layoutOffsets.front.y.toFixed(2)}), Top=(${layoutOffsets.top.x.toFixed(2)}, ${layoutOffsets.top.y.toFixed(2)}), Right=(${layoutOffsets.right.x.toFixed(2)}, ${layoutOffsets.right.y.toFixed(2)})`);
+
+    // --- 4. Collect Original Paths ---
     const pathGroups = { frontPaths: [], topPaths: [], rightPaths: [] };
     const collectPaths = (view, groupName) => {
-        if (!view) return;
-        const addPaths = (paths, visibility) => {
-            if (!paths || !Array.isArray(paths)) return;
-            paths.forEach(pathObj => {
-                 if (pathObj && typeof pathObj.data === 'string') {
-                    // Store original path data along with visibility
-                    pathGroups[groupName].push({ ...pathObj, visibility });
-                 }
-            });
-        };
-        // Corrected order: hidden first, then visible
-        addPaths(view.hidden?.paths, 'hidden');
-        addPaths(view.visible?.paths, 'visible');
+      if (!view) return;
+      const addPaths = (paths, visibility) => {
+        if (!paths || !Array.isArray(paths)) return;
+        paths.forEach(pathObj => {
+          if (pathObj && typeof pathObj.data === 'string') {
+            // Store original path data along with visibility
+            pathGroups[groupName].push({ ...pathObj, visibility });
+          }
+        });
+      };
+      // Process hidden first so visible lines draw over them if overlapping exactly
+      addPaths(view.hidden?.paths, 'hidden');
+      addPaths(view.visible?.paths, 'visible');
     };
 
     collectPaths(frontView, 'frontPaths');
     collectPaths(topView, 'topPaths');
     collectPaths(rightView, 'rightPaths');
-    console.log(`[INFO]       Collected original paths for part ${part.name}: Front=${pathGroups.frontPaths.length}, Top=${pathGroups.topPaths.length}, Right=${pathGroups.rightPaths.length}`);
+    console.log(`${logPrefixPart}   Collected original paths: Front=${pathGroups.frontPaths.length}, Top=${pathGroups.topPaths.length}, Right=${pathGroups.rightPaths.length}`);
 
-
-    // --- 4. Calculate Page Dimensions ---
-    const layoutWidth = totalLayoutWidth * pdfScale;
-    const layoutHeight = totalLayoutHeight * pdfScale;
-    const pageContentWidth = layoutWidth;
-    // No extra viewTitleHeight needed here as title is part of mainTitleHeight
-    const pageContentHeight = layoutHeight;
-    const finalTotalPageWidth = pageContentWidth + 2 * pageMargin;
-    const finalTotalPageHeight = pageContentHeight + mainTitleHeight + 2 * pageMargin; // Add main title height
-    console.log(`${LOG_PREFIX}     Part Page Size (WxH): ${finalTotalPageWidth.toFixed(2)}x${finalTotalPageHeight.toFixed(2)} mm`);
-
-    // Return data needed for rendering, including offsets and original path groups
+    // Return only the data needed for rendering the content layout
     return {
-        totalPageWidth: finalTotalPageWidth,
-        totalPageHeight: finalTotalPageHeight,
-        combinedLayoutViewBox,
-        pathGroups, // Contains original paths grouped by view
-        layoutOffsets: { // Offsets needed for rendering placement
-            front: { x: layoutOriginX - frontVB.x, y: layoutOriginY - frontVB.y }, // Offset to place front view relative to combined origin
-            top: topOffset,
-            right: rightOffset
-        },
-        layoutWidth,
-        layoutHeight,
+      combinedLayoutViewBox, // ViewBox encompassing all arranged views
+      pathGroups,            // Original paths grouped by view
+      layoutOffsets,         // Offsets to position each view's paths within the combined layout
     };
 }
