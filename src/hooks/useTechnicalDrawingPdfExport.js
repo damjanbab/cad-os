@@ -618,6 +618,17 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         await pdf.svg(tempSvgStd, { x: 0, y: 0, width: pageLayout.width, height: pageLayout.height });
         console.log(`${LOG_PREFIX}   Successfully added Standard Layout SVG.`);
 
+        // --- Draw Title Block for Standard Layout Page ---
+        console.log(`${LOG_PREFIX}   Calculating and drawing title block for Standard Layout page...`);
+        const titleBlockLayoutStd = calculateTitleBlockLayout(
+            pageLayout.width, pageLayout.height,
+            pageLayout.marginLeft, pageLayout.marginTop, pageLayout.marginRight, pageLayout.marginBottom,
+            pageLayout.orientation, PAPER_SIZES, DEFAULT_PAPER_SIZE // Assuming default paper size for assembly page
+        );
+        // TODO: Populate title block data more dynamically if needed
+        const titleBlockDataStd = { project: "Assembly", partName: "Standard Layout", scale: "NTS" };
+        drawTitleBlock(pdf, titleBlockLayoutStd, titleBlockDataStd);
+
         // --- Now Loop Through Parts for Subsequent Pages ---
         console.log(`${LOG_PREFIX}   Starting loop through parts for subsequent pages...`);
         // Proceed to the part processing logic below, but without re-initializing pdf
@@ -683,6 +694,18 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         // Add SVG to PDF
         await pdf.svg(tempSvg, { x: 0, y: 0, width: pageLayout.width, height: pageLayout.height });
         console.log(`${LOG_PREFIX}   Successfully added single page SVG element.`);
+
+        // --- Draw Title Block for Single Standard Layout Page ---
+        console.log(`${LOG_PREFIX}   Calculating and drawing title block for single Standard Layout page...`);
+        const titleBlockLayoutSingle = calculateTitleBlockLayout(
+            pageLayout.width, pageLayout.height,
+            pageLayout.marginLeft, pageLayout.marginTop, pageLayout.marginRight, pageLayout.marginBottom,
+            pageLayout.orientation, PAPER_SIZES, DEFAULT_PAPER_SIZE // Assuming default paper size
+        );
+        // TODO: Populate title block data more dynamically if needed
+        const titleBlockDataSingle = { project: "Single Component", partName: "Standard Layout", scale: "NTS" };
+        drawTitleBlock(pdf, titleBlockLayoutSingle, titleBlockDataSingle);
+
       }
       // --- Case 3: Part Views Only ---
       else if (!hasStandard && hasParts) {
@@ -822,6 +845,19 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
             await pdf.svg(tempSvg, { x: 0, y: 0, width: pageLayout.width, height: pageLayout.height });
             console.log(`${LOG_PREFIX}     Finished adding SVG for page ${currentPageNum}`);
 
+            // --- Draw Title Block for Part Page ---
+            console.log(`${LOG_PREFIX}       Calculating and drawing title block for part ${part.name}...`);
+            // Ensure we use the pageLayout calculated *for this specific part*
+            const titleBlockLayoutPart = calculateTitleBlockLayout(
+                pageLayout.width, pageLayout.height,
+                pageLayout.marginLeft, pageLayout.marginTop, pageLayout.marginRight, pageLayout.marginBottom,
+                pageLayout.orientation, PAPER_SIZES, DEFAULT_PAPER_SIZE // Assuming default paper size for all part pages
+            );
+            // TODO: Populate title block data more dynamically (e.g., get scale if available)
+            const titleBlockDataPart = { project: "Multi-Part", partName: part.name || `Part ${index + 1}`, scale: "NTS" };
+            drawTitleBlock(pdf, titleBlockLayoutPart, titleBlockDataPart);
+
+
           } // End for...of loop
           console.log(`${LOG_PREFIX}   Finished processing all parts.`);
         } // End else (valid parts found)
@@ -845,6 +881,192 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
   }, [projections, activeMeasurements, renderViewToPdfSvg]); // Dependencies
 
   return { exportPdf };
+}
+
+
+// --- Helper Function to Calculate Title Block Geometry ---
+/**
+ * Calculates the geometry for the title block and its internal cells.
+ * @param {number} pageWidth - Total width of the PDF page (mm).
+ * @param {number} pageHeight - Total height of the PDF page (mm).
+ * @param {number} marginLeft - Left margin (mm).
+ * @param {number} marginTop - Top margin (mm).
+ * @param {number} marginRight - Right margin (mm).
+ * @param {number} marginBottom - Bottom margin (mm).
+ * @param {'p' | 'l'} orientation - Page orientation.
+ * @param {object} paperSizes - Standard paper sizes object (e.g., PAPER_SIZES).
+ * @param {string} paperSizeKey - The key for the current paper size (e.g., 'a4').
+ * @returns {{
+ *   outerBox: { x: number, y: number, width: number, height: number },
+ *   cells: Array<Array<{ x: number, y: number, width: number, height: number, textX: number, textY: number, maxWidth: number }>>, // [row][col]
+ *   fontSize: number,
+ *   lineHeight: number
+ * } | null}
+ */
+function calculateTitleBlockLayout(pageWidth, pageHeight, marginLeft, marginTop, marginRight, marginBottom, orientation, paperSizes, paperSizeKey = DEFAULT_PAPER_SIZE) {
+  const logPrefixTB = `${LOG_PREFIX} TitleBlockLayout`;
+
+  // --- Determine Portrait Dimensions for Calculation ---
+  const currentPaper = paperSizes[paperSizeKey] || paperSizes.a4;
+  const portraitWidth = Math.min(currentPaper.width, currentPaper.height);
+  const portraitHeight = Math.max(currentPaper.width, currentPaper.height);
+  // Use portrait margins to calculate base printable width
+  const pMarginLeft = MARGIN_LEFT_PORTRAIT;
+  const pMarginRight = MARGIN_OTHER;
+  const pPrintableWidth = portraitWidth - pMarginLeft - pMarginRight;
+
+  // --- Calculate Fixed Title Block Dimensions based on Portrait ---
+  const titleBlockWidth = pPrintableWidth / 2;
+  const baseHeight = portraitHeight * 0.25;
+  const titleBlockHeight = baseHeight * (2 / 3);
+  console.log(`${logPrefixTB} Base Calc (Portrait ${portraitWidth}x${portraitHeight}): PrintableW=${pPrintableWidth.toFixed(2)}, TB W=${titleBlockWidth.toFixed(2)}, TB H=${titleBlockHeight.toFixed(2)}`);
+
+  // Constants for internal layout
+  const numRows = 3;
+  const numCols = 2;
+  const colRatio = [1, 2]; // Width ratio for columns 1 and 2
+  const totalRatio = colRatio.reduce((a, b) => a + b, 0);
+
+  // Constants for text rendering (adjust as needed)
+  const titleBlockFontSize = 2.5; // mm
+  const titleBlockLineHeightFactor = 1.2; // Relative to font size
+  const textPadding = 0.5; // mm padding inside cells
+
+  // --- Calculate Position based on *Current* Page Layout ---
+  // Use the fixed titleBlockWidth and titleBlockHeight calculated earlier
+  const titleBlockX = pageWidth - marginRight - titleBlockWidth;
+  const titleBlockY = pageHeight - marginBottom - titleBlockHeight;
+  console.log(`${logPrefixTB} Final Position (Current Page ${pageWidth}x${pageHeight}, Orientation: ${orientation}): Margins(R/B)=${marginRight}/${marginBottom}, TB X=${titleBlockX.toFixed(2)}, TB Y=${titleBlockY.toFixed(2)}`);
+
+
+  // Basic validation
+  if (titleBlockWidth <= 1e-6 || titleBlockHeight <= 1e-6 || titleBlockX < -1e-6 || titleBlockY < -1e-6) {
+      console.error(`${logPrefixTB} Calculated invalid title block dimensions or position.`, { titleBlockX, titleBlockY, titleBlockWidth, titleBlockHeight, pageWidth, pageHeight, marginRight, marginBottom });
+      return null; // Indicate error
+  }
+
+  const outerBox = { x: titleBlockX, y: titleBlockY, width: titleBlockWidth, height: titleBlockHeight };
+
+  // Calculate Internal Cells
+  const rowHeight = titleBlockHeight / numRows;
+  const cells = [];
+
+  for (let r = 0; r < numRows; r++) {
+    const rowCells = [];
+    const cellY = titleBlockY + r * rowHeight;
+    let currentX = titleBlockX;
+    for (let c = 0; c < numCols; c++) {
+        const cellWidth = titleBlockWidth * (colRatio[c] / totalRatio);
+        rowCells.push({
+            x: currentX,
+            y: cellY,
+            width: cellWidth,
+            height: rowHeight,
+            // Add text positioning helpers
+            textX: currentX + textPadding,
+            textY: cellY + rowHeight / 2, // Vertical center baseline
+            maxWidth: cellWidth - 2 * textPadding,
+        });
+        currentX += cellWidth;
+    }
+    cells.push(rowCells);
+  }
+
+  console.log(`${logPrefixTB} Calculated Layout:`, { outerBox, cells });
+  return { outerBox, cells, fontSize: titleBlockFontSize, lineHeight: titleBlockFontSize * titleBlockLineHeightFactor };
+}
+
+
+// --- Helper Function to Draw Title Block using jsPDF ---
+/**
+ * Draws the title block onto the PDF using jsPDF commands.
+ * @param {jsPDF} pdf - The jsPDF instance.
+ * @param {object} titleBlockLayout - The layout object from calculateTitleBlockLayout.
+ * @param {object} data - Data for the title block cells (e.g., { project: '...', scale: '...' }).
+ */
+function drawTitleBlock(pdf, titleBlockLayout, data = {}) {
+    if (!pdf || !titleBlockLayout) {
+        console.warn(`${LOG_PREFIX} DrawTitleBlock: Missing pdf instance or layout data.`);
+        return;
+    }
+    const logPrefixTB = `${LOG_PREFIX} DrawTitleBlock`;
+    console.log(`${logPrefixTB} Drawing title block... Data:`, data);
+
+    const { outerBox, cells, fontSize } = titleBlockLayout; // Removed lineHeight as it's not used directly here
+
+    // --- Placeholder Data ---
+    // TODO: Replace with actual data source
+    const cellData = [
+        // Row 0
+        [ { label: "Project:", value: data.project || "CAD-OS Demo" }, { label: "Part Name:", value: data.partName || "N/A" } ],
+        // Row 1
+        [ { label: "Scale:", value: data.scale || "1:1" },        { label: "Material:", value: data.material || "Steel" } ],
+        // Row 2
+        [ { label: "Drawn By:", value: data.drawnBy || "Cline" },   { label: "Date:", value: data.date || new Date().toLocaleDateString() } ]
+    ];
+
+    // --- Styling ---
+    const lineWeight = 0.15; // mm
+    pdf.saveGraphicsState(); // Save current style settings
+    pdf.setLineWidth(lineWeight);
+    pdf.setDrawColor(0); // Black
+    // Font settings will be applied per text element below
+    pdf.setTextColor(0); // Black
+
+    // --- Draw Outer Box ---
+    pdf.rect(outerBox.x, outerBox.y, outerBox.width, outerBox.height, 'S'); // 'S' for stroke
+
+    // --- Draw Internal Grid Lines ---
+    // Vertical lines (between columns)
+    let currentX = outerBox.x;
+    for (let c = 0; c < cells[0].length - 1; c++) {
+        currentX += cells[0][c].width;
+        pdf.line(currentX, outerBox.y, currentX, outerBox.y + outerBox.height);
+    }
+    // Horizontal lines (between rows)
+    let currentY = outerBox.y;
+    for (let r = 0; r < cells.length - 1; r++) {
+        currentY += cells[r][0].height;
+        pdf.line(outerBox.x, currentY, outerBox.x + outerBox.width, currentY);
+    }
+
+    // --- Fill Cells with Text ---
+    for (let r = 0; r < cells.length; r++) {
+        for (let c = 0; c < cells[r].length; c++) {
+            const cell = cells[r][c];
+            const content = cellData[r] && cellData[r][c]; // Check if row/cell exists
+
+            if (content) {
+                // Simple label + value approach for now
+                const labelText = content.label || '';
+                const valueText = content.value || '';
+
+                // Position label top-left, value below or beside (adjust as needed)
+                // jsPDF uses points (pt) for font size by default
+                const labelFontSize = 11;
+                const valueFontSize = 10;
+                // Calculate vertical positions based on new font sizes
+                const adjustedLabelY = cell.textY - labelFontSize * 0.15; // Adjust vertical position (approx)
+                const adjustedValueY = cell.textY + valueFontSize * 0.35; // Adjust vertical position (approx)
+
+                pdf.setFont('helvetica', 'bold');
+                pdf.setFontSize(labelFontSize);
+                pdf.text(labelText, cell.textX, adjustedLabelY, { align: 'left', baseline: 'middle', maxWidth: cell.maxWidth });
+
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(valueFontSize);
+                pdf.text(valueText, cell.textX, adjustedValueY, { align: 'left', baseline: 'middle', maxWidth: cell.maxWidth });
+
+                // Alternative: Single line centered text
+                // const fullText = `${content.label || ''} ${content.value || ''}`;
+                // pdf.text(fullText, cell.textX, cell.textY, { align: 'left', baseline: 'middle', maxWidth: cell.maxWidth });
+            } else {
+                console.warn(`${logPrefixTB} Missing data for cell [${r}][${c}]`);
+            }
+        }
+    }
+    pdf.restoreGraphicsState(); // Restore previous style settings
+    console.log(`${logPrefixTB} Finished drawing title block.`);
 }
 
 
