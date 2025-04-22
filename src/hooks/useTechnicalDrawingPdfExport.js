@@ -15,8 +15,11 @@ const PAPER_SIZES = {
 
 // --- PDF Page Layout Constants (mm) ---
 const DEFAULT_PAPER_SIZE = 'a4'; // Or 'letter'
-const PAGE_MARGIN = 10; // mm
-const MAIN_TITLE_HEIGHT = 8; // mm
+// const PAGE_MARGIN = 10; // mm - Replaced by specific margins
+const MARGIN_LEFT_PORTRAIT = 20; // mm
+const MARGIN_TOP_LANDSCAPE = 20; // mm
+const MARGIN_OTHER = 10; // mm (Top/Bottom/Right for Portrait, Left/Bottom/Right for Landscape)
+// const MAIN_TITLE_HEIGHT = 8; // mm - Removed as titles are no longer used
 const VIEW_TITLE_HEIGHT = 5; // mm // Height allocated for individual view titles (used within renderViewToPdfSvg)
 const MAIN_TITLE_FONT_SIZE = 4; // mm
 const VIEW_TITLE_FONT_SIZE = 3; // mm
@@ -150,11 +153,17 @@ function serializePathData(pathDataArray) {
 
 // --- Helper Function to Determine Optimal Page Layout ---
 /**
- * Determines the optimal standard paper orientation and dimensions based on content aspect ratio.
+ * Determines the optimal standard paper orientation, dimensions, margins, and printable area based on content aspect ratio.
  * @param {number} contentWidth - Width of the drawing content (mm).
  * @param {number} contentHeight - Height of the drawing content (mm).
  * @param {string} paperSizeKey - Key for the desired paper size (e.g., 'a4').
- * @returns {{orientation: 'p'|'l', width: number, height: number, printableWidth: number, printableHeight: number}}
+ * @returns {{
+ *   orientation: 'p'|'l',
+ *   width: number, height: number,
+ *   marginLeft: number, marginTop: number, marginRight: number, marginBottom: number,
+ *   printableX: number, printableY: number,
+ *   printableWidth: number, printableHeight: number
+ * }}
  */
 const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAULT_PAPER_SIZE) => {
   const paper = PAPER_SIZES[paperSizeKey] || PAPER_SIZES.a4;
@@ -164,32 +173,63 @@ const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAU
   const portrait = { width: paper.width, height: paper.height };
   const landscape = { width: paper.height, height: paper.width };
 
-  // Printable area dimensions
-  const pPrintable = { width: portrait.width - 2 * PAGE_MARGIN, height: portrait.height - 2 * PAGE_MARGIN - MAIN_TITLE_HEIGHT };
-  const lPrintable = { width: landscape.width - 2 * PAGE_MARGIN, height: landscape.height - 2 * PAGE_MARGIN - MAIN_TITLE_HEIGHT };
+  // Calculate potential printable areas for both orientations *before* deciding orientation
+  // Portrait Margins
+  const pMarginLeft = MARGIN_LEFT_PORTRAIT;
+  const pMarginTop = MARGIN_OTHER;
+  const pMarginRight = MARGIN_OTHER;
+  const pMarginBottom = MARGIN_OTHER;
+  const pPrintableWidth = portrait.width - pMarginLeft - pMarginRight;
+  const pPrintableHeight = portrait.height - pMarginTop - pMarginBottom; // Removed MAIN_TITLE_HEIGHT
 
-  // Calculate scaling factors for both orientations
-  const scaleP = Math.min(pPrintable.width / contentWidth, pPrintable.height / contentHeight);
-  const scaleL = Math.min(lPrintable.width / contentWidth, lPrintable.height / contentHeight);
+  // Landscape Margins
+  const lMarginLeft = MARGIN_OTHER;
+  const lMarginTop = MARGIN_TOP_LANDSCAPE;
+  const lMarginRight = MARGIN_OTHER;
+  const lMarginBottom = MARGIN_OTHER;
+  const lPrintableWidth = landscape.width - lMarginLeft - lMarginRight;
+  const lPrintableHeight = landscape.height - lMarginTop - lMarginBottom; // Removed MAIN_TITLE_HEIGHT
+
+  // Calculate scaling factors for both orientations based on their respective printable areas
+  const scaleP = Math.min(pPrintableWidth / contentWidth, pPrintableHeight / contentHeight);
+  const scaleL = Math.min(lPrintableWidth / contentWidth, lPrintableHeight / contentHeight);
 
   // Choose orientation that gives better scale (less wasted space)
   if (scaleL > scaleP) {
     // Landscape is better fit
+    const marginLeft = lMarginLeft;
+    const marginTop = lMarginTop;
+    const marginRight = lMarginRight;
+    const marginBottom = lMarginBottom;
+    const printableX = marginLeft;
+    const printableY = marginTop; // Removed MAIN_TITLE_HEIGHT
+    const printableWidth = lPrintableWidth;
+    const printableHeight = lPrintableHeight;
     return {
       orientation: 'l',
       width: landscape.width,
       height: landscape.height,
-      printableWidth: lPrintable.width,
-      printableHeight: lPrintable.height,
+      marginLeft, marginTop, marginRight, marginBottom,
+      printableX, printableY,
+      printableWidth, printableHeight,
     };
   } else {
     // Portrait is better or equal fit
+    const marginLeft = pMarginLeft;
+    const marginTop = pMarginTop;
+    const marginRight = pMarginRight;
+    const marginBottom = pMarginBottom;
+    const printableX = marginLeft;
+    const printableY = marginTop; // Removed MAIN_TITLE_HEIGHT
+    const printableWidth = pPrintableWidth;
+    const printableHeight = pPrintableHeight;
     return {
       orientation: 'p',
       width: portrait.width,
       height: portrait.height,
-      printableWidth: pPrintable.width,
-      printableHeight: pPrintable.height,
+      marginLeft, marginTop, marginRight, marginBottom,
+      printableX, printableY,
+      printableWidth, printableHeight,
     };
   }
 };
@@ -378,7 +418,7 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
     borderRect.setAttribute('width', targetWidth);
     borderRect.setAttribute('height', targetHeight); // Use full printable height
     borderRect.setAttribute('fill', 'none');
-    borderRect.setAttribute('stroke', '#cccccc');
+    borderRect.setAttribute('stroke', '#000000'); // Changed border to black
     borderRect.setAttribute('stroke-width', 0.2); // Use a fixed stroke width, non-scaling-stroke might not be needed here
     viewGroup.appendChild(borderRect); // Add border relative to the viewGroup
 
@@ -543,23 +583,24 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         const svgPageGroupStd = document.createElementNS('http://www.w3.org/2000/svg', 'g'); // Group for page content (title + drawing)
         tempSvgStd.appendChild(svgPageGroupStd);
 
-        // Add Main Title for Standard Layout
-        const mainTitleContentStd = "Assembly - Standard Layout";
-        console.log(`${LOG_PREFIX}     Adding Main Title: "${mainTitleContentStd}"`);
-        const mainTitleTextStd = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        mainTitleTextStd.setAttribute('x', pageLayout.width / 2); // Center on page
-        mainTitleTextStd.setAttribute('y', PAGE_MARGIN + MAIN_TITLE_HEIGHT / 2); // Position below top margin
-        mainTitleTextStd.setAttribute('font-size', MAIN_TITLE_FONT_SIZE); // Use constant
-        mainTitleTextStd.setAttribute('font-family', 'Arial, sans-serif');
-        mainTitleTextStd.setAttribute('text-anchor', 'middle');
-        mainTitleTextStd.setAttribute('dominant-baseline', 'middle');
-        mainTitleTextStd.setAttribute('fill', '#000000');
-        mainTitleTextStd.setAttribute('font-weight', 'bold');
-        mainTitleTextStd.textContent = mainTitleContentStd;
-        svgPageGroupStd.appendChild(mainTitleTextStd);
+        // Add Main Title for Standard Layout - REMOVED
+        // const mainTitleContentStd = "Assembly - Standard Layout";
+        // console.log(`${LOG_PREFIX}     Adding Main Title: "${mainTitleContentStd}"`);
+        // const mainTitleTextStd = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        // mainTitleTextStd.setAttribute('x', pageLayout.width / 2); // Center on page
+        // mainTitleTextStd.setAttribute('y', pageLayout.marginTop + MAIN_TITLE_HEIGHT / 2); // Use calculated margin
+        // mainTitleTextStd.setAttribute('font-size', MAIN_TITLE_FONT_SIZE); // Use constant
+        // mainTitleTextStd.setAttribute('font-family', 'Arial, sans-serif');
+        // mainTitleTextStd.setAttribute('text-anchor', 'middle');
+        // mainTitleTextStd.setAttribute('dominant-baseline', 'middle');
+        // mainTitleTextStd.setAttribute('fill', '#000000');
+        // mainTitleTextStd.setAttribute('font-weight', 'bold');
+        // mainTitleTextStd.textContent = mainTitleContentStd;
+        // svgPageGroupStd.appendChild(mainTitleTextStd);
 
         // Render the standard layout into the printable area
         console.log(`${LOG_PREFIX}     Rendering standard layout into SVG printable area...`);
+        const mainTitleContentStd = ""; // Pass empty title as it's removed
         const layoutId = "assembly_standard_layout";
         const standardLayoutViewData = {
           combinedViewBox: standardLayout.combinedViewBox,
@@ -567,8 +608,8 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
           visible: { paths: standardLayout.paths?.filter(p => p.visibility !== 'hidden') || [] },
           hidden: { paths: standardLayout.paths?.filter(p => p.visibility === 'hidden') || [] }
         };
-        // Position the drawing within the printable area
-        const printableAreaPos = [PAGE_MARGIN, PAGE_MARGIN + MAIN_TITLE_HEIGHT];
+        // Position the drawing within the printable area using calculated values
+        const printableAreaPos = [pageLayout.printableX, pageLayout.printableY];
         const printableDimensions = { width: pageLayout.printableWidth, height: pageLayout.printableHeight };
         renderViewToPdfSvg(svgPageGroupStd, standardLayoutViewData, mainTitleContentStd, printableAreaPos, printableDimensions, layoutId);
 
@@ -612,28 +653,30 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
         const svgPageGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         tempSvg.appendChild(svgPageGroup);
 
-        // Add Main Title
-        const mainTitleContent = "Standard Layout";
-        const mainTitleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        mainTitleText.setAttribute('x', pageLayout.width / 2);
-        mainTitleText.setAttribute('y', PAGE_MARGIN + MAIN_TITLE_HEIGHT / 2);
-        mainTitleText.setAttribute('font-size', MAIN_TITLE_FONT_SIZE); // Use constant
-        mainTitleText.setAttribute('font-family', 'Arial, sans-serif');
-        mainTitleText.setAttribute('text-anchor', 'middle');
-        mainTitleText.setAttribute('dominant-baseline', 'middle');
-        mainTitleText.setAttribute('fill', '#000000');
-        mainTitleText.setAttribute('font-weight', 'bold');
-        mainTitleText.textContent = mainTitleContent;
-        svgPageGroup.appendChild(mainTitleText);
+        // Add Main Title - REMOVED FOR SINGLE COMPONENT STANDARD LAYOUT
+        // const mainTitleContent = "Standard Layout";
+        // const mainTitleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        // mainTitleText.setAttribute('x', pageLayout.width / 2);
+        // mainTitleText.setAttribute('y', pageLayout.marginTop + MAIN_TITLE_HEIGHT / 2); // Use calculated margin
+        // mainTitleText.setAttribute('font-size', MAIN_TITLE_FONT_SIZE); // Use constant
+        // mainTitleText.setAttribute('font-family', 'Arial, sans-serif');
+        // mainTitleText.setAttribute('text-anchor', 'middle');
+        // mainTitleText.setAttribute('dominant-baseline', 'middle');
+        // mainTitleText.setAttribute('fill', '#000000');
+        // mainTitleText.setAttribute('font-weight', 'bold');
+        // mainTitleText.textContent = mainTitleContent;
+        // svgPageGroup.appendChild(mainTitleText);
 
         // Render Layout
         const layoutId = "standard_layout";
+        const mainTitleContent = ""; // Pass empty title as it's removed
         const standardLayoutViewData = {
           combinedViewBox: standardLayout.combinedViewBox,
           visible: { paths: standardLayout.paths?.filter(p => p.visibility !== 'hidden') || [] },
           hidden: { paths: standardLayout.paths?.filter(p => p.visibility === 'hidden') || [] }
         };
-        const printableAreaPos = [PAGE_MARGIN, PAGE_MARGIN + MAIN_TITLE_HEIGHT];
+        // Position the drawing within the printable area using calculated values
+        const printableAreaPos = [pageLayout.printableX, pageLayout.printableY];
         const printableDimensions = { width: pageLayout.printableWidth, height: pageLayout.printableHeight };
         renderViewToPdfSvg(svgPageGroup, standardLayoutViewData, mainTitleContent, printableAreaPos, printableDimensions, layoutId);
 
@@ -741,22 +784,23 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
             const svgPageGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
             tempSvg.appendChild(svgPageGroup);
 
-            // 5. Add Part Name Title
-            console.log(`${LOG_PREFIX}       Adding Main Title: "${part.name}"`);
-            const mainTitleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            mainTitleText.setAttribute('x', pageLayout.width / 2);
-            mainTitleText.setAttribute('y', PAGE_MARGIN + MAIN_TITLE_HEIGHT / 2);
-            mainTitleText.setAttribute('font-size', MAIN_TITLE_FONT_SIZE); // Use constant
-            mainTitleText.setAttribute('font-family', 'Arial, sans-serif');
-            mainTitleText.setAttribute('text-anchor', 'middle');
-            mainTitleText.setAttribute('dominant-baseline', 'middle');
-            mainTitleText.setAttribute('fill', '#000000');
-            mainTitleText.setAttribute('font-weight', 'bold');
-            mainTitleText.textContent = part.name;
-            svgPageGroup.appendChild(mainTitleText);
+            // 5. Add Part Name Title - REMOVED FOR ASSEMBLY PART PAGES
+            // console.log(`${LOG_PREFIX}       Adding Main Title: "${part.name}"`);
+            // const mainTitleText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            // mainTitleText.setAttribute('x', pageLayout.width / 2);
+            // mainTitleText.setAttribute('y', pageLayout.marginTop + MAIN_TITLE_HEIGHT / 2); // Use calculated margin
+            // mainTitleText.setAttribute('font-size', MAIN_TITLE_FONT_SIZE); // Use constant
+            // mainTitleText.setAttribute('font-family', 'Arial, sans-serif');
+            // mainTitleText.setAttribute('text-anchor', 'middle');
+            // mainTitleText.setAttribute('dominant-baseline', 'middle');
+            // mainTitleText.setAttribute('fill', '#000000');
+            // mainTitleText.setAttribute('font-weight', 'bold');
+            // mainTitleText.textContent = part.name;
+            // svgPageGroup.appendChild(mainTitleText);
 
             // 6. Render the Part Layout into Printable Area
             console.log(`${LOG_PREFIX}       Rendering combined layout for part ${part.name} into SVG printable area...`);
+            const partTitle = ""; // Pass empty title as it's removed
             const partLayoutId = `${part.name.replace(/\s+/g, '_')}_layout_${index}`; // Ensure unique ID
             const partViewData = {
               combinedViewBox: combinedLayoutViewBox,
@@ -764,10 +808,11 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
               topPaths: pathGroups.topPaths,
               rightPaths: pathGroups.rightPaths,
             };
-            const printableAreaPos = [PAGE_MARGIN, PAGE_MARGIN + MAIN_TITLE_HEIGHT];
+            // Position the drawing within the printable area using calculated values
+            const printableAreaPos = [pageLayout.printableX, pageLayout.printableY];
             const printableDimensions = { width: pageLayout.printableWidth, height: pageLayout.printableHeight };
 
-            renderViewToPdfSvg(svgPageGroup, partViewData, part.name, printableAreaPos, printableDimensions, partLayoutId, true, layoutOffsets);
+            renderViewToPdfSvg(svgPageGroup, partViewData, partTitle, printableAreaPos, printableDimensions, partLayoutId, true, layoutOffsets);
 
             // 7. Add SVG element to the *current* PDF page
             const currentPageNum = pdf.internal.getNumberOfPages();
