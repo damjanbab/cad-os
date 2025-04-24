@@ -9,6 +9,7 @@ import { lProfileModel } from './lProfile.js';
 import { frustumModel } from './frustum.js';
 import { drillModel } from './drill.js';
 import { staircaseModel } from './staircase.js';
+import { closetModel } from './furniture.js'; // Import the new closet model
 import { validateModelParams } from '../validators.js';
 
 // Register all models in a single place
@@ -22,6 +23,7 @@ export const modelRegistry = {
   "LProfile": lProfileModel,
   "Frustum": frustumModel,
   "Drill": drillModel,
+  "Closet": closetModel, // Register the new closet model
   "Staircase": { ...staircaseModel, hasBoM: true }
 };
 
