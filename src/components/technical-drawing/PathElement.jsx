@@ -3,7 +3,7 @@ import React from 'react';
 /**
  * Renders a single SVG path
  */
-export default function PathElement({ path, stroke, strokeWidth, strokeDasharray, onClick, viewId }) {
+export default function PathElement({ path, stroke, strokeWidth, strokeDasharray, onClick, viewId, partName, partIndex }) { // Add partName and partIndex
   if (!path) return null;
 
   // Handle different path formats
@@ -22,7 +22,7 @@ export default function PathElement({ path, stroke, strokeWidth, strokeDasharray
       fill="none"
       strokeDasharray={strokeDasharray}
       style={{ vectorEffect: 'non-scaling-stroke', cursor: 'pointer' }}
-      onClick={() => onClick && onClick(uniquePathId, path)} // Pass unique ID and path object
+      onClick={() => onClick && onClick(uniquePathId, path, partName, partIndex)} // Pass unique ID, path object, partName, and partIndex
     />
   );
 }

@@ -3,7 +3,8 @@ import PathElement from './PathElement.jsx';
 import MeasurementDisplay from './MeasurementDisplay.jsx';
 
 // Projection View Component
-export default function ProjectionView({ projection, title, position, dimensions, onPathClick, viewId, activeMeasurements, onMeasurementUpdate }) {
+// Add partName and partIndex as optional props
+export default function ProjectionView({ projection, title, position, dimensions, onPathClick, viewId, activeMeasurements, onMeasurementUpdate, partName, partIndex }) {
   if (!projection) return null;
   const svgElementRef = useRef(null); // Ref for this specific SVG
 
@@ -54,6 +55,8 @@ export default function ProjectionView({ projection, title, position, dimensions
                 strokeDasharray="2,1"
                 onClick={onPathClick}
                 viewId={viewId}
+                partName={partName} // Pass partName
+                partIndex={partIndex} // Pass partIndex
               />
             ))}
           </g>
@@ -69,6 +72,8 @@ export default function ProjectionView({ projection, title, position, dimensions
                 strokeDasharray={null}
                 onClick={onPathClick}
                 viewId={viewId}
+                partName={partName} // Pass partName
+                partIndex={partIndex} // Pass partIndex
               />
             ))}
           </g>

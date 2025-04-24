@@ -108,6 +108,8 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                       strokeDasharray="2,1"
                       onClick={onPathClick}
                       viewId={frontViewId}
+                      partName={part.name} // Pass part name
+                      partIndex={index}    // Pass part index
                     />
                   ))}
                 </g>
@@ -123,6 +125,8 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                       strokeDasharray={null}
                       onClick={onPathClick}
                       viewId={frontViewId}
+                      partName={part.name} // Pass part name
+                      partIndex={index}    // Pass part index
                     />
                   ))}
                 </g>
@@ -211,6 +215,8 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                       strokeDasharray="2,1"
                       onClick={onPathClick}
                       viewId={topViewId}
+                      partName={part.name} // Pass part name
+                      partIndex={index}    // Pass part index
                     />
                   ))}
                 </g>
@@ -226,6 +232,8 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                       strokeDasharray={null}
                       onClick={onPathClick}
                       viewId={topViewId}
+                      partName={part.name} // Pass part name
+                      partIndex={index}    // Pass part index
                     />
                   ))}
                 </g>
@@ -314,6 +322,8 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                       strokeDasharray="2,1"
                       onClick={onPathClick}
                       viewId={rightViewId}
+                      partName={part.name} // Pass part name
+                      partIndex={index}    // Pass part index
                     />
                   ))}
                 </g>
@@ -329,6 +339,8 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                       strokeDasharray={null}
                       onClick={onPathClick}
                       viewId={rightViewId}
+                      partName={part.name} // Pass part name
+                      partIndex={index}    // Pass part index
                     />
                   ))}
                 </g>

@@ -42,7 +42,8 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
   }, []); // Add empty dependency array
 
   // Handle path click - toggle measurement display
-  const handlePathClick = (uniquePathId, path) => {
+  // Add partName and partIndex to receive context from PathElement
+  const handlePathClick = useCallback((uniquePathId, path, partName, partIndex) => {
     // Only allow measurements for lines and circles with valid geometry
     if (!path.geometry || (path.geometry.type !== 'line' && path.geometry.type !== 'circle')) {
       console.log(`Clicked non-measurable path: ${uniquePathId}, Type: ${path.geometry?.type}`);
@@ -72,22 +73,21 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
 
         // Determine the correct viewId for the measurement state
         let measurementViewId;
-        // Check if the path ID indicates it belongs to the combined standard layout
+        // The viewId is implicitly passed via the uniquePathId structure
+        // (e.g., PartName_front_visible_...) or explicitly for standard layout.
+        // We need to extract the view part (e.g., PartName_front or standard_layout)
+        const parts = uniquePathId.split('_');
         if (uniquePathId.startsWith('standard_')) {
-            measurementViewId = "standard_layout"; // Use the combined view ID
-            console.log(`[INFO] Clicked path ${uniquePathId} belongs to standard_layout.`);
+            measurementViewId = "standard_layout";
+            console.log(`[INFO] Clicked path ${uniquePathId} belongs to Standard Layout: ${measurementViewId}`);
+        } else if (parts.length >= 4) { // Expecting at least PartName_viewName_visibility_type_id
+            // Reconstruct the specific view ID (e.g., PartName_front)
+            measurementViewId = parts.slice(0, parts.length - 3).join('_');
+            console.log(`[INFO] Clicked path ${uniquePathId} belongs to Part View: ${measurementViewId}`);
         } else {
-            // Otherwise, extract viewId for part views (assuming format like PartName_viewName_...)
-            const parts = uniquePathId.split('_');
-            if (parts.length >= 2) {
-                 // Attempt to reconstruct part/view name (e.g., "ComponentName_front")
-                 // This might need adjustment based on actual part path ID format
-                 measurementViewId = parts.slice(0, parts.length - 3).join('_'); // Heuristic guess
-                 console.log(`[INFO] Extracted part viewId: ${measurementViewId} from ${uniquePathId}`);
-            } else {
-                 measurementViewId = uniquePathId; // Fallback
-                 console.warn(`[WARN] Could not reliably extract part viewId from pathId: ${uniquePathId}`);
-            }
+            // Fallback or unexpected format
+            measurementViewId = uniquePathId; // Less ideal, use full ID
+            console.warn(`[WARN] Could not reliably extract viewId from pathId: ${uniquePathId}. Using full ID.`);
         }
 
 
@@ -107,7 +107,7 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
 
       return newMeasurements;
     });
-  };
+  }, []); // Ensure correct syntax for useCallback with empty dependency array
 
   useEffect(() => {
     const updateSize = () => {

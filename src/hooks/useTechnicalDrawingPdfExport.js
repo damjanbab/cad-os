@@ -422,6 +422,10 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
     borderRect.setAttribute('stroke-width', 0.2); // Use a fixed stroke width, non-scaling-stroke might not be needed here
     viewGroup.appendChild(borderRect); // Add border relative to the viewGroup
 
+    // Declare view group variables here to be accessible by measurement rendering
+    let frontGroup = null, topGroup = null, rightGroup = null;
+    let allPaths = []; // For standard layout measurement lookup
+
     // --- Render Paths into Main Content Group ---
     // Stroke width needs to be scaled inversely if not using vector-effect
     const baseStrokeWidth = 0.15; // Base visible stroke width in mm
@@ -460,23 +464,23 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
       // These offsets were calculated in `calculatePartLayout` based on viewGaps etc.
       // The mainContentGroup already handles the overall scaling and centering of the combined layout.
 
-      // Front View
-      const frontGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      // Front View - Assign to pre-declared variable
+      frontGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       frontGroup.setAttribute('transform', `translate(${layoutOffsets.front.x}, ${layoutOffsets.front.y})`);
       mainContentGroup.appendChild(frontGroup);
       renderPaths(viewData.frontPaths, frontGroup);
 
-      // Top View
+      // Top View - Assign to pre-declared variable
       if (viewData.topPaths && layoutOffsets.top) {
-        const topGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        topGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         topGroup.setAttribute('transform', `translate(${layoutOffsets.top.x}, ${layoutOffsets.top.y})`);
         mainContentGroup.appendChild(topGroup);
         renderPaths(viewData.topPaths, topGroup);
       }
 
-      // Right View
+      // Right View - Assign to pre-declared variable
       if (viewData.rightPaths && layoutOffsets.right) {
-        const rightGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        rightGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         rightGroup.setAttribute('transform', `translate(${layoutOffsets.right.x}, ${layoutOffsets.right.y})`);
         mainContentGroup.appendChild(rightGroup);
         renderPaths(viewData.rightPaths, rightGroup);
@@ -484,8 +488,8 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
     } else {
       // Standard Layout: Render all paths directly into the scaled/centered mainContentGroup
       console.log(`${logPrefixRender}   Rendering Standard Layout Paths...`);
-      // Combine visible and hidden paths for rendering
-      const allPaths = [
+      // Combine visible and hidden paths for rendering and assign to pre-declared allPaths
+      allPaths = [
           ...(viewData.visible?.paths?.map(p => ({ ...p, visibility: 'visible' })) || []),
           ...(viewData.hidden?.paths?.map(p => ({ ...p, visibility: 'hidden' })) || [])
       ];
@@ -494,29 +498,66 @@ export function useTechnicalDrawingPdfExport(projections, activeMeasurements) {
 
 
     // --- Render Measurements ---
-    // Measurements are rendered within the mainContentGroup, which is already scaled and positioned.
-    // The measurement rendering logic itself (renderMeasurementToSvg) uses absolute coordinates
-    // derived from the geometry, so they should appear correctly relative to the scaled paths.
-    // TODO: Confirm measurement rendering works correctly with part layouts and nested transforms.
+    console.log(`${logPrefixRender} Rendering Measurements...`);
+    const partNamePrefix = isPartLayout ? viewId.split('_layout_')[0] : null; // Extract PartName_ prefix if it's a part layout
+
     Object.values(activeMeasurements)
-      .filter(m => m.viewId === viewId || m.viewId?.startsWith(viewId)) // Basic filter, needs refinement for part layouts
+      // Filter measurements:
+      // - For standard layout, match exact viewId ("standard_layout")
+      // - For part layout, match measurements whose viewId starts with the part name prefix (e.g., "PartName_")
+      .filter(m => isPartLayout ? m.viewId?.startsWith(partNamePrefix + '_') : m.viewId === viewId)
       .forEach(measurement => {
-        let targetMeasurementGroup = mainContentGroup; // Render directly into the main scaled group
+        console.log(`${logPrefixRender}   Processing measurement: ${measurement.pathId} (View: ${measurement.viewId})`);
+        let targetMeasurementGroup = null; // Group to append the measurement SVG to
         let associatedPath = null;
+        let pathsToSearch = [];
 
-        // Find the associated path geometry (needs robust way to link measurement to path/view)
-        const findPath = (paths) => paths?.find(p => measurement.pathId.startsWith(p.id)); // Example matching logic
-        associatedPath = findPath(viewData.frontPaths) || findPath(viewData.topPaths) || findPath(viewData.rightPaths) || findPath(viewData.visible?.paths) || findPath(viewData.hidden?.paths);
-
-        if (associatedPath?.geometry) {
-          const measurementSvgGroup = renderMeasurementToSvg(measurement, associatedPath.geometry);
-          if (measurementSvgGroup) {
-              // Apply vector-effect to measurement lines/text if needed, or adjust stroke widths in renderMeasurementToSvg
-              // For simplicity, let's assume renderMeasurementToSvg handles visual consistency for now.
-              targetMeasurementGroup.appendChild(measurementSvgGroup);
+        // Determine which group and paths to use based on the measurement's specific viewId
+        if (isPartLayout) {
+          if (measurement.viewId?.endsWith('_front')) {
+            targetMeasurementGroup = frontGroup; // Append to the offset front view group
+            pathsToSearch = viewData.frontPaths || [];
+            console.log(`${logPrefixRender}     -> Belongs to Front View`);
+          } else if (measurement.viewId?.endsWith('_top')) {
+            targetMeasurementGroup = topGroup; // Append to the offset top view group
+            pathsToSearch = viewData.topPaths || [];
+             console.log(`${logPrefixRender}     -> Belongs to Top View`);
+          } else if (measurement.viewId?.endsWith('_right')) {
+            targetMeasurementGroup = rightGroup; // Append to the offset right view group
+            pathsToSearch = viewData.rightPaths || [];
+             console.log(`${logPrefixRender}     -> Belongs to Right View`);
+          } else {
+             console.warn(`${logPrefixRender}     -> Could not determine target view group for part measurement: ${measurement.viewId}`);
+             return; // Skip if we can't determine the target group
           }
         } else {
-           console.warn(`${logPrefixRender} Could not find geometry for measurement ${measurement.pathId}`);
+          // Standard layout: target the main group and search combined paths
+          targetMeasurementGroup = mainContentGroup;
+          pathsToSearch = allPaths || []; // Use the combined paths list
+           console.log(`${logPrefixRender}     -> Belongs to Standard Layout`);
+        }
+
+        if (!targetMeasurementGroup) {
+             console.warn(`${logPrefixRender}     -> Target measurement group is null, skipping measurement ${measurement.pathId}`);
+             return;
+        }
+
+        // Find the associated path geometry using the measurement.pathId (which is the unique path ID)
+        associatedPath = pathsToSearch.find(p => p.id === measurement.pathId);
+
+        if (associatedPath?.geometry) {
+          console.log(`${logPrefixRender}     Found geometry for path ${associatedPath.id}`);
+          const measurementSvgGroup = renderMeasurementToSvg(measurement, associatedPath.geometry);
+          if (measurementSvgGroup) {
+              // Measurement coordinates are absolute based on geometry, so they should render correctly
+              // relative to the paths within their respective (potentially offset) group.
+              targetMeasurementGroup.appendChild(measurementSvgGroup);
+              console.log(`${logPrefixRender}     Appended measurement SVG to target group.`);
+          } else {
+              console.warn(`${logPrefixRender}     renderMeasurementToSvg returned null for ${measurement.pathId}`);
+          }
+        } else {
+           console.warn(`${logPrefixRender}     Could not find geometry for measurement pathId: ${measurement.pathId} in searched paths (count: ${pathsToSearch.length})`);
         }
       });
 
