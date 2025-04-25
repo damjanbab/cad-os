@@ -5,21 +5,22 @@ function createCloset({ width, depth, board_thickness }) {
   let closet = [];
   const bottom_shelf_height = 50;
   const shelf_height = 30;
-  const nr_biscuits_long = Math.floor(depth / 100);
-  const nr_biscuits_middle = Math.floor((depth - board_thickness) / 100);
-  const nr_biscuits_short = Math.floor(depth / 150);
+  const nr_biscuits_long = Math.floor(depth / 10);
+  const nr_biscuits_middle = Math.floor((depth - board_thickness) / 10);
+  const nr_biscuits_short = Math.floor(depth / 15);
   const between_long = (depth - nr_biscuits_long * 5) / (nr_biscuits_long + 1);
   const between_middle = (depth - board_thickness - nr_biscuits_middle * 5) / (nr_biscuits_middle + 1);
   const between_short = (2 * depth / 3 - nr_biscuits_short * 5) / (nr_biscuits_short + 1);
 
   const biscuit = draw([-2.4, 0.25])
-    .bulgeArcTo([2.4, 0.25], -0.03)
+    .bulgeArcTo([2.4, 0.25], -0.3)
     .tangentArcTo([2.4, -0.25])
-    .bulgeArcTo([-2.4, -0.25], -0.03)
+    .bulgeArcTo([-2.4, -0.25], -0.3)
     .tangentArcTo([-2.4, 0.25])
     .close()
     .sketchOnPlane("XZ", -0.15)
     .extrude(0.3);
+
 
   const side_board_biscuits_top_array = [];
   for (let i = 0; i < nr_biscuits_long; i++) {
@@ -38,6 +39,7 @@ function createCloset({ width, depth, board_thickness }) {
     closet.push(biscuitInstance.clone().mirror("XZ"));
   }
   const side_board_biscuits_side = makeCompound(side_board_biscuits_side_array);
+
 
   const side_board = makeBox([0, -width / 2, 0], [depth, -width / 2 + board_thickness, bottom_shelf_height])
     .cut(side_board_biscuits_top)
@@ -76,6 +78,13 @@ function createCloset({ width, depth, board_thickness }) {
     closet.push(biscuitInstance.clone().mirror("XZ"));
   }
   const bottom_divider_biscuits_top = makeCompound(bottom_divider_biscuits_top_array);
+
+  const side_door = makeBox([depth - board_thickness, -width / 2 + board_thickness + 0.4, board_thickness], [depth, -width / 6 - 0.3, bottom_shelf_height - 0.4]);
+  closet.push(side_door);
+  closet.push(side_door.clone().mirror("XZ"));
+
+  const middle_door = makeBox([depth - board_thickness, -width / 6 + 0.3, board_thickness], [depth, width / 6 - 0.3, bottom_shelf_height - 0.4]);
+  closet.push(middle_door);
 
   const bottom_divider = makeBox([0, width / 6 - board_thickness / 2, 2 * board_thickness], [depth - board_thickness - 0.2, width / 6 + board_thickness / 2, bottom_shelf_height])
     .cut(bottom_divider_biscuits_bottom)
@@ -118,19 +127,44 @@ function createCloset({ width, depth, board_thickness }) {
   const vertical_board_biscuits_top = makeCompound(vertical_board_biscuits_top_array);
 
   const vertical_board_biscuits_side_array = [];
-
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < nr_biscuits_short; j++) {
+      const biscuitInstance = biscuit.clone().rotate(90, [0, 0, 0], [1, 0, 0]).translate(between_short + 2.5 + j * (5 + between_short), width/4 - board_thickness / 2, bottom_shelf_height + 2.5 * board_thickness + 2 * shelf_height + i*(shelf_height + board_thickness));
+      vertical_board_biscuits_side_array.push(biscuitInstance);
+      closet.push(biscuitInstance.clone());
+      closet.push(biscuitInstance.clone().mirror("XZ"));
+    }
+  }
   const vertical_board_biscuits_side = makeCompound(vertical_board_biscuits_side_array);
+  
+  const pin = makeCylinder(0.4, 3, [2*depth/3-between_short/2, -width/4, bottom_shelf_height + shelf_height + 1.5*board_thickness], [0, -1, 0]);
+  const vertical_board_pins_array = [];
+  const vertical_board_pins = makeCompound(vertical_board_pins_array);
 
   const vertical_board = makeBox([0, width / 4 - board_thickness / 2, bottom_shelf_height + board_thickness], [2 * depth / 3, width / 4 + board_thickness / 2, bottom_shelf_height + 6 * (board_thickness + shelf_height)])
     .cut(vertical_board_biscuits_bottom)
     .cut(vertical_board_biscuits_top)
-    .cut(vertical_board_biscuits_side);
+    .cut(vertical_board_biscuits_side)
+    .cut(vertical_board_pins);
   closet.push(vertical_board);
   closet.push(vertical_board.clone().mirror("XZ"));
 
   const vertical_board_tape = makeBox([2 * depth / 3, width / 4 - board_thickness / 2, bottom_shelf_height + board_thickness], [2 * depth / 3 + 0.2, width / 4 + board_thickness / 2, bottom_shelf_height + 6 * (board_thickness + shelf_height)]);
   closet.push(vertical_board_tape);
   closet.push(vertical_board_tape.clone().mirror("XZ"));
+
+  const big_shelf_biscuits_array = [];
+  for (let i=0; i<nr_biscuits_short; i++) {
+    const biscuitInstance = biscuit.clone().rotate(90, [0, 0, 0], [1, 0, 0]).translate(between_short + 2.5 + i * (5 + between_short), width/4 - board_thickness/2, bottom_shelf_height + 2.5 * board_thickness + 2 * shelf_height);
+    big_shelf_biscuits_array.push(biscuitInstance);
+  }
+  const big_shelf_biscuits = makeCompound(big_shelf_biscuits_array);
+  const big_shelf = makeBox([0, -width/4+board_thickness/2, bottom_shelf_height + 2*(shelf_height+board_thickness)], [2*depth/3, width/4-board_thickness/2, bottom_shelf_height + 2*shelf_height + 3*board_thickness]).cut(big_shelf_biscuits);
+  const big_shelf_tape = makeBox([2*depth/3, -width/4+board_thickness/2, bottom_shelf_height + 2*(shelf_height+board_thickness)], [2*depth/3+0.2, width/4 - board_thickness/2, bottom_shelf_height + 2*shelf_height + 3*board_thickness]);
+  for (let i=0; i<4; i++) {
+    closet.push(big_shelf.clone().translateZ(i*(shelf_height + board_thickness)));
+    closet.push(big_shelf_tape.clone().translateZ(i*(shelf_height+board_thickness)));
+  }
 
   const horizontal_board3 = makeBox([0, -width / 2, bottom_shelf_height + 6 * (board_thickness + shelf_height)], [depth, width / 2, bottom_shelf_height + 7 * board_thickness + 6 * shelf_height])
     .cut(vertical_board_biscuits_top)
@@ -139,13 +173,6 @@ function createCloset({ width, depth, board_thickness }) {
 
   const horizontal_board3_tape = makeBox([depth, -width / 2, bottom_shelf_height + 6 * (board_thickness + shelf_height)], [depth + 0.2, width / 2, bottom_shelf_height + 7 * board_thickness + 6 * shelf_height]);
   closet.push(horizontal_board3_tape);
-
-  const side_door = makeBox([depth - board_thickness, -width / 2 + board_thickness + 0.4, board_thickness], [depth, -width / 6 - 0.3, bottom_shelf_height - 0.4]);
-  closet.push(side_door);
-  closet.push(side_door.clone().mirror("XZ"));
-
-  const middle_door = makeBox([depth - board_thickness, -width / 6 + 0.3, board_thickness], [depth, width / 6 - 0.3, bottom_shelf_height - 0.4]);
-  closet.push(middle_door);
 
   const side_door_tape_inner = makeBox([depth - board_thickness, -width / 6 - 0.3, board_thickness], [depth, -width / 6 - 0.1, bottom_shelf_height - 0.4]);
   const side_door_tape_outer = makeBox([depth - board_thickness, -width / 2 + board_thickness + 0.2, board_thickness], [depth, -width / 2 + board_thickness + 0.4, bottom_shelf_height - 0.4]);
