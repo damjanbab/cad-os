@@ -3,33 +3,33 @@ import PathElement from './PathElement.jsx';
 import MeasurementDisplay from './MeasurementDisplay.jsx';
 import { parseViewBox } from '../../utils/svgUtils.js'; // Import utility
 
-// Component to render individual part views
+// Component to render individual part views (Front, Bottom, Left - Third Angle Projection)
 export default function PartView({ part, index, scale, onPathClick, activeMeasurements, onMeasurementUpdate }) {
   if (!part || !part.views) return null;
   // Refs for each SVG within the part view
   const frontSvgRef = useRef(null);
-  const topSvgRef = useRef(null);
-  const rightSvgRef = useRef(null);
+  const bottomSvgRef = useRef(null); // Renamed from topSvgRef
+  const leftSvgRef = useRef(null);   // Renamed from rightSvgRef
 
-  const titleHeight = 20; // Height of the title bar in pixels for part views
+  const titleHeight = 20; // Height of the title bar in pixels for part views (currently unused)
   const layoutGap = 20; // Gap between views in pixels
 
-  // Get the view data for each projection
+  // Get the view data for each projection (expecting front, bottom, left)
   const frontView = part.views.front;
-  const topView = part.views.top;
-  const rightView = part.views.right;
+  const bottomView = part.views.bottom; // Changed from topView
+  const leftView = part.views.left;     // Changed from rightView
 
   // Create unique view IDs for this part
   const partId = part.name.replace(/\s+/g, '_');
   const frontViewId = `${partId}_front`;
-  const topViewId = `${partId}_top`;
-  const rightViewId = `${partId}_right`;
+  const bottomViewId = `${partId}_bottom`; // Changed from topViewId
+  const leftViewId = `${partId}_left`;   // Changed from rightViewId
 
   // Parse viewboxes and calculate dimensions
-  let frontViewData, topViewData, rightViewData;
+  let frontViewData, bottomViewData, leftViewData; // Renamed
   let frontWidth = 0, frontHeight = 0;
-  let topWidth = 0, topHeight = 0;
-  let rightWidth = 0, rightHeight = 0;
+  let bottomWidth = 0, bottomHeight = 0; // Renamed
+  let leftWidth = 0, leftHeight = 0;     // Renamed
 
   if (frontView) {
     frontViewData = parseViewBox(frontView.combinedViewBox);
@@ -37,21 +37,23 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
     frontHeight = frontViewData ? frontViewData.height * scale : 0;
   }
 
-  if (topView) {
-    topViewData = parseViewBox(topView.combinedViewBox);
-    topWidth = topViewData ? topViewData.width * scale : 0;
-    topHeight = topViewData ? topViewData.height * scale : 0;
+  if (bottomView) { // Changed from topView
+    bottomViewData = parseViewBox(bottomView.combinedViewBox); // Changed from topViewData
+    bottomWidth = bottomViewData ? bottomViewData.width * scale : 0; // Changed from topWidth
+    bottomHeight = bottomViewData ? bottomViewData.height * scale : 0; // Changed from topHeight
   }
 
-  if (rightView) {
-    rightViewData = parseViewBox(rightView.combinedViewBox);
-    rightWidth = rightViewData ? rightViewData.width * scale : 0;
-    rightHeight = rightViewData ? rightViewData.height * scale : 0;
+  if (leftView) { // Changed from rightView
+    leftViewData = parseViewBox(leftView.combinedViewBox); // Changed from rightViewData
+    leftWidth = leftViewData ? leftViewData.width * scale : 0; // Changed from rightWidth
+    leftHeight = leftViewData ? leftViewData.height * scale : 0; // Changed from rightHeight
   }
 
-  // Calculate the total width and height needed for this part
-  const totalWidth = Math.max(frontWidth + rightWidth + layoutGap, topWidth);
-  const totalHeight = frontHeight + topHeight + layoutGap;
+  // Calculate the total width and height needed for this part (Third Angle Layout)
+  // Width: Front view width + gap + Left view width (or Bottom view width if wider)
+  // Height: Front view height + gap + Bottom view height
+  const totalWidth = Math.max(frontWidth + leftWidth + layoutGap, bottomWidth); // Changed rightWidth to leftWidth, topWidth to bottomWidth
+  const totalHeight = frontHeight + bottomHeight + layoutGap; // Changed topHeight to bottomHeight
 
   return (
     <div key={index} style={{
@@ -143,7 +145,7 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                       const pathsToCheck = visibility === 'visible' ? frontView?.visible?.paths : frontView?.hidden?.paths;
 
                       if (pathsToCheck) {
-                        currentPath = pathsToCheck.find(p => {
+                         currentPath = pathsToCheck.find(p => {
                           const pIdParts = `${p.id || ''}`.split('_');
                           const pOriginalIdOrIndex = pIdParts.slice(pIdParts.length - 2).join('_');
                           return pOriginalIdOrIndex === originalIdOrIndex || `${p.id}` === originalIdOrIndex;
@@ -180,14 +182,14 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
           </div>
         )}
 
-        {/* Top View - positioned below Front View */}
-        {topView && topViewData && (
+        {/* Bottom View - positioned below Front View */}
+        {bottomView && bottomViewData && ( // Changed from topView
           <div style={{
             position: 'absolute',
-            top: `${frontHeight + layoutGap}px`, // Adjusted top position (removed titleHeight)
-            left: `${(frontWidth - topWidth) / 2}px`, // Center below front view
-            width: `${topWidth}px`,
-            height: `${topHeight}px`, // Use only content height
+            top: `${frontHeight + layoutGap}px`, // Position below front view
+            left: `${(frontWidth - bottomWidth) / 2}px`, // Center horizontally below front view
+            width: `${bottomWidth}px`, // Use bottom view width
+            height: `${bottomHeight}px`, // Use bottom view height
             // border: '1px solid #ddd', // Removed border
             // display: 'flex', // No longer needed
             // flexDirection: 'column' // No longer needed
@@ -199,22 +201,22 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
               position: 'relative'
             }}>
               <svg
-                ref={topSvgRef} // Assign ref
-                viewBox={topView.combinedViewBox}
+                ref={bottomSvgRef} // Assign ref (Changed from topSvgRef)
+                viewBox={bottomView.combinedViewBox} // Changed from topView
                 style={{ width: '100%', height: '100%' }}
                 preserveAspectRatio="xMidYMid meet"
               >
                 {/* IMPORTANT: Draw hidden lines FIRST (underneath) */}
                 <g>
-                  {(topView.hidden?.paths || []).map((path, i) => (
+                  {(bottomView.hidden?.paths || []).map((path, i) => ( // Changed from topView
                     <PathElement
-                      key={`${topViewId}_hidden_${path.id || i}`}
+                      key={`${bottomViewId}_hidden_${path.id || i}`} // Changed from topViewId
                       path={path}
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
                       onClick={onPathClick}
-                      viewId={topViewId}
+                      viewId={bottomViewId} // Changed from topViewId
                       partName={part.name} // Pass part name
                       partIndex={index}    // Pass part index
                     />
@@ -223,15 +225,15 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
 
                 {/* Draw visible lines SECOND (on top) */}
                 <g>
-                  {(topView.visible?.paths || []).map((path, i) => (
+                  {(bottomView.visible?.paths || []).map((path, i) => ( // Changed from topView
                     <PathElement
-                      key={`${topViewId}_visible_${path.id || i}`}
+                      key={`${bottomViewId}_visible_${path.id || i}`} // Changed from topViewId
                       path={path}
                       stroke="#000000"
                       strokeWidth="0.5"
                       strokeDasharray={null}
                       onClick={onPathClick}
-                      viewId={topViewId}
+                      viewId={bottomViewId} // Changed from topViewId
                       partName={part.name} // Pass part name
                       partIndex={index}    // Pass part index
                     />
@@ -240,14 +242,14 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                  {/* Render Measurements for this view */}
                  <g>
                   {Object.values(activeMeasurements)
-                    .filter(m => m.viewId === topViewId)
+                    .filter(m => m.viewId === bottomViewId) // Changed from topViewId
                      .map(measurement => {
                       // Find the current path data using the pathId
                       const pathIdParts = measurement.pathId.split('_');
                       const visibility = pathIdParts[pathIdParts.length - 3];
                       const originalIdOrIndex = pathIdParts.slice(pathIdParts.length - 2).join('_');
                       let currentPath = null;
-                      const pathsToCheck = visibility === 'visible' ? topView?.visible?.paths : topView?.hidden?.paths;
+                      const pathsToCheck = visibility === 'visible' ? bottomView?.visible?.paths : bottomView?.hidden?.paths; // Changed from topView
 
                       if (pathsToCheck) {
                          currentPath = pathsToCheck.find(p => {
@@ -266,7 +268,7 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                       }
 
                       if (!currentPath || !currentPath.geometry) {
-                        console.warn(`PartView(Top): Could not find current geometry for measurement: ${measurement.pathId}`);
+                        console.warn(`PartView(Bottom): Could not find current geometry for measurement: ${measurement.pathId}`); // Changed from Top
                         return null;
                       }
 
@@ -276,7 +278,7 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                         <MeasurementDisplay
                           key={measurement.pathId}
                           measurementData={currentMeasurementData} // Pass updated data
-                          svgRef={topSvgRef} // Pass correct ref
+                          svgRef={bottomSvgRef} // Pass correct ref (Changed from topSvgRef)
                           onUpdatePosition={onMeasurementUpdate}
                         />
                       );
@@ -287,14 +289,14 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
           </div>
         )}
 
-        {/* Right View - positioned to the right of Front View */}
-        {rightView && rightViewData && (
+        {/* Left View - positioned to the right of Front View (Third Angle Projection) */}
+        {leftView && leftViewData && ( // Changed from rightView
           <div style={{
             position: 'absolute',
-            top: `${(frontHeight - rightHeight) / 2}px`, // Center vertically relative to front view content height
-            left: `${frontWidth + layoutGap}px`, // To the right of front view
-            width: `${rightWidth}px`,
-            height: `${rightHeight}px`, // Use only content height
+            top: `${(frontHeight - leftHeight) / 2}px`, // Center vertically relative to front view content height
+            left: `${frontWidth + layoutGap}px`, // Position to the right of front view
+            width: `${leftWidth}px`, // Use left view width
+            height: `${leftHeight}px`, // Use left view height
             // border: '1px solid #ddd', // Removed border
             // display: 'flex', // No longer needed
             // flexDirection: 'column' // No longer needed
@@ -306,22 +308,22 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
               position: 'relative'
             }}>
               <svg
-                ref={rightSvgRef} // Assign ref
-                viewBox={rightView.combinedViewBox}
+                ref={leftSvgRef} // Assign ref (Changed from rightSvgRef)
+                viewBox={leftView.combinedViewBox} // Changed from rightView
                 style={{ width: '100%', height: '100%' }}
                 preserveAspectRatio="xMidYMid meet"
               >
                 {/* IMPORTANT: Draw hidden lines FIRST (underneath) */}
                 <g>
-                  {(rightView.hidden?.paths || []).map((path, i) => (
+                  {(leftView.hidden?.paths || []).map((path, i) => ( // Changed from rightView
                     <PathElement
-                      key={`${rightViewId}_hidden_${path.id || i}`}
+                      key={`${leftViewId}_hidden_${path.id || i}`} // Changed from rightViewId
                       path={path}
                       stroke="#777777"
                       strokeWidth="0.3"
                       strokeDasharray="2,1"
                       onClick={onPathClick}
-                      viewId={rightViewId}
+                      viewId={leftViewId} // Changed from rightViewId
                       partName={part.name} // Pass part name
                       partIndex={index}    // Pass part index
                     />
@@ -330,15 +332,15 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
 
                 {/* Draw visible lines SECOND (on top) */}
                 <g>
-                  {(rightView.visible?.paths || []).map((path, i) => (
+                  {(leftView.visible?.paths || []).map((path, i) => ( // Changed from rightView
                     <PathElement
-                      key={`${rightViewId}_visible_${path.id || i}`}
+                      key={`${leftViewId}_visible_${path.id || i}`} // Changed from rightViewId
                       path={path}
                       stroke="#000000"
                       strokeWidth="0.5"
                       strokeDasharray={null}
                       onClick={onPathClick}
-                      viewId={rightViewId}
+                      viewId={leftViewId} // Changed from rightViewId
                       partName={part.name} // Pass part name
                       partIndex={index}    // Pass part index
                     />
@@ -347,14 +349,14 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                  {/* Render Measurements for this view */}
                  <g>
                   {Object.values(activeMeasurements)
-                    .filter(m => m.viewId === rightViewId)
+                    .filter(m => m.viewId === leftViewId) // Changed from rightViewId
                      .map(measurement => {
                       // Find the current path data using the pathId
                       const pathIdParts = measurement.pathId.split('_');
                       const visibility = pathIdParts[pathIdParts.length - 3];
                       const originalIdOrIndex = pathIdParts.slice(pathIdParts.length - 2).join('_');
                       let currentPath = null;
-                      const pathsToCheck = visibility === 'visible' ? rightView?.visible?.paths : rightView?.hidden?.paths;
+                      const pathsToCheck = visibility === 'visible' ? leftView?.visible?.paths : leftView?.hidden?.paths; // Changed from rightView
 
                       if (pathsToCheck) {
                          currentPath = pathsToCheck.find(p => {
@@ -373,7 +375,7 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                       }
 
                       if (!currentPath || !currentPath.geometry) {
-                        console.warn(`PartView(Right): Could not find current geometry for measurement: ${measurement.pathId}`);
+                        console.warn(`PartView(Left): Could not find current geometry for measurement: ${measurement.pathId}`); // Changed from Right
                         return null;
                       }
 
@@ -383,7 +385,7 @@ export default function PartView({ part, index, scale, onPathClick, activeMeasur
                         <MeasurementDisplay
                           key={measurement.pathId}
                           measurementData={currentMeasurementData} // Pass updated data
-                          svgRef={rightSvgRef} // Pass correct ref
+                          svgRef={leftSvgRef} // Pass correct ref (Changed from rightSvgRef)
                           onUpdatePosition={onMeasurementUpdate}
                         />
                       );
