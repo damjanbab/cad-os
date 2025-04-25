@@ -169,32 +169,32 @@ export function createOrthographicProjections(model) {
 
         // Generate each view
         const frontView = drawProjection(centeredModel, "front");
-        const topView = drawProjection(centeredModel, "top");
+        const bottomView = drawProjection(centeredModel, "bottom"); // Changed from top to bottom
         const rightView = drawProjection(centeredModel, "right");
 
         console.log(`${key} front view bounds:`, frontView.visible.toSVGViewBox());
-        console.log(`${key} top view bounds:`, topView.visible.toSVGViewBox());
+        console.log(`${key} bottom view bounds:`, bottomView.visible.toSVGViewBox()); // Changed log
         console.log(`${key} right view bounds:`, rightView.visible.toSVGViewBox());
 
         // Get all viewboxes for consistent scaling calculation
         const frontViewBox = parseViewBox(frontView.visible.toSVGViewBox());
-        const topViewBox = parseViewBox(topView.visible.toSVGViewBox());
+        const bottomViewBox = parseViewBox(bottomView.visible.toSVGViewBox()); // Changed variable
         const rightViewBox = parseViewBox(rightView.visible.toSVGViewBox());
 
         // Calculate a consistent scale factor based on the largest dimensions
         // This ensures all views have the same scale
-        const maxWidth = Math.max(frontViewBox?.width || 0, topViewBox?.width || 0, rightViewBox?.width || 0);
-        const maxHeight = Math.max(frontViewBox?.height || 0, topViewBox?.height || 0, rightViewBox?.height || 0);
+        const maxWidth = Math.max(frontViewBox?.width || 0, bottomViewBox?.width || 0, rightViewBox?.width || 0); // Changed variable
+        const maxHeight = Math.max(frontViewBox?.height || 0, bottomViewBox?.height || 0, rightViewBox?.height || 0); // Changed variable
 
         // Create normalized viewboxes with consistent scale
         // We'll keep these separately for use in the rendering
         if (frontViewBox) frontView.normalizedViewBox = createNormalizedViewBox(frontViewBox, maxWidth, maxHeight);
-        if (topViewBox) topView.normalizedViewBox = createNormalizedViewBox(topViewBox, maxWidth, maxHeight);
+        if (bottomViewBox) bottomView.normalizedViewBox = createNormalizedViewBox(bottomViewBox, maxWidth, maxHeight); // Changed variable
         if (rightViewBox) rightView.normalizedViewBox = createNormalizedViewBox(rightViewBox, maxWidth, maxHeight);
 
         const componentViews = {
           front: frontView,
-          top: topView,
+          bottom: bottomView, // Changed key and value
           right: rightView
         };
 
@@ -233,25 +233,25 @@ export function createOrthographicProjections(model) {
 
     // Create projections for standard views
     const frontView = drawProjection(centeredMainModel, "front");
-    const topView = drawProjection(centeredMainModel, "top");
+    const bottomView = drawProjection(centeredMainModel, "bottom"); // Changed from top to bottom
     const rightView = drawProjection(centeredMainModel, "right");
 
     console.log("Standard front view bounds:", frontView.visible.toSVGViewBox());
-    console.log("Standard top view bounds:", topView.visible.toSVGViewBox());
+    console.log("Standard bottom view bounds:", bottomView.visible.toSVGViewBox()); // Changed log
     console.log("Standard right view bounds:", rightView.visible.toSVGViewBox());
 
     // Get all viewboxes for consistent scaling calculation
     const frontViewBox = parseViewBox(frontView.visible.toSVGViewBox());
-    const topViewBox = parseViewBox(topView.visible.toSVGViewBox());
+    const bottomViewBox = parseViewBox(bottomView.visible.toSVGViewBox()); // Changed variable
     const rightViewBox = parseViewBox(rightView.visible.toSVGViewBox());
 
     // Calculate a consistent scale factor based on the largest dimensions
-    const maxWidth = Math.max(frontViewBox?.width || 0, topViewBox?.width || 0, rightViewBox?.width || 0);
-    const maxHeight = Math.max(frontViewBox?.height || 0, topViewBox?.height || 0, rightViewBox?.height || 0);
+    const maxWidth = Math.max(frontViewBox?.width || 0, bottomViewBox?.width || 0, rightViewBox?.width || 0); // Changed variable
+    const maxHeight = Math.max(frontViewBox?.height || 0, bottomViewBox?.height || 0, rightViewBox?.height || 0); // Changed variable
 
     // Create normalized viewboxes with consistent scale
     if (frontViewBox) frontView.normalizedViewBox = createNormalizedViewBox(frontViewBox, maxWidth, maxHeight);
-    if (topViewBox) topView.normalizedViewBox = createNormalizedViewBox(topViewBox, maxWidth, maxHeight);
+    if (bottomViewBox) bottomView.normalizedViewBox = createNormalizedViewBox(bottomViewBox, maxWidth, maxHeight); // Changed variable
     if (rightViewBox) rightView.normalizedViewBox = createNormalizedViewBox(rightViewBox, maxWidth, maxHeight);
 
     let partProjections = [];
@@ -272,26 +272,26 @@ export function createOrthographicProjections(model) {
 
       // Generate views with consistent scaling
       const mainFrontView = drawProjection(centeredMain, "front");
-      const mainTopView = drawProjection(centeredMain, "top");
+      const mainBottomView = drawProjection(centeredMain, "bottom"); // Changed from top to bottom
       const mainRightView = drawProjection(centeredMain, "right");
 
       // Get all viewboxes for consistent scaling calculation
       const mFrontViewBox = parseViewBox(mainFrontView.visible.toSVGViewBox());
-      const mTopViewBox = parseViewBox(mainTopView.visible.toSVGViewBox());
+      const mBottomViewBox = parseViewBox(mainBottomView.visible.toSVGViewBox()); // Changed variable
       const mRightViewBox = parseViewBox(mainRightView.visible.toSVGViewBox());
 
       // Calculate a consistent scale factor
-      const mMaxWidth = Math.max(mFrontViewBox?.width || 0, mTopViewBox?.width || 0, mRightViewBox?.width || 0);
-      const mMaxHeight = Math.max(mFrontViewBox?.height || 0, mTopViewBox?.height || 0, mRightViewBox?.height || 0);
+      const mMaxWidth = Math.max(mFrontViewBox?.width || 0, mBottomViewBox?.width || 0, mRightViewBox?.width || 0); // Changed variable
+      const mMaxHeight = Math.max(mFrontViewBox?.height || 0, mBottomViewBox?.height || 0, mRightViewBox?.height || 0); // Changed variable
 
       // Create normalized viewboxes with consistent scale
       if (mFrontViewBox) mainFrontView.normalizedViewBox = createNormalizedViewBox(mFrontViewBox, mMaxWidth, mMaxHeight);
-      if (mTopViewBox) mainTopView.normalizedViewBox = createNormalizedViewBox(mTopViewBox, mMaxWidth, mMaxHeight);
+      if (mBottomViewBox) mainBottomView.normalizedViewBox = createNormalizedViewBox(mBottomViewBox, mMaxWidth, mMaxHeight); // Changed variable
       if (mRightViewBox) mainRightView.normalizedViewBox = createNormalizedViewBox(mRightViewBox, mMaxWidth, mMaxHeight);
 
       const mainPartViews = {
         front: mainFrontView,
-        top: mainTopView,
+        bottom: mainBottomView, // Changed key and value
         right: mainRightView
       };
 
@@ -314,26 +314,26 @@ export function createOrthographicProjections(model) {
 
         // Generate views with consistent scaling
         const helperFrontView = drawProjection(centeredHelper, "front");
-        const helperTopView = drawProjection(centeredHelper, "top");
+        const helperBottomView = drawProjection(centeredHelper, "bottom"); // Changed from top to bottom
         const helperRightView = drawProjection(centeredHelper, "right");
 
         // Get all viewboxes for consistent scaling calculation
         const hFrontViewBox = parseViewBox(helperFrontView.visible.toSVGViewBox());
-        const hTopViewBox = parseViewBox(helperTopView.visible.toSVGViewBox());
+        const hBottomViewBox = parseViewBox(helperBottomView.visible.toSVGViewBox()); // Changed variable
         const hRightViewBox = parseViewBox(helperRightView.visible.toSVGViewBox());
 
         // Calculate a consistent scale factor
-        const hMaxWidth = Math.max(hFrontViewBox?.width || 0, hTopViewBox?.width || 0, hRightViewBox?.width || 0);
-        const hMaxHeight = Math.max(hFrontViewBox?.height || 0, hTopViewBox?.height || 0, hRightViewBox?.height || 0);
+        const hMaxWidth = Math.max(hFrontViewBox?.width || 0, hBottomViewBox?.width || 0, hRightViewBox?.width || 0); // Changed variable
+        const hMaxHeight = Math.max(hFrontViewBox?.height || 0, hBottomViewBox?.height || 0, hRightViewBox?.height || 0); // Changed variable
 
         // Create normalized viewboxes
         if (hFrontViewBox) helperFrontView.normalizedViewBox = createNormalizedViewBox(hFrontViewBox, hMaxWidth, hMaxHeight);
-        if (hTopViewBox) helperTopView.normalizedViewBox = createNormalizedViewBox(hTopViewBox, hMaxWidth, hMaxHeight);
+        if (hBottomViewBox) helperBottomView.normalizedViewBox = createNormalizedViewBox(hBottomViewBox, hMaxWidth, hMaxHeight); // Changed variable
         if (hRightViewBox) helperRightView.normalizedViewBox = createNormalizedViewBox(hRightViewBox, hMaxWidth, hMaxHeight);
 
         const helperPartViews = {
           front: helperFrontView,
-          top: helperTopView,
+          bottom: helperBottomView, // Changed key and value
           right: helperRightView
         };
 
@@ -349,7 +349,7 @@ export function createOrthographicProjections(model) {
     return {
       standard: {
         frontView,
-        topView,
+        bottomView, // Changed value
         rightView
       },
       parts: partProjections
@@ -407,7 +407,7 @@ export function processProjectionsForRendering(projections) {
   // Process standard views into a combined layout if they exist
   if (projections.standard && projections.standard.frontView) {
     console.log("[INFO] Processing standard views for combined layout.");
-    const { frontView, topView, rightView } = projections.standard;
+    const { frontView, bottomView, rightView } = projections.standard; // Changed topView to bottomView
     const allPaths = [];
 
     // --- 1. Get Data & ViewBoxes ---
@@ -418,12 +418,12 @@ export function processProjectionsForRendering(projections) {
       visiblePaths: frontView.visible.toSVGPaths(),
       hiddenPaths: frontView.hidden.toSVGPaths(),
     };
-    const topData = topView ? {
-      view: topView,
-      name: 'top',
-      viewBox: parseViewBox(topView.normalizedViewBox || topView.visible.toSVGViewBox(5)),
-      visiblePaths: topView.visible.toSVGPaths(),
-      hiddenPaths: topView.hidden.toSVGPaths(),
+    const bottomData = bottomView ? { // Changed topData to bottomData
+      view: bottomView, // Changed topView to bottomView
+      name: 'bottom', // Changed name to 'bottom'
+      viewBox: parseViewBox(bottomView.normalizedViewBox || bottomView.visible.toSVGViewBox(5)), // Changed topView to bottomView
+      visiblePaths: bottomView.visible.toSVGPaths(), // Changed topView to bottomView
+      hiddenPaths: bottomView.hidden.toSVGPaths(), // Changed topView to bottomView
     } : null;
     const rightData = rightView ? {
       view: rightView,
@@ -442,17 +442,17 @@ export function processProjectionsForRendering(projections) {
     // --- 2. Calculate Layout & Combined ViewBox ---
     let totalWidth = frontData.viewBox.width;
     let totalHeight = frontData.viewBox.height;
-    let topOffset = { x: 0, y: 0 };
+    let bottomOffset = { x: 0, y: 0 }; // Changed topOffset to bottomOffset
     let rightOffset = { x: 0, y: 0 };
 
-    // Position Top View below Front View
-    if (topData && topData.viewBox) {
-      topOffset.x = frontData.viewBox.x + (frontData.viewBox.width - topData.viewBox.width) / 2;
-      topOffset.y = frontData.viewBox.y + frontData.viewBox.height + layoutGap;
-      totalHeight = (topOffset.y + topData.viewBox.height) - frontData.viewBox.y; // Update total height
-      totalWidth = Math.max(totalWidth, topData.viewBox.width + (topOffset.x - frontData.viewBox.x)); // Adjust width if top is wider
+    // Position Bottom View below Front View
+    if (bottomData && bottomData.viewBox) { // Changed topData to bottomData
+      bottomOffset.x = frontData.viewBox.x + (frontData.viewBox.width - bottomData.viewBox.width) / 2; // Changed topData to bottomData
+      bottomOffset.y = frontData.viewBox.y + frontData.viewBox.height + layoutGap;
+      totalHeight = (bottomOffset.y + bottomData.viewBox.height) - frontData.viewBox.y; // Update total height // Changed topOffset/topData
+      totalWidth = Math.max(totalWidth, bottomData.viewBox.width + (bottomOffset.x - frontData.viewBox.x)); // Adjust width if bottom is wider // Changed topData/topOffset
     } else {
-        console.log("[INFO] No valid Top view data for layout.");
+        console.log("[INFO] No valid Bottom view data for layout."); // Changed log
     }
 
     // Position Right View to the right of Front View
@@ -469,7 +469,7 @@ export function processProjectionsForRendering(projections) {
     const combinedLayoutViewBox = `${frontData.viewBox.x} ${frontData.viewBox.y} ${totalWidth} ${totalHeight}`;
     console.log(`[INFO] Calculated Combined Layout ViewBox: ${combinedLayoutViewBox}`);
     console.log(`[INFO] Front Origin: (${frontData.viewBox.x}, ${frontData.viewBox.y})`);
-    if (topData) console.log(`[INFO] Top Offset for Transform: (${topOffset.x - topData.viewBox.x}, ${topOffset.y - topData.viewBox.y})`);
+    if (bottomData) console.log(`[INFO] Bottom Offset for Transform: (${bottomOffset.x - bottomData.viewBox.x}, ${bottomOffset.y - bottomData.viewBox.y})`); // Changed topData/topOffset to bottomData/bottomOffset
     if (rightData) console.log(`[INFO] Right Offset for Transform: (${rightOffset.x - rightData.viewBox.x}, ${rightOffset.y - rightData.viewBox.y})`);
 
 
@@ -487,11 +487,11 @@ export function processProjectionsForRendering(projections) {
     // Process Front view (no transformation needed relative to its origin)
     processAndTransform(frontData, 0, 0, 'front');
 
-    // Process Top view (translate paths)
-    if (topData && topData.viewBox) {
-      const topTx = topOffset.x - topData.viewBox.x;
-      const topTy = topOffset.y - topData.viewBox.y;
-      processAndTransform(topData, topTx, topTy, 'top');
+    // Process Bottom view (translate paths)
+    if (bottomData && bottomData.viewBox) { // Changed topData to bottomData
+      const bottomTx = bottomOffset.x - bottomData.viewBox.x; // Changed topTx/topOffset/topData
+      const bottomTy = bottomOffset.y - bottomData.viewBox.y; // Changed topTy/topOffset/topData
+      processAndTransform(bottomData, bottomTx, bottomTy, 'bottom'); // Changed topData to bottomData, 'top' to 'bottom'
     }
 
     // Process Right view (translate paths)
@@ -538,6 +538,11 @@ function processPartProjections(partsArray = []) {
         const views = {};
 
         for (const [viewName, view] of Object.entries(part.views)) {
+          // Skip if view is null or undefined (might happen if a projection failed)
+          if (!view) {
+              console.warn(`[WARN] Skipping null/undefined view '${viewName}' for part '${part.name}'`);
+              continue;
+          }
           const viewVisiblePaths = view.visible.toSVGPaths();
           const viewHiddenPaths = view.hidden.toSVGPaths();
 
