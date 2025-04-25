@@ -7,10 +7,14 @@ import TechnicalDrawingCanvas from "../components/technical-drawing/TechnicalDra
 import RenderingView from "../RenderingView.jsx";
 import BillOfMaterials from "../components/bom/BillOfMaterials.jsx"; // Import BoM component
 
-import cadWorker from "../worker.js?worker";
+// Import BOTH workers
+import cadWorker from "../worker.js?worker"; // Original worker for 3D Mesh
+import TechDrawWorker from "../technicalDrawing.worker.js?worker"; // New worker for Tech Drawings
 import { modelRegistry, createDefaultParams } from "../models";
 
+// Create proxies for both workers
 const cad = wrap(new cadWorker());
+const techDrawWorker = wrap(new TechDrawWorker());
 
 export default function CadApp() {
   const [selectedModel, setSelectedModel] = useState(Object.keys(modelRegistry)[0]);
@@ -70,17 +74,12 @@ console.log(`[INFO] Creating ${selectedModel} with params:`, params);
       } else {
         setMesh(result);
         setBomData(result.componentData || null); // Set BoM data if available
-        
-        // Also generate technical drawings if needed
-        if (activeTab === 'technical') {
-          const projectionsResult = await cad.createProjections(selectedModel, modelParams);
-          setProjections(projectionsResult);
-        } else {
-          // Clear projections if not on the technical tab
-          setProjections(null); 
-        }
-      } 
-    } catch (error) { // Catch errors from cad.createMesh or cad.createProjections
+
+        // REMOVE projection generation from here - it's handled by the other useEffect now
+        // if (activeTab === 'technical') { ... }
+
+      }
+    } catch (error) { // Catch errors ONLY from cad.createMesh
         console.error("Error creating model or projections:", error); // Updated error message
         setValidationErrors(["An error occurred while generating the model."]);
         setMesh(null);
@@ -124,19 +123,44 @@ const requestHighDetailMesh = useCallback(async () => {
 }
 }, [selectedModel, params, explosionFactor, cad]); // Added dependencies
 
-// When tab changes, generate the required view data
+// When tab changes TO technical, generate projections using the NEW worker
   useEffect(() => {
-    if (activeTab === 'technical' && mesh && !projections) {
+    // Only trigger if switching TO technical tab AND projections aren't already loaded/loading
+    if (activeTab === 'technical' && !projections) {
+      console.log("[INFO] Technical tab active, requesting projections from techDrawWorker...");
+      setProjections(null); // Clear old/stale projections immediately
+      setValidationErrors([]); // Clear potential previous errors
+
+      // Prepare params (explosion factor is NOT needed for projections)
       const modelParams = { ...params };
-      if (modelRegistry[selectedModel].hasExplosion) {
-        modelParams.explosionFactor = explosionFactor;
-      }
-      
-      cad.createProjections(selectedModel, modelParams).then(projections => {
-        setProjections(projections);
-      });
+      // delete modelParams.explosionFactor; // Remove explosion factor if present
+
+      // Call the NEW worker
+      techDrawWorker.generateProjections(selectedModel, modelParams)
+        .then(result => {
+          console.log("[INFO] Received projections result from techDrawWorker:", result);
+          if (result && result.error) {
+            console.error("[ERROR] Error generating projections:", result.validationErrors || result.message);
+            setValidationErrors(result.validationErrors || [result.message || "Projection generation failed."]);
+            setProjections({ error: true }); // Set error state for projections
+          } else {
+            setProjections(result); // Set the successful projections data
+          }
+        })
+        .catch(error => {
+          console.error("[ERROR] Failed to call techDrawWorker.generateProjections:", error);
+          setValidationErrors([`Projection worker error: ${error.message}`]);
+          setProjections({ error: true }); // Set error state
+        });
+    } else if (activeTab !== 'technical') {
+        // Clear projections if we navigate away from the technical tab
+        if (projections) { // Only clear if they exist
+            console.log("[INFO] Clearing projections as tab is not 'technical'.");
+            setProjections(null);
+        }
     }
-  }, [activeTab, mesh, projections, selectedModel, params, explosionFactor]); // Added dependencies based on usage
+    // Dependencies: Only trigger when tab changes, or model/params change *while* on the technical tab
+  }, [activeTab, selectedModel, params]); // Removed mesh, projections, explosionFactor dependencies
 
   const handleModelChange = (e) => {
     const newModel = e.target.value;

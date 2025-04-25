@@ -6,7 +6,7 @@ import { expose } from "comlink";
 
 // Import our model registry
 import { modelRegistry, createModelWithValidation } from "./models";
-import { createOrthographicProjections, processProjectionsForRendering } from "./logic/technicalDrawingProcessor.js"; // Updated path
+// Removed imports for technical drawing processor functions
 
 // Initialize OpenCascade
 let loaded = false;
@@ -24,51 +24,7 @@ const init = async () => {
 };
 const started = init();
 
-// Function to create orthographic projections for technical drawings
-function createProjections(modelName, params) {
-  console.log(`[LOG] createProjections called for model: ${modelName}`);
-  console.time(`[PERF] Total ${modelName} projections creation`);
-  
-  return started.then(() => {
-    // Create model
-    const result = createModelWithValidation(modelName, params);
-    
-    // Check if validation failed
-    if (result && result.error) {
-      return {
-        error: true,
-        validationErrors: result.validationErrors
-      };
-    }
-    
-    // Create orthographic projections
-    console.time(`[PERF] ${modelName} projections generation`);
-    const projections = createOrthographicProjections(result);
-    console.timeEnd(`[PERF] ${modelName} projections generation`);
-    
-    // Process projections for rendering
-    console.time(`[PERF] ${modelName} projections processing`);
-    const processedProjections = processProjectionsForRendering(projections);
-    console.timeEnd(`[PERF] ${modelName} projections processing`);
-    
-    console.timeEnd(`[PERF] Total ${modelName} projections creation`);
-    
-    // Pass component data if available (for BOM)
-    if (result && result.componentData) {
-      // Filter out any non-serializable properties before passing
-      const serializedComponentData = result.componentData.map(component => ({
-        id: component.id,
-        name: component.name,
-        quantity: component.quantity,
-        dimensions: component.dimensions,
-        material: component.material
-      }));
-      processedProjections.componentData = serializedComponentData;
-    }
-    
-    return processedProjections;
-  });
-}
+// REMOVED createProjections function - moved to technicalDrawing.worker.js
 
 // Generic function to create a mesh for any model
 function createMesh(modelName, params, quality = 'standard') { // Add quality parameter
@@ -159,5 +115,5 @@ function createMesh(modelName, params, quality = 'standard') { // Add quality pa
   });
 }
 
-// Export only the functions needed for the main app
-expose({ createMesh, createProjections });
+// Export only the mesh creation function
+expose({ createMesh });
