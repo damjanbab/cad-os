@@ -253,12 +253,22 @@ function createCloset({ width, depth, board_thickness }) {
   const horizontal_board3_tape = makeBox([depth, -width / 2, bottom_shelf_height + 6 * (board_thickness + shelf_height)], [depth + 0.2, width / 2, bottom_shelf_height + 7 * board_thickness + 6 * shelf_height]);
   closet.push(horizontal_board3_tape);
 
-  const side_door = makeBox([depth - board_thickness, -width / 2 + board_thickness + 0.4, board_thickness], [depth, -width / 6 - 0.3, bottom_shelf_height - 0.4])
-		.cut(makeCylinder(0.3, board_thickness, [depth, width/6-board_thickness, bottom_shelf_height-board_thickness], [-1, 0, 0]));
-  closet.push(side_door);
-  closet.push(side_door.clone().mirror("XZ"));
+	const bolt_hole = makeCylinder(0.3, board_thickness, [depth, -width/6-board_thickness, bottom_shelf_height-board_thickness], [-1, 0, 0]);
 
-  const middle_door = makeBox([depth - board_thickness, -width / 6 + 0.3, board_thickness], [depth, width / 6 - 0.3, bottom_shelf_height - 0.4]);
+	const hinge_hole = makeCylinder(1.5, board_thickness/2, [depth-board_thickness, -width/2 + 2*board_thickness, bottom_shelf_height - 2*board_thickness], [1, 0, 0]);
+
+  const side_door_left = makeBox([depth - board_thickness, -width / 2 + board_thickness + 0.4, board_thickness], [depth, -width / 6 - 0.3, bottom_shelf_height - 0.4])
+		.cut(bolt_hole)
+		.cut(hinge_hole)
+		.cut(hinge_hole.clone().translateZ(-bottom_shelf_height + 6*board_thickness));
+  closet.push(side_door_left);
+	const side_door_right = side_door_left.clone().mirror("XZ");
+  closet.push(side_door_right);
+
+  const middle_door = makeBox([depth - board_thickness, -width / 6 + 0.3, board_thickness], [depth, width / 6 - 0.3, bottom_shelf_height - 0.4])
+		.cut(bolt_hole.clone().translateY(2*board_thickness).mirror("XZ"))
+		.cut(hinge_hole.clone().translateY(width/3))
+		.cut(hinge_hole.clone().translate(0, width/3, -bottom_shelf_height + 6*board_thickness));
   closet.push(middle_door);
 
   const side_door_tape_inner = makeBox([depth - board_thickness, -width / 6 - 0.3, board_thickness], [depth, -width / 6 - 0.1, bottom_shelf_height - 0.4]);
