@@ -19,7 +19,7 @@ export default function Viewbox({
   onPathClick, // Add prop for path click handler
   // Receive measurement props
   measurements,
-  onMeasurementUpdate, // Pass update handler down again
+  // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
   // Removed onMeasurementDragStart
   zoomLevel,
 }) {
@@ -126,7 +126,7 @@ export default function Viewbox({
                   onPathClick={onPathClick}
                   // Filter measurements based on the specific view instance ID
                   measurements={measurements.filter(m => m.viewInstanceId === item.id)}
-                  onMeasurementUpdate={onMeasurementUpdate} // Pass down update handler
+                  // onMeasurementUpdate={onMeasurementUpdate} // REMOVED - Update is handled via hook callback
                   // Removed onMeasurementDragStart
                   zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay
                 />

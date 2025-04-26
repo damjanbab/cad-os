@@ -36,26 +36,32 @@ export default function TechnicalDrawingCanvas({
   const viewContainerRef = useRef(null); // Ref for the zoomable/pannable content area
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
   const [scale, setScale] = useState(10); // Initial scale: 10 pixels per cm
-  // State for active measurements, keyed by uniquePathId
+  // State for active measurements, keyed by uniquePathId (measurement group ID)
   const [activeMeasurements, setActiveMeasurements] = useState({});
-  // Removed draggingMeasurementInfo state
 
   // --- Use Hooks ---
+  // Function for the interaction hook to get the current measurement state
+  const getMeasurementState = useCallback(() => activeMeasurements, [activeMeasurements]);
+
   // Use the updated hook with viewboxes and activeMeasurements
   const { exportPdf } = useTechnicalDrawingPdfExport(viewboxes, activeMeasurements);
   // const exportPdf = () => console.warn("PDF Export is temporarily disabled."); // Remove placeholder
   const {
     zoomLevel,
     panOffset,
-    isDragging,
+    isPanning, // Renamed state from isDragging
+    // draggingMeasurementId, // We don't need this state directly here
     interactionHandlers,
     resetInteraction,
-    setZoomLevel, // Expose setters if needed by controls
+    setZoomLevel,
     setPanOffset,
-  } = useCanvasInteraction(containerRef); // Hook manages pan/zoom only
+    // Hook setters for callbacks
+    setOnMeasurementDrag,
+    // setInteractionSvgRef, // Not setting SVG ref directly here for now
+  } = useCanvasInteraction(containerRef, getMeasurementState); // Pass state getter
 
 
-  // Handler to update measurement text position (passed down)
+  // Handler to update measurement text position (called by the hook via setOnMeasurementDrag)
   const handleMeasurementUpdate = useCallback((pathId, newPosition) => {
     setActiveMeasurements(prev => ({
       ...prev,
@@ -66,7 +72,15 @@ export default function TechnicalDrawingCanvas({
     }));
   }, []); // Keep dependency array empty
 
-  // Removed manual drag handlers - logic moved back to MeasurementDisplay
+
+  // --- Effect to set the measurement drag handler in the hook ---
+  useEffect(() => {
+    if (setOnMeasurementDrag) {
+      setOnMeasurementDrag(handleMeasurementUpdate);
+    }
+    // Cleanup function if needed, though likely not for setting a ref callback
+    // return () => { setOnMeasurementDrag(null); };
+  }, [setOnMeasurementDrag, handleMeasurementUpdate]); // Re-run if setters or handler change
 
 
   // Handle path click - toggle measurement display
@@ -184,13 +198,16 @@ export default function TechnicalDrawingCanvas({
         position: 'relative',
         backgroundColor: '#e0e0e0',
         overflow: 'hidden',
-        cursor: isDragging ? 'grabbing' : 'grab',
+        cursor: isPanning ? 'grabbing' : 'grab', // Use isPanning state for cursor
         touchAction: 'none' // Prevent default touch actions like scrolling
       }}
-      {...interactionHandlers} // Spread interaction handlers from the hook
+      // Spread interaction handlers (onMouseDown, onTouchStart, onWheel) from the hook
+      {...interactionHandlers}
     >
-      {/* Controls Overlay */}
-      <DrawingControls
+      {/* Controls Overlay - Wrap in div with class for interaction hook check */}
+      {/* Position the wrapper div top-right */}
+      <div className="drawing-controls" style={{ position: 'absolute', top: 0, right: 0, zIndex: 10, pointerEvents: 'auto' }}>
+        <DrawingControls
         selectedModelName={selectedModelName} // Pass the model name down
         isMobile={isMobile}
         zoomLevel={zoomLevel}
@@ -211,7 +228,8 @@ export default function TechnicalDrawingCanvas({
         includeHiddenLines={includeHiddenLines}
         onHiddenLinesToggle={onHiddenLinesToggle}
         onAddViewToCell={onAddViewToCell}
-      />
+        />
+      </div>
 
       {/* Content Area with Pan/Zoom transform */}
       <div
@@ -252,7 +270,7 @@ export default function TechnicalDrawingCanvas({
               onPathClick={handlePathClick} // Pass down path click handler
               // Pass down measurement-related props
               measurements={Object.values(activeMeasurements)} // Pass all active measurements
-              onMeasurementUpdate={handleMeasurementUpdate} // Pass update handler down again
+              // onMeasurementUpdate={handleMeasurementUpdate} // REMOVED - Update is handled via hook callback
               // Removed onMeasurementDragStart
               zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay rendering
             />

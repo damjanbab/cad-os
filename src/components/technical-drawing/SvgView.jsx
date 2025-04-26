@@ -8,7 +8,7 @@ export default function SvgView({
   onPathClick,
   // Receive measurement props
   measurements,
-  onMeasurementUpdate, // Receive update handler again
+  // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
   // Removed onMeasurementDragStart
   // zoomLevel, // zoomLevel is not needed here anymore
 }) {
@@ -65,7 +65,7 @@ export default function SvgView({
               key={measurement.pathId}
               measurementData={measurement}
               innerSvgRef={innerSvgRef} // Pass the ref down
-              onUpdatePosition={onMeasurementUpdate} // Pass update handler down
+              // onUpdatePosition={onMeasurementUpdate} // REMOVED - Update is handled via hook callback
               // Removed onDragStart
             />
           ))}

@@ -6,101 +6,13 @@ export default function MeasurementDisplay({
   measurementData,
   innerSvgRef, // Receive ref to the parent SVG element
   onUpdatePosition, // Receive update handler
-  // Removed onDragStart
+  // Removed onUpdatePosition - Handled by centralized hook
 }) {
-  const { pathId, type, geometry, textPosition, viewId } = measurementData;
-  // Restore internal drag state
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 }); // Screen coords
-  const [dragStartTextPos, setDragStartTextPos] = useState({ x: 0, y: 0 }); // SVG coords (relative to innerSvgRef)
-
-  // --- Restore Drag Handlers ---
-  const handleMouseDown = useCallback((e) => {
-    e.stopPropagation(); // Prevent canvas pan/zoom etc.
-    setIsDragging(true);
-    setDragStartPos({ x: e.clientX, y: e.clientY });
-    setDragStartTextPos(textPosition); // Store initial SVG position
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [textPosition]); // Dependency: initial text position
-
-  const handleMouseMove = useCallback((e) => {
-    if (!isDragging || !innerSvgRef?.current) return;
-
-    const dxScreen = e.clientX - dragStartPos.x;
-    const dyScreen = e.clientY - dragStartPos.y;
-
-    try {
-      const invMatrix = innerSvgRef.current.getScreenCTM().inverse();
-      // Use matrix components for delta calculation
-      const deltaX_svg = dxScreen * invMatrix.a + dyScreen * invMatrix.c;
-      const deltaY_svg = dxScreen * invMatrix.b + dyScreen * invMatrix.d;
-
-      const newTextPos = {
-        x: dragStartTextPos.x + deltaX_svg,
-        y: dragStartTextPos.y + deltaY_svg,
-      };
-      onUpdatePosition(pathId, newTextPos); // Update state in parent
-    } catch (error) {
-      console.error("Error calculating CTM or transforming point:", error);
-      // Handle potential errors (e.g., matrix not invertible)
-    }
-
-  }, [isDragging, dragStartPos, dragStartTextPos, innerSvgRef, onUpdatePosition, pathId]); // Add dependencies
-
-  const handleMouseUp = useCallback(() => {
-    if (!isDragging) return;
-    setIsDragging(false);
-    window.removeEventListener('mousemove', handleMouseMove);
-    window.removeEventListener('mouseup', handleMouseUp);
-  }, [isDragging, handleMouseMove]); // Dependency: isDragging, handleMouseMove
-
-  // Touch handlers (similar logic using CTM)
-  const handleTouchStart = useCallback((e) => {
-     if (e.touches.length !== 1) return;
-     e.stopPropagation();
-     const touch = e.touches[0];
-     setIsDragging(true);
-     setDragStartPos({ x: touch.clientX, y: touch.clientY });
-     setDragStartTextPos(textPosition);
-     window.addEventListener('touchmove', handleTouchMove, { passive: false });
-     window.addEventListener('touchend', handleTouchEnd);
-     window.addEventListener('touchcancel', handleTouchEnd);
-  }, [textPosition]); // Dependency: initial text position
-
-   const handleTouchMove = useCallback((e) => {
-    if (!isDragging || e.touches.length !== 1 || !innerSvgRef?.current) return;
-    e.preventDefault(); // Prevent scrolling while dragging measurement
-    const touch = e.touches[0];
-    const dxScreen = touch.clientX - dragStartPos.x;
-    const dyScreen = touch.clientY - dragStartPos.y;
-
-    try {
-      const invMatrix = innerSvgRef.current.getScreenCTM().inverse();
-      const deltaX_svg = dxScreen * invMatrix.a + dyScreen * invMatrix.c;
-      const deltaY_svg = dxScreen * invMatrix.b + dyScreen * invMatrix.d;
-
-      const newTextPos = {
-        x: dragStartTextPos.x + deltaX_svg,
-        y: dragStartTextPos.y + deltaY_svg,
-      };
-      onUpdatePosition(pathId, newTextPos);
-    } catch (error) {
-      console.error("Error calculating CTM or transforming point (touch):", error);
-    }
-  }, [isDragging, dragStartPos, dragStartTextPos, innerSvgRef, onUpdatePosition, pathId]); // Add dependencies
-
-  const handleTouchEnd = useCallback(() => {
-    if (!isDragging) return;
-    setIsDragging(false);
-    window.removeEventListener('touchmove', handleTouchMove);
-    window.removeEventListener('touchend', handleTouchEnd);
-    window.removeEventListener('touchcancel', handleTouchEnd);
-  }, [isDragging, handleTouchMove]); // Dependency: isDragging, handleTouchMove
-  // --- End Restore Drag Handlers ---
+  const { pathId, type, geometry, textPosition } = measurementData; // Removed viewId (not used here)
+  // Removed internal drag state and handlers - Logic moved to useCanvasInteraction hook
 
 
-  // --- Rendering Logic ---
+  // --- Rendering Logic --- (No event handlers needed here anymore)
   // --- Restore Original Styles ---
   const strokeColor = "#222222"; // Darker gray for better contrast
   const strokeWidth = 0.15; // Thinner lines for professional look
@@ -214,9 +126,10 @@ export default function MeasurementDisplay({
     const showDimLine2 = breakEndPos < arrowLen - arrowSize - 1e-6; // Add tolerance
 
     elements = (
-      <g>
+      // Add pathId as the ID for the interaction hook to find
+      <g id={pathId} className="measurement-group">
         {/* Extension Lines */}
-        <line 
+        <line
           x1={extLineP1Start[0]} 
           y1={extLineP1Start[1]} 
           x2={extLineP1End[0]} 
@@ -296,12 +209,11 @@ export default function MeasurementDisplay({
             textAnchor="middle"
             dominantBaseline="middle"
             fontFamily="Arial, sans-serif"
-            style={{ cursor: 'move', userSelect: 'none', vectorEffect: 'non-scaling-stroke', pointerEvents: 'auto' }} // Explicitly enable pointer events
-            // Use restored internal handlers
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleTouchStart}
+            // Removed inline style for cursor, pointerEvents
+            // Removed onMouseDown/onTouchStart handlers
+            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
           >
-            {textContent}
+            {textContent} // Display only
           </text>
         </g>
       </g>
@@ -364,11 +276,12 @@ export default function MeasurementDisplay({
       
       // Circle indicator: small crosshair at center for precision
       const crosshairSize = Math.min(radius * 0.5, 1.0);
-      
+
       elements = (
-        <g>
+        // Add pathId as the ID for the interaction hook to find
+        <g id={pathId} className="measurement-group">
           {/* Center crosshair */}
-          <line 
+          <line
             x1={cx - crosshairSize} 
             y1={cy} 
             x2={cx + crosshairSize} 
@@ -420,12 +333,11 @@ export default function MeasurementDisplay({
             textAnchor="middle"
             dominantBaseline="middle"
             fontFamily="Arial, sans-serif"
-            style={{ cursor: 'move', userSelect: 'none', vectorEffect: 'non-scaling-stroke', pointerEvents: 'auto' }} // Explicitly enable pointer events
-            // Use restored internal handlers
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleTouchStart}
+            // Removed inline style for cursor, pointerEvents
+            // Removed onMouseDown/onTouchStart handlers
+            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
           >
-            {textContent}
+            {textContent} // Display only
             </text>
           </g>
         </g>
@@ -471,7 +383,8 @@ export default function MeasurementDisplay({
       const showDimLine2 = vec.len(vec.sub(dimLineP2, dimLine2Start)) > 1e-6;
 
       elements = (
-        <g>
+        // Add pathId as the ID for the interaction hook to find
+        <g id={pathId} className="measurement-group">
           {/* Dimension Line (broken) */}
           {showDimLine1 && (
             <line 
@@ -532,12 +445,12 @@ export default function MeasurementDisplay({
               stroke="none"
               textAnchor="middle"
               dominantBaseline="middle"
-              fontFamily="Arial, sans-serif"
-              style={{ cursor: 'move', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
-              onMouseDown={handleMouseDown}
-              onTouchStart={handleTouchStart}
-            >
-              {textContent}
+            fontFamily="Arial, sans-serif"
+            // Removed inline style for cursor
+            // Removed onMouseDown/onTouchStart handlers
+            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+          >
+            {textContent} // Display only
             </text>
           </g>
         </g>

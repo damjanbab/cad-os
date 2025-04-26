@@ -79,13 +79,6 @@ function createCloset({ width, depth, board_thickness }) {
   }
   const bottom_divider_biscuits_top = makeCompound(bottom_divider_biscuits_top_array);
 
-  const side_door = makeBox([depth - board_thickness, -width / 2 + board_thickness + 0.4, board_thickness], [depth, -width / 6 - 0.3, bottom_shelf_height - 0.4]);
-  closet.push(side_door);
-  closet.push(side_door.clone().mirror("XZ"));
-
-  const middle_door = makeBox([depth - board_thickness, -width / 6 + 0.3, board_thickness], [depth, width / 6 - 0.3, bottom_shelf_height - 0.4]);
-  closet.push(middle_door);
-
   const bottom_divider = makeBox([0, width / 6 - board_thickness / 2, 2 * board_thickness], [depth - board_thickness - 0.2, width / 6 + board_thickness / 2, bottom_shelf_height])
     .cut(bottom_divider_biscuits_bottom)
     .cut(bottom_divider_biscuits_top);
@@ -137,8 +130,16 @@ function createCloset({ width, depth, board_thickness }) {
   }
   const vertical_board_biscuits_side = makeCompound(vertical_board_biscuits_side_array);
   
-  const pin = makeCylinder(0.4, 3, [2*depth/3-between_short/2, -width/4, bottom_shelf_height + shelf_height + 1.5*board_thickness], [0, -1, 0]);
+  const pin = makeCylinder(0.4, 3, [between_short/2, -width/4, bottom_shelf_height + shelf_height + 1.5*board_thickness], [0, -1, 0]);
   const vertical_board_pins_array = [];
+	for (let i=0; i<5; i++) {
+		for (let j=0; j<nr_biscuits_short+1; j++) {
+			const pinInstance = pin.clone().translate(j*(between_short+5), 0, i*(shelf_height+board_thickness));
+			vertical_board_pins_array.push(pinInstance);
+			closet.push(pinInstance.clone());
+			closet.push(pinInstance.clone().mirror("XZ"));
+		}
+	}
   const vertical_board_pins = makeCompound(vertical_board_pins_array);
 
   const vertical_board = makeBox([0, width / 4 - board_thickness / 2, bottom_shelf_height + board_thickness], [2 * depth / 3, width / 4 + board_thickness / 2, bottom_shelf_height + 6 * (board_thickness + shelf_height)])
@@ -152,6 +153,84 @@ function createCloset({ width, depth, board_thickness }) {
   const vertical_board_tape = makeBox([2 * depth / 3, width / 4 - board_thickness / 2, bottom_shelf_height + board_thickness], [2 * depth / 3 + 0.2, width / 4 + board_thickness / 2, bottom_shelf_height + 6 * (board_thickness + shelf_height)]);
   closet.push(vertical_board_tape);
   closet.push(vertical_board_tape.clone().mirror("XZ"));
+	
+	const small_shelf_pins_array = [];
+	for (let i=0; i<nr_biscuits_short+1; i++) {
+		const pinInstance = pin.clone().translateX(i*(between_short+5));
+		small_shelf_pins_array.push(pinInstance);
+	}
+	const small_shelf_pins = makeCompound(small_shelf_pins_array);
+	const small_shelf = makeBox([0, width/4+board_thickness/2, bottom_shelf_height+board_thickness+shelf_height], [2*depth/3, width/2, bottom_shelf_height+2*board_thickness+shelf_height]).cut(small_shelf_pins);
+	closet.push(small_shelf);
+	closet.push(small_shelf.clone().mirror("XZ"));
+	closet.push(small_shelf.clone().translateZ(shelf_height+board_thickness));
+	closet.push(small_shelf.clone().translateZ(shelf_height+board_thickness).mirror("XZ"));
+	
+	const small_shelf_bottom_divider_bottom_biscuits_array = [];
+	for (let i=0; i<nr_biscuits_short; i++) {
+		const biscuitInstance = biscuit.clone().translate(between_short + 2.5 + i*(between_short+5), 3*width/8-board_thickness/4, bottom_shelf_height + 3*shelf_height + 4*board_thickness);
+		small_shelf_bottom_divider_bottom_biscuits_array.push(biscuitInstance);
+		closet.push(biscuitInstance.clone());
+		closet.push(biscuitInstance.clone().mirror("XZ"));
+	}
+	const small_shelf_bottom_divider_bottom_biscuits = makeCompound(small_shelf_bottom_divider_bottom_biscuits_array);
+
+	const small_shelf_bottom_divider_top_biscuits_array = [];
+	for (let i=0; i<nr_biscuits_short; i++) {
+		const biscuitInstance = biscuit.clone().translate(between_short + 2.5 + i*(between_short+5), 3*width/8-board_thickness/4, bottom_shelf_height + 4*(shelf_height + board_thickness));
+		small_shelf_bottom_divider_top_biscuits_array.push(biscuitInstance);
+		closet.push(biscuitInstance.clone());
+		closet.push(biscuitInstance.clone().mirror("XZ"));
+	}
+	const small_shelf_bottom_divider_top_biscuits = makeCompound(small_shelf_bottom_divider_top_biscuits_array);
+
+	const small_shelf_top_divider_bottom_biscuits_array = [];
+	for (let i=0; i<nr_biscuits_short; i++) {
+		const biscuitInstance = biscuit.clone().translate(between_short + 2.5 + i*(between_short+5), 3*width/8-board_thickness/4, bottom_shelf_height + 4*shelf_height + 5*board_thickness);
+		small_shelf_top_divider_bottom_biscuits_array.push(biscuitInstance);
+		closet.push(biscuitInstance.clone());
+		closet.push(biscuitInstance.clone().mirror("XZ"));
+	}
+	const small_shelf_top_divider_bottom_biscuits = makeCompound(small_shelf_top_divider_bottom_biscuits_array);
+
+	const small_shelf_top_divider_top_biscuits_array = [];
+	for (let i=0; i<nr_biscuits_short; i++) {
+		const biscuitInstance = biscuit.clone().translate(between_short + 2.5 + i*(between_short+5), 3*width/8-board_thickness/4, bottom_shelf_height + 5*(shelf_height + board_thickness));
+		small_shelf_top_divider_top_biscuits_array.push(biscuitInstance);
+		closet.push(biscuitInstance.clone());
+		closet.push(biscuitInstance.clone().mirror("XZ"));
+	}
+	const small_shelf_top_divider_top_biscuits = makeCompound(small_shelf_top_divider_top_biscuits_array);
+
+	const small_shelf_w_top_div_holes = small_shelf.clone().translateZ(2*(shelf_height+board_thickness)).cut(small_shelf_bottom_divider_bottom_biscuits);
+	closet.push(small_shelf_w_top_div_holes);
+	closet.push(small_shelf_w_top_div_holes.clone().mirror("XZ"));
+
+	const small_shelf_w_both_div_holes = small_shelf.clone().translateZ(3*(shelf_height+board_thickness)).cut(small_shelf_bottom_divider_top_biscuits).cut(small_shelf_top_divider_bottom_biscuits);
+	closet.push(small_shelf_w_both_div_holes);
+	closet.push(small_shelf_w_both_div_holes.clone().mirror("XZ"));
+
+	const small_shelf_w_bottom_div_holes = small_shelf.clone().translateZ(4*(shelf_height+board_thickness)).cut(small_shelf_top_divider_top_biscuits);
+	closet.push(small_shelf_w_bottom_div_holes);
+	closet.push(small_shelf_w_bottom_div_holes.clone().mirror("XZ"));
+
+	const small_shelf_tape = makeBox([2*depth/3, width/4+board_thickness/2, bottom_shelf_height+board_thickness+shelf_height], [2*depth/3+0.2, width/2, bottom_shelf_height+2*board_thickness+shelf_height]);
+	for (let i = 0; i<5; i++) {
+		closet.push(small_shelf_tape.clone().translateZ(i*(board_thickness+shelf_height)));
+		closet.push(small_shelf_tape.clone().translateZ(i*(board_thickness+shelf_height)).mirror("XZ"));
+	}
+
+	const small_shelf_divider = makeBox([0, 3*width/8-3*board_thickness/4, bottom_shelf_height+3*shelf_height+4*board_thickness], [2*depth/3, 3*width/8+board_thickness/4, bottom_shelf_height+4*(shelf_height+board_thickness)]).cut(small_shelf_bottom_divider_bottom_biscuits).cut(small_shelf_bottom_divider_top_biscuits);
+	closet.push(small_shelf_divider);
+	closet.push(small_shelf_divider.clone().mirror("XZ"));
+	closet.push(small_shelf_divider.clone().translateZ(shelf_height+board_thickness));
+	closet.push(small_shelf_divider.clone().translateZ(shelf_height+board_thickness).mirror("XZ"));
+
+	const small_shelf_divider_tape = makeBox([2*depth/3, 3*width/8-3*board_thickness/4, bottom_shelf_height+3*shelf_height+4*board_thickness], [2*depth/3+0.2, 3*width/8+board_thickness/4, bottom_shelf_height+4*(shelf_height+board_thickness)]);
+	closet.push(small_shelf_divider_tape);
+	closet.push(small_shelf_divider_tape.clone().mirror("XZ"));
+	closet.push(small_shelf_divider_tape.clone().translateZ(board_thickness+shelf_height));
+	closet.push(small_shelf_divider_tape.clone().translateZ(board_thickness+shelf_height).mirror("XZ"));
 
   const big_shelf_biscuits_array = [];
   for (let i=0; i<nr_biscuits_short; i++) {
@@ -173,6 +252,14 @@ function createCloset({ width, depth, board_thickness }) {
 
   const horizontal_board3_tape = makeBox([depth, -width / 2, bottom_shelf_height + 6 * (board_thickness + shelf_height)], [depth + 0.2, width / 2, bottom_shelf_height + 7 * board_thickness + 6 * shelf_height]);
   closet.push(horizontal_board3_tape);
+
+  const side_door = makeBox([depth - board_thickness, -width / 2 + board_thickness + 0.4, board_thickness], [depth, -width / 6 - 0.3, bottom_shelf_height - 0.4])
+		.cut(makeCylinder(0.3, board_thickness, [depth, width/6-board_thickness, bottom_shelf_height-board_thickness], [-1, 0, 0]));
+  closet.push(side_door);
+  closet.push(side_door.clone().mirror("XZ"));
+
+  const middle_door = makeBox([depth - board_thickness, -width / 6 + 0.3, board_thickness], [depth, width / 6 - 0.3, bottom_shelf_height - 0.4]);
+  closet.push(middle_door);
 
   const side_door_tape_inner = makeBox([depth - board_thickness, -width / 6 - 0.3, board_thickness], [depth, -width / 6 - 0.1, bottom_shelf_height - 0.4]);
   const side_door_tape_outer = makeBox([depth - board_thickness, -width / 2 + board_thickness + 0.2, board_thickness], [depth, -width / 2 + board_thickness + 0.4, bottom_shelf_height - 0.4]);
