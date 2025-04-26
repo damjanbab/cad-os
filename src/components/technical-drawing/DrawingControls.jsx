@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; // Import useState, useEffect, useMemo
+import { modelRegistry } from '../../models/index.js'; // Import modelRegistry
 
 export default function DrawingControls({
+  selectedModelName, // Add prop for the current model name
   isMobile,
   zoomLevel,
   scale,
@@ -10,8 +12,55 @@ export default function DrawingControls({
   onPanChange,
   onScaleChange,
   onResetView,
-  onExportPDF // Add prop for export handler
+  onExportPDF, // Add prop for export handler
+  onAddViewbox, // Add new prop for adding a viewbox
+  selectedLayout, // Add prop for current layout
+  onLayoutChange, // Add prop for handling layout change
+  selectedViewToAdd, // Add prop for selected view type
+  onViewSelectionChange, // Add handler for view type change
+  includeHiddenLines, // Add prop for hidden lines state
+  onHiddenLinesToggle, // Add handler for hidden lines toggle
+  onAddViewToCell, // Add handler to trigger adding the view
 }) {
+
+  const availableLayouts = ['1x1', '1x2', '2x1', '2x2']; // Define available layouts
+
+  // --- Dynamic View Options ---
+  const availableViews = useMemo(() => {
+    // Standard views are simple strings
+    const standardViewOptions = ['Front', 'Right', 'Bottom', 'Top', 'Left', 'Back', 'Isometric'].map(v => ({ value: v, label: v }));
+
+    const modelDefinition = modelRegistry[selectedModelName];
+    let partViewOptions = []; // Now stores objects { value, label }
+
+    // Check for the static flag and structure
+    const hasPartsFlag = modelDefinition?.hasTechnicalDrawingParts;
+    const structure = modelDefinition?.componentDataStructure;
+
+    if (hasPartsFlag && Array.isArray(structure)) {
+      structure.forEach(partInfo => {
+        const partId = partInfo.id;
+        const partName = partInfo.name || partId; // Use name, fallback to ID for display
+
+        if (partId) { // Need the ID for the value
+          standardViewOptions.forEach(stdView => {
+            // Value uses ID, Label uses Name
+            partViewOptions.push({
+              value: `${partId} - ${stdView.value}`, // e.g., "SS001 - Top"
+              label: `${partName} - ${stdView.label}` // e.g., "Side Stringer - Top"
+            });
+          });
+        } else {
+          console.warn("[WARN] Part info missing ID in componentDataStructure:", partInfo);
+        }
+      });
+    }
+
+    // Combine standard view objects and part view objects
+    return [...standardViewOptions, ...partViewOptions];
+  }, [selectedModelName]); // Recompute when model changes
+  // --- End Dynamic View Options ---
+
 
   const handleZoom = (delta) => {
     const newZoom = Math.max(0.1, Math.min(10, zoomLevel + delta * zoomLevel));
@@ -112,6 +161,118 @@ export default function DrawingControls({
           {scale} px/cm
         </span>
       </div>
+
+      {/* Layout Selection */}
+      <div style={{ display: 'flex', alignItems: 'center', marginTop: '5px' }}>
+        <label htmlFor="layoutSelect" style={{ fontSize: isMobile ? '12px' : '10px', marginRight: '5px' }}>
+          Layout:
+        </label>
+        <select
+          id="layoutSelect"
+          // value={selectedLayout} // Keep value prop removed - this fixed the issue
+          defaultValue={selectedLayout} // Use defaultValue for initial render
+          onChange={(e) => {
+            // console.log(`[DEBUG] DrawingControls onChange (uncontrolled) - e.target.value: ${e.target.value}`); // Remove debug log
+            onLayoutChange(e.target.value); // Call prop function directly
+          }}
+          style={{
+            padding: isMobile ? '4px 8px' : '2px 4px',
+            fontSize: isMobile ? '13px' : '11px',
+            cursor: 'pointer',
+            flexGrow: 1 // Allow select to take available space
+          }}
+          title="Select Viewbox Layout"
+        >
+          {availableLayouts.map(layout => (
+            <option key={layout} value={layout}>{layout}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* --- Add View Controls (Placeholder Section) --- */}
+      <div style={{ borderTop: '1px solid #ccc', marginTop: '10px', paddingTop: '10px' }}>
+        <div style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '5px', color: '#555' }}>Add View to Cell:</div>
+
+        {/* View Type Selection */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
+          <label htmlFor="viewTypeSelect" style={{ fontSize: isMobile ? '12px' : '10px', marginRight: '5px', minWidth: '35px' }}>
+            View:
+          </label>
+          <select
+            id="viewTypeSelect"
+            // value={selectedViewToAdd} // Remove value prop
+            defaultValue={selectedViewToAdd} // Use defaultValue
+            onChange={(e) => onViewSelectionChange(e.target.value)}
+            style={{
+              padding: isMobile ? '4px 8px' : '2px 4px',
+              fontSize: isMobile ? '13px' : '11px',
+              cursor: 'pointer',
+              flexGrow: 1
+            }}
+            title="Select View Type"
+          >
+            {/* Map over the array of {value, label} objects */}
+            {availableViews.map(viewOption => (
+              <option key={viewOption.value} value={viewOption.value}>
+                {viewOption.label} {/* Display the user-friendly label */}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Hidden Lines Checkbox */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
+          <input
+            type="checkbox"
+            id="hiddenLinesCheckbox"
+            checked={includeHiddenLines}
+            onChange={(e) => onHiddenLinesToggle(e.target.checked)}
+            style={{ marginRight: '5px', cursor: 'pointer' }}
+          />
+          <label htmlFor="hiddenLinesCheckbox" style={{ fontSize: isMobile ? '12px' : '10px', cursor: 'pointer' }}>
+            Include Hidden Lines
+          </label>
+        </div>
+
+        {/* Add View Button (Placeholder Action) */}
+        <button
+          title={`Add ${selectedViewToAdd} view ${includeHiddenLines ? 'with' : 'without'} hidden lines`}
+          style={{
+            width: '100%',
+            marginTop: '5px',
+            padding: isMobile ? '5px 10px' : '2px 8px',
+            cursor: 'pointer',
+            fontSize: isMobile ? '14px' : 'inherit',
+            backgroundColor: '#2196F3', // Blue background
+            color: 'white',
+            border: 'none',
+            borderRadius: '3px'
+          }}
+          onClick={onAddViewToCell} // Call the placeholder handler for now
+        >
+          Add View
+        </button>
+      </div>
+      {/* --- End Add View Controls --- */}
+
+
+      {/* Add Viewbox Button */}
+      <button
+        title={`Add Viewbox with ${selectedLayout} layout`} // Dynamic title
+        style={{
+          marginTop: '5px',
+          padding: isMobile ? '5px 10px' : '2px 8px',
+          cursor: 'pointer',
+          fontSize: isMobile ? '14px' : 'inherit',
+          backgroundColor: '#4CAF50', // Green background
+          color: 'white',
+          border: 'none',
+          borderRadius: '3px'
+        }}
+        onClick={onAddViewbox} // Call the passed-in handler
+      >
+        Add Viewbox
+      </button>
 
       {/* Export Button */}
       <button

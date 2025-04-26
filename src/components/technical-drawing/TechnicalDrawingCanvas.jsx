@@ -1,14 +1,36 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import ProjectionView from './ProjectionView.jsx';
-import PartView from './PartView.jsx';
+// import ProjectionView from './ProjectionView.jsx'; // No longer needed directly here
+// import PartView from './PartView.jsx'; // No longer needed directly here
+import Viewbox from './Viewbox.jsx'; // Import the new Viewbox component
 import DrawingControls from './DrawingControls.jsx';
 import { parseViewBox } from '../../utils/svgUtils.js'; // Import utility
-import { useTechnicalDrawingPdfExport } from '../../hooks/useTechnicalDrawingPdfExport.js'; // Import PDF hook
+// import { useTechnicalDrawingPdfExport } from '../../hooks/useTechnicalDrawingPdfExport.js'; // Import PDF hook - Temporarily remove old import
+import { useTechnicalDrawingPdfExport } from '../../hooks/useTechnicalDrawingPdfExport.js'; // Re-import PDF hook
 import { useCanvasInteraction } from '../../hooks/useCanvasInteraction.js'; // Import Interaction hook
+import MeasurementDisplay from './MeasurementDisplay.jsx'; // Import MeasurementDisplay
 
-// Main canvas component for technical drawings
-export default function TechnicalDrawingCanvas({ projections, isMobile }) {
-  if (!projections) return <div>Loading projections...</div>;
+// Main canvas component for technical drawings - Updated for viewboxes
+export default function TechnicalDrawingCanvas({
+  selectedModelName, // Add prop to receive the model name
+  viewboxes,
+  isMobile,
+  onAddViewbox,
+  selectedLayout, // Add prop for receiving selected layout
+  onLayoutChange, // Add prop for receiving layout change handler
+  // Props for adding views
+  selectedViewToAdd,
+  onViewSelectionChange,
+  includeHiddenLines,
+  onHiddenLinesToggle,
+  onAddViewToCell,
+  // Cell selection props
+  selectedTarget,
+  onCellSelection,
+  // Title block editing prop
+  onTitleBlockChange,
+}) {
+  // Removed loading check for projections
+  // if (!projections) return <div>Loading projections...</div>;
 
   const containerRef = useRef(null); // Ref for the main container div
   const viewContainerRef = useRef(null); // Ref for the zoomable/pannable content area
@@ -16,9 +38,12 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
   const [scale, setScale] = useState(10); // Initial scale: 10 pixels per cm
   // State for active measurements, keyed by uniquePathId
   const [activeMeasurements, setActiveMeasurements] = useState({});
+  // Removed draggingMeasurementInfo state
 
   // --- Use Hooks ---
-  const { exportPdf } = useTechnicalDrawingPdfExport(projections, activeMeasurements);
+  // Use the updated hook with viewboxes and activeMeasurements
+  const { exportPdf } = useTechnicalDrawingPdfExport(viewboxes, activeMeasurements);
+  // const exportPdf = () => console.warn("PDF Export is temporarily disabled."); // Remove placeholder
   const {
     zoomLevel,
     panOffset,
@@ -27,10 +52,10 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
     resetInteraction,
     setZoomLevel, // Expose setters if needed by controls
     setPanOffset,
-  } = useCanvasInteraction(containerRef);
+  } = useCanvasInteraction(containerRef); // Hook manages pan/zoom only
 
 
-  // Handler to update measurement text position (passed to MeasurementDisplay via children)
+  // Handler to update measurement text position (passed down)
   const handleMeasurementUpdate = useCallback((pathId, newPosition) => {
     setActiveMeasurements(prev => ({
       ...prev,
@@ -39,14 +64,17 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
         textPosition: newPosition,
       }
     }));
-  }, []); // Add empty dependency array
+  }, []); // Keep dependency array empty
+
+  // Removed manual drag handlers - logic moved back to MeasurementDisplay
+
 
   // Handle path click - toggle measurement display
-  // Add partName and partIndex to receive context from PathElement
-  const handlePathClick = useCallback((uniquePathId, path, partName, partIndex) => {
+  // Add viewInstanceId to receive context from PathElement
+  const handlePathClick = useCallback((uniquePathId, path, partName, partIndex, viewInstanceId) => {
     // Only allow measurements for lines and circles with valid geometry
     if (!path.geometry || (path.geometry.type !== 'line' && path.geometry.type !== 'circle')) {
-      console.log(`Clicked non-measurable path: ${uniquePathId}, Type: ${path.geometry?.type}`);
+      console.log(`[Canvas] Clicked non-measurable path: ${uniquePathId}, Type: ${path.geometry?.type}`);
       return;
     }
 
@@ -95,13 +123,16 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
           pathId: uniquePathId, // This is the full, unique path segment ID
           type: path.geometry.type,
           textPosition: initialTextPosition,
-          viewId: measurementViewId, // Store the determined view ID
+          // viewId: measurementViewId, // Store the determined view ID - REMOVED, use viewInstanceId
+          viewInstanceId: viewInstanceId, // Store the ID of the specific view instance
+          geometry: path.geometry, // Store the geometry directly
         };
         console.log(`--- Added Measurement ---`);
-        console.log(`  ID: ${uniquePathId}`);
+        console.log(`  Path ID: ${uniquePathId}`);
         console.log(`  Type: ${path.geometry.type}`);
         console.log(`  Initial Text Pos:`, initialTextPosition);
-        console.log(`  Stored View ID: ${measurementViewId}`); // Log the stored view ID
+        // console.log(`  Stored Logical View ID: ${measurementViewId}`); // Keep for debug if needed
+        console.log(`  Stored View Instance ID: ${viewInstanceId}`); // Log the stored instance ID
         console.log(`------------------------`);
       }
 
@@ -130,33 +161,19 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
     setActiveMeasurements({}); // Also reset measurements
   }, [resetInteraction]); // Dependency on hook's reset function
 
-  // --- Layout Calculation ---
-  const standardLayout = projections.standardLayout; // Check for the new combined layout
-  const partsLayout = projections.parts;
-  let standardLayoutData = null;
-  let standardLayoutWidth = 0, standardLayoutHeight = 0;
-  const initialOffsetX = 50; // Base offset for positioning content
+  // --- Layout Calculation (REMOVED old logic based on projections) ---
+  // const standardLayout = projections.standardLayout;
+  // const partsLayout = projections.parts;
+  // let standardLayoutData = null;
+  // let standardLayoutWidth = 0, standardLayoutHeight = 0;
+  const initialOffsetX = 50; // Base offset for positioning content (might be reused or removed later)
   const initialOffsetY = 50;
-  const layoutGap = 20; // Gap used for positioning parts below standard layout
+  // const layoutGap = 20; // Gap used for positioning parts below standard layout (REMOVED)
 
-  // Calculate dimensions for the combined standard layout if it exists
-  if (standardLayout && standardLayout.combinedViewBox) {
-    standardLayoutData = parseViewBox(standardLayout.combinedViewBox);
-    if (standardLayoutData) {
-      standardLayoutWidth = standardLayoutData.width * scale;
-      standardLayoutHeight = standardLayoutData.height * scale;
-      console.log("[INFO] Standard Layout Dimensions (scaled):", standardLayoutWidth, standardLayoutHeight);
-      console.log("[INFO] Standard Layout ViewBox:", standardLayout.combinedViewBox);
-    } else {
-        console.warn("[WARN] Could not parse standardLayout viewBox:", standardLayout.combinedViewBox);
-    }
-  }
+  // REMOVED calculation logic for standardLayout and partsLayout positions/dimensions
 
-  // Position for the single standard layout view
-  const standardLayoutPos = [initialOffsetX, initialOffsetY];
-
-  // Calculate top position for the parts section, placed below the standard layout
-  const partsTopPosition = initialOffsetY + (standardLayoutHeight > 0 ? standardLayoutHeight + layoutGap * 2 : 0);
+  // Check if viewboxes array is empty or null
+  const hasViewboxes = viewboxes && viewboxes.length > 0;
 
   return (
     <div
@@ -174,6 +191,7 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
     >
       {/* Controls Overlay */}
       <DrawingControls
+        selectedModelName={selectedModelName} // Pass the model name down
         isMobile={isMobile}
         zoomLevel={zoomLevel}
         scale={scale}
@@ -184,6 +202,15 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
         onScaleChange={setScale}
         onResetView={resetView} // Pass combined reset function
         onExportPDF={exportPdf} // Pass export function from hook
+        onAddViewbox={onAddViewbox} // Pass the handler down to DrawingControls
+        selectedLayout={selectedLayout} // Pass layout state down
+        onLayoutChange={onLayoutChange} // Pass layout handler down
+        // Pass view selection props down
+        selectedViewToAdd={selectedViewToAdd}
+        onViewSelectionChange={onViewSelectionChange}
+        includeHiddenLines={includeHiddenLines}
+        onHiddenLinesToggle={onHiddenLinesToggle}
+        onAddViewToCell={onAddViewToCell}
       />
 
       {/* Content Area with Pan/Zoom transform */}
@@ -199,58 +226,43 @@ export default function TechnicalDrawingCanvas({ projections, isMobile }) {
           transformOrigin: '0 0',
         }}
       >
-        {/* Combined Standard Layout View */}
-        {standardLayout && standardLayoutData && (
-          <ProjectionView
-            // Pass the necessary parts of standardLayout to ProjectionView
-            projection={{
-                // ProjectionView expects visible/hidden structure, but we have combined paths.
-                // We'll pass all paths and let ProjectionView handle rendering them.
-                // We might need to adjust ProjectionView later if this causes issues.
-                // For now, create a structure it might expect, using the combined data.
-                visible: { paths: standardLayout.paths.filter(p => p.id.includes('_visible_') || p.id.includes('_circle')), viewBox: standardLayout.combinedViewBox }, // Approximate structure
-                hidden: { paths: standardLayout.paths.filter(p => p.id.includes('_hidden_')), viewBox: standardLayout.combinedViewBox }, // Approximate structure
-                combinedViewBox: standardLayout.combinedViewBox,
-                // Pass all paths directly if ProjectionView is adapted to handle it
-                allPaths: standardLayout.paths // Pass all paths for potential direct use
-            }}
-            title="Standard Views" // Single title for the combined layout
-            position={standardLayoutPos}
-            dimensions={{ width: standardLayoutWidth, height: standardLayoutHeight }}
-            onPathClick={handlePathClick}
-            viewId="standard_layout" // Single ID for the combined layout view
-            activeMeasurements={activeMeasurements}
-            onMeasurementUpdate={handleMeasurementUpdate}
-          />
+        {/* Render based on new viewboxes state */}
+        {!hasViewboxes ? (
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            color: '#666',
+            fontSize: '16px',
+            textAlign: 'center'
+          }}>
+            No viewboxes created yet.<br />
+            Use controls to add a viewbox.
+          </div>
+        ) : (
+          // Map over viewboxes and render a Viewbox component for each
+          viewboxes.map((vb, index) => (
+            <Viewbox
+              key={vb.id}
+              viewboxData={vb}
+              selectedTarget={selectedTarget} // Pass down selection state
+              onCellSelection={onCellSelection} // Pass down selection handler
+              onTitleBlockChange={onTitleBlockChange} // Pass down title block handler
+              onPathClick={handlePathClick} // Pass down path click handler
+              // Pass down measurement-related props
+              measurements={Object.values(activeMeasurements)} // Pass all active measurements
+              onMeasurementUpdate={handleMeasurementUpdate} // Pass update handler down again
+              // Removed onMeasurementDragStart
+              zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay rendering
+            />
+          ))
         )}
 
-        {/* Part Projections - position below the standard layout */}
-        {partsLayout && partsLayout.length > 0 && (
-          <div style={{
-            position: 'absolute', // Position relative to the zoom/pan container
-            top: `${partsTopPosition}px`, // Use calculated top position
-            left: `${initialOffsetX}px`,
-            width: 'max-content' // Allow container to grow with parts
-          }}>
-            <h3 style={{ padding: '0 0 5px 0', margin: 0, fontSize: '14px', fontWeight: 'bold' }}>
-              {standardLayout ? 'Component Views' : 'Part Views'} {/* Adjust title based on context */}
-            </h3>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              {partsLayout.map((part, index) => (
-                <PartView
-                  key={index}
-                  part={part}
-                  index={index}
-                  scale={scale}
-                  onPathClick={handlePathClick}
-                  activeMeasurements={activeMeasurements}
-                  onMeasurementUpdate={handleMeasurementUpdate}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        {/* REMOVED old rendering logic for standardLayout and partsLayout */}
       </div>
+
+      {/* REMOVED Measurement SVG Overlay - Rendering moved into Viewbox/SvgView */}
     </div>
   );
 }

@@ -283,11 +283,16 @@ function normalizePaths(paths, prefix = 'path', tx = 0, ty = 0) {
       } catch (transformError) { console.error(`[ERROR] Failed to transform path data: ${pathDataString.substring(0, 50)}...`, transformError); }
     }
     const circleInfo = detectCircle(transformedPathDataString);
+    const pathGeometry = { type: 'unknown' }; // Default geometry
+
     if (circleInfo) {
-      const id = `${prefix}_${pathIndex}_circle`;
-      finalPaths.push({ id: id, groupId: id, data: transformedPathDataString, type: 'circle', geometry: { type: 'circle', center: circleInfo.center, radius: circleInfo.radius, diameter: circleInfo.radius * 2 } });
-      pathIndex++; continue;
+      pathGeometry.type = 'circle';
+      pathGeometry.center = circleInfo.center;
+      pathGeometry.radius = circleInfo.radius;
+      pathGeometry.diameter = circleInfo.radius * 2;
+      // Add circle segment info if needed later
     }
+
     const initialSegments = decomposePathToSegments(transformedPathDataString);
     const mergedSegments = [];
     if (initialSegments.length > 0) {
@@ -302,10 +307,23 @@ function normalizePaths(paths, prefix = 'path', tx = 0, ty = 0) {
       mergedSegments.forEach((segment, j) => {
         if (segment && segment.path) {
             const finalId = `${prefix}_${pathIndex}_${j}`;
-            finalPaths.push({ id: finalId, groupId: finalId, data: segment.path, type: segment.type, geometry: { type: segment.type, length: segment.length, endpoints: segment.endpoints, center: segment.type === 'circle' ? segment.center : undefined, radius: segment.type === 'circle' ? segment.radius : undefined, diameter: segment.type === 'circle' ? segment.radius * 2 : undefined } });
+            // Directly use the geometry object from the segment
+            finalPaths.push({
+              id: finalId,
+              groupId: finalId, // Keep groupId for potential future use
+              data: segment.path,
+              type: segment.type, // Redundant? geometry.type should be sufficient
+              geometry: segment.geometry // Use the geometry object directly
+            });
         } else { console.warn("[WARN] Skipping invalid segment during final ID assignment:", segment); }
       });
-    } else if (!circleInfo) {
+    } else if (circleInfo) {
+        // Handle the case where it's a circle but wasn't decomposed (should be handled above)
+        const id = `${prefix}_${pathIndex}_circle`;
+         finalPaths.push({ id: id, groupId: id, data: transformedPathDataString, type: 'circle', geometry: pathGeometry });
+    }
+     else {
+      // Path is neither a circle nor decomposable into known segments
       const id = `${prefix}_${pathIndex}_unknown`;
       finalPaths.push({ id: id, groupId: id, data: transformedPathDataString, type: 'unknown', geometry: { type: 'unknown' } });
        console.warn(`[WARN] Path could not be decomposed or identified as circle: ${transformedPathDataString.substring(0,50)}...`);
@@ -358,7 +376,7 @@ function detectCircle(pathData) {
     const cx = cosPhi * cxp - sinPhi * cyp + (x1 + x2) / 2, cy = sinPhi * cxp + cosPhi * cyp + (y1 + y2) / 2;
     return { center: [cx, cy], radius: correctedRx };
 }
-function decomposePathToSegments(pathData) {
+function decomposePathToSegments(pathData) { // Returns segments with geometry objects
   const segments = []; let currentX = 0, currentY = 0, startX = 0, startY = 0, isFirstCommand = true;
   const commandsRegex = /([MLHVCSQTAZmlhvcsqtaz])([^MLHVCSQTAZmlhvcsqtaz]*)/g; let match;
   while ((match = commandsRegex.exec(pathData)) !== null) {
@@ -375,19 +393,24 @@ function decomposePathToSegments(pathData) {
       case 'V': for (let i = 0; i < params.length; i++) { const y = params[i]; const segment = createLineSegment(currentX, currentY, currentX, y); if (segment) segments.push(segment); currentY = y; } break;
       case 'v': for (let i = 0; i < params.length; i++) { const y = currentY + params[i]; const segment = createLineSegment(currentX, currentY, currentX, y); if (segment) segments.push(segment); currentY = y; } break;
       case 'Z': case 'z': if (Math.abs(currentX - startX) > TOLERANCE || Math.abs(currentY - startY) > TOLERANCE) { const segment = createLineSegment(currentX, currentY, startX, startY); if (segment) segments.push(segment); } currentX = startX; currentY = startY; break;
-      case 'C': case 'c': pairs = params.length / 6; for(let i=0; i<pairs; ++i) { const p = params.slice(i*6, (i+1)*6); if (p.length === 6) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
-      case 'S': case 's': pairs = params.length / 4; for(let i=0; i<pairs; ++i) { const p = params.slice(i*4, (i+1)*4); if (p.length === 4) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
-      case 'Q': case 'q': pairs = params.length / 4; for(let i=0; i<pairs; ++i) { const p = params.slice(i*4, (i+1)*4); if (p.length === 4) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
-      case 'T': case 't': pairs = params.length / 2; for(let i=0; i<pairs; ++i) { const p = params.slice(i*2, (i+1)*2); if (p.length === 2) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
-      case 'A': case 'a': pairs = params.length / 7; for(let i=0; i<pairs; ++i) { const p = params.slice(i*7, (i+1)*7); if (p.length === 7) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'arc', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
+      // Curves and Arcs: Create segment object including geometry
+      case 'C': case 'c': pairs = params.length / 6; for(let i=0; i<pairs; ++i) { const p = params.slice(i*6, (i+1)*6); if (p.length === 6) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, geometry: { type: 'curve', length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] } }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
+      case 'S': case 's': pairs = params.length / 4; for(let i=0; i<pairs; ++i) { const p = params.slice(i*4, (i+1)*4); if (p.length === 4) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, geometry: { type: 'curve', length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] } }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
+      case 'Q': case 'q': pairs = params.length / 4; for(let i=0; i<pairs; ++i) { const p = params.slice(i*4, (i+1)*4); if (p.length === 4) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, geometry: { type: 'curve', length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] } }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
+      case 'T': case 't': pairs = params.length / 2; for(let i=0; i<pairs; ++i) { const p = params.slice(i*2, (i+1)*2); if (p.length === 2) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, geometry: { type: 'curve', length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] } }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
+      case 'A': case 'a': pairs = params.length / 7; for(let i=0; i<pairs; ++i) { const p = params.slice(i*7, (i+1)*7); if (p.length === 7) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'arc', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, geometry: { type: 'arc', length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] } }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
     }
   }
   return segments;
 }
-function createLineSegment(x1, y1, x2, y2) {
+function createLineSegment(x1, y1, x2, y2) { // Returns segment with geometry object
   if (Math.abs(x1 - x2) < TOLERANCE && Math.abs(y1 - y2) < TOLERANCE) { return null; }
   const length = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-  return { type: 'line', path: `M ${x1} ${y1} L ${x2} ${y2}`, length: length, endpoints: [[x1, y1], [x2, y2]] };
+  return {
+    type: 'line',
+    path: `M ${x1} ${y1} L ${x2} ${y2}`,
+    geometry: { type: 'line', length: length, endpoints: [[x1, y1], [x2, y2]] }
+  };
 }
 function estimateCurveLength(command, params, currentX, currentY) {
   const endpoint = getEndpointForCurve(command, params, currentX, currentY);
@@ -482,5 +505,83 @@ async function generateProjections(modelName, params) {
 }
 
 
-// Expose the main function for this worker
-expose({ generateProjections });
+// --- New Function for Single Projection ---
+const generateSingleProjection = async (modelName, params, viewType, includeHiddenLines, partName = null) => { // Add partName parameter
+  console.log(`[TECH_DRAW_WORKER] Generating single projection: Model='${modelName}', Part='${partName || 'Whole'}', View='${viewType}', Hidden=${includeHiddenLines}`);
+  console.time(`[PERF_TD_SINGLE] Total ${modelName} ${partName || 'Whole'} ${viewType} projection`);
+
+  // Ensure OpenCascade is ready
+  await started; // Make sure OC initialization promise has resolved
+
+  // 1. Create the base 3D model using the existing validated function
+  console.time(`[PERF_TD_SINGLE] Base model creation ${modelName}`);
+  const modelResult = createModelWithValidation(modelName, params); // Use the helper
+  console.timeEnd(`[PERF_TD_SINGLE] Base model creation ${modelName}`);
+
+  if (!modelResult || modelResult.error) {
+    console.error(`[TECH_DRAW_WORKER] Base model creation failed for single projection:`, modelResult?.validationErrors);
+    console.timeEnd(`[PERF_TD_SINGLE] Total ${modelName} ${partName || 'Whole'} ${viewType} projection`);
+    return { error: true, validationErrors: modelResult?.validationErrors || ["Model creation failed."] };
+  }
+
+  // 2. Select the model to project (whole model or specific part)
+  let modelToProject;
+  if (partName) {
+    if (!modelResult.technicalDrawingModels || !modelResult.technicalDrawingModels[partName]) {
+      const errorMsg = `Part '${partName}' not found in technicalDrawingModels for model '${modelName}'.`;
+      console.error(`[TECH_DRAW_WORKER] ${errorMsg}`);
+      console.timeEnd(`[PERF_TD_SINGLE] Total ${modelName} ${partName} ${viewType} projection`);
+      return { error: true, message: errorMsg };
+    }
+    modelToProject = exportableModel(modelResult.technicalDrawingModels[partName]);
+    console.log(`[TECH_DRAW_WORKER] Projecting specific part: ${partName}`);
+  } else {
+    modelToProject = exportableModel(modelResult); // Use the main model
+    console.log(`[TECH_DRAW_WORKER] Projecting whole model.`);
+  }
+
+
+  // 3. Generate the specific projection using the existing drawProjection helper
+  let projection;
+  try {
+    console.time(`[PERF_TD_SINGLE] drawProjection ${modelName} ${partName || 'Whole'} ${viewType}`);
+    projection = drawProjection(modelToProject, viewType.toLowerCase()); // Call the imported helper
+    console.timeEnd(`[PERF_TD_SINGLE] drawProjection ${modelName} ${partName || 'Whole'} ${viewType}`);
+  } catch (drawError) {
+    console.error(`[TECH_DRAW_WORKER] Error during drawProjection for ${modelName} ${partName || 'Whole'} ${viewType}:`, drawError);
+    console.timeEnd(`[PERF_TD_SINGLE] Total ${modelName} ${partName || 'Whole'} ${viewType} projection`);
+    return { error: true, message: `Drawing projection failed: ${drawError.message}` };
+  }
+
+  // 4. Normalize paths using the existing helper function
+  const visiblePathsRaw = projection.visible.toSVGPaths();
+  const hiddenPathsRaw = includeHiddenLines ? projection.hidden.toSVGPaths() : [];
+  // Use partName in prefix if available for better uniqueness
+  const idPrefix = `single_${partName ? partName.replace(/\s+/g, '_') + '_' : ''}${viewType}`;
+
+  console.time(`[PERF_TD_SINGLE] normalizePaths ${modelName} ${partName || 'Whole'} ${viewType}`);
+  const normalizedVisible = normalizePaths(visiblePathsRaw, `${idPrefix}_visible`, 0, 0); // Use helper
+  const normalizedHidden = includeHiddenLines ? normalizePaths(hiddenPathsRaw, `${idPrefix}_hidden`, 0, 0) : []; // Use helper
+  console.timeEnd(`[PERF_TD_SINGLE] normalizePaths ${modelName} ${partName || 'Whole'} ${viewType}`);
+
+  const combinedPaths = [...normalizedVisible, ...normalizedHidden];
+
+  // 5. Determine combined viewBox using the projection result
+  // Use the viewBox from the projection object, applying margin if needed.
+  // Using toSVGViewBox(5) applies a 5% margin. Adjust as needed.
+  const viewBox = projection.visible.toSVGViewBox(5); // Get viewBox with margin
+
+  console.timeEnd(`[PERF_TD_SINGLE] Total ${modelName} ${partName || 'Whole'} ${viewType} projection`);
+  console.log(`[TECH_DRAW_WORKER] Successfully generated single projection for ${modelName} ${partName || 'Whole'} ${viewType}.`);
+
+  return {
+    error: false,
+    paths: combinedPaths,
+    viewBox: viewBox,
+  };
+};
+// --- End New Function ---
+
+
+// Expose the main function and the new single projection function
+expose({ generateProjections, generateSingleProjection });

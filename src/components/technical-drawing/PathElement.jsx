@@ -1,10 +1,20 @@
-import React from 'react';
+import React, { useCallback } from 'react'; // Import useCallback here
 
 /**
  * Renders a single SVG path
  */
-export default function PathElement({ path, stroke, strokeWidth, strokeDasharray, onClick, viewId, partName, partIndex }) { // Add partName and partIndex
+// Add viewInstanceId to props
+export default function PathElement({ path, stroke, strokeWidth, strokeDasharray, onPathClick, viewInstanceId, partName, partIndex }) {
   if (!path) return null;
+
+  // Internal handler to call prop and stop propagation
+  const handleClick = useCallback((event) => {
+    event.stopPropagation(); // Prevent click from bubbling to parent cell
+    if (onPathClick) {
+      // Pass unique path ID, path object, partName, partIndex, AND viewInstanceId
+      onPathClick(path.id, path, partName, partIndex, viewInstanceId);
+    }
+  }, [onPathClick, path, partName, partIndex, viewInstanceId]); // Add dependencies
 
   // Handle different path formats
   const pathData = path.data || (typeof path === 'string' ? path : String(path));
@@ -22,7 +32,7 @@ export default function PathElement({ path, stroke, strokeWidth, strokeDasharray
       fill="none"
       strokeDasharray={strokeDasharray}
       style={{ vectorEffect: 'non-scaling-stroke', cursor: 'pointer' }}
-      onClick={() => onClick && onClick(uniquePathId, path, partName, partIndex)} // Pass unique ID, path object, partName, and partIndex
+      onClick={handleClick} // Use the internal handler
     />
   );
 }

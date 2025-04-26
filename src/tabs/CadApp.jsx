@@ -3,7 +3,7 @@ import { wrap } from "comlink";
 
 import ThreeContext from "../ThreeContext.jsx";
 import ReplicadMesh from "../ReplicadMesh.jsx";
-import TechnicalDrawingCanvas from "../components/technical-drawing/TechnicalDrawingCanvas.jsx"; // Updated import
+import TechnicalDrawingCanvas from "../components/technical-drawing/TechnicalDrawingCanvas.jsx";
 import RenderingView from "../RenderingView.jsx";
 import BillOfMaterials from "../components/bom/BillOfMaterials.jsx"; // Import BoM component
 
@@ -21,10 +21,15 @@ export default function CadApp() {
   const [params, setParams] = useState(createDefaultParams(modelRegistry[selectedModel]));
   const [explosionFactor, setExplosionFactor] = useState(0);
   const [mesh, setMesh] = useState(null);
-  const [projections, setProjections] = useState(null);
+  // const [projections, setProjections] = useState(null); // Removed old projections state
+  const [viewboxes, setViewboxes] = useState([]); // New state for user-defined viewboxes
   const [bomData, setBomData] = useState(null); // Add state for BoM data
   const [validationErrors, setValidationErrors] = useState([]);
   const [activeTab, setActiveTab] = useState('3d');
+  const [selectedLayout, setSelectedLayout] = useState('1x1'); // New state for selected layout
+  const [selectedViewToAdd, setSelectedViewToAdd] = useState('Front'); // State for the view type to add
+  const [includeHiddenLines, setIncludeHiddenLines] = useState(false); // State for hidden lines option
+  const [selectedTarget, setSelectedTarget] = useState(null); // State for { viewboxId, cellIndex }
   const [controlsExpanded, setControlsExpanded] = useState(true);
 const [isMobile, setIsMobile] = useState(false);
 
@@ -69,7 +74,7 @@ console.log(`[INFO] Creating ${selectedModel} with params:`, params);
         if (result.error && result.validationErrors) {
         setValidationErrors(result.validationErrors);
         setMesh(null);
-        setProjections(null);
+        // setProjections(null); // Removed
         setBomData(null); // Clear BoM data on error
       } else {
         setMesh(result);
@@ -80,10 +85,10 @@ console.log(`[INFO] Creating ${selectedModel} with params:`, params);
 
       }
     } catch (error) { // Catch errors ONLY from cad.createMesh
-        console.error("Error creating model or projections:", error); // Updated error message
+        console.error("Error creating model:", error); // Updated error message
         setValidationErrors(["An error occurred while generating the model."]);
         setMesh(null);
-        setProjections(null);
+        // setProjections(null); // Removed
     setBomData(null);
     console.timeEnd(`[PERF] worker call for ${selectedModel}`); // End timer on catch
   }
@@ -123,44 +128,185 @@ const requestHighDetailMesh = useCallback(async () => {
 }
 }, [selectedModel, params, explosionFactor, cad]); // Added dependencies
 
-// When tab changes TO technical, generate projections using the NEW worker
-  useEffect(() => {
-    // Only trigger if switching TO technical tab AND projections aren't already loaded/loading
-    if (activeTab === 'technical' && !projections) {
-      console.log("[INFO] Technical tab active, requesting projections from techDrawWorker...");
-      setProjections(null); // Clear old/stale projections immediately
-      setValidationErrors([]); // Clear potential previous errors
+// REMOVED useEffect hook that automatically generated projections on tab switch
 
-      // Prepare params (explosion factor is NOT needed for projections)
-      const modelParams = { ...params };
-      // delete modelParams.explosionFactor; // Remove explosion factor if present
+  // Handler to add a new viewbox
+  const handleAddViewbox = useCallback(() => {
+    // For now, just add a placeholder object. We'll define the structure later.
+    const newViewbox = {
+      id: `vb-${Date.now()}-${Math.random().toString(16).slice(2)}`, // Simple unique ID
+      layout: selectedLayout, // Use the selected layout from state
+      // Initialize with the correct fields
+      titleBlock: {
+        project: 'Project Name', // Default placeholder
+        partName: 'Part Name',   // Default placeholder
+        scale: 'NTS',            // Default scale
+        material: 'Steel',       // Default material (or make dynamic later)
+        drawnBy: 'Cline',        // Default drawer
+        date: new Date().toLocaleDateString() // Current date
+      },
+      items: [] // Array to hold views/elements
+    };
+    console.log("[DEBUG] handleAddViewbox - Before setViewboxes. Current viewboxes:", viewboxes);
+    setViewboxes(prev => {
+      const updated = [...prev, newViewbox];
+      console.log("[DEBUG] handleAddViewbox - Inside setViewboxes callback. Updated viewboxes:", updated);
+      return updated;
+    });
+    console.log(`[INFO] Added new viewbox with layout ${selectedLayout}:`, newViewbox);
+  }, [selectedLayout, viewboxes]); // Add viewboxes to dependency array for logging purposes
 
-      // Call the NEW worker
-      techDrawWorker.generateProjections(selectedModel, modelParams)
-        .then(result => {
-          console.log("[INFO] Received projections result from techDrawWorker:", result);
-          if (result && result.error) {
-            console.error("[ERROR] Error generating projections:", result.validationErrors || result.message);
-            setValidationErrors(result.validationErrors || [result.message || "Projection generation failed."]);
-            setProjections({ error: true }); // Set error state for projections
-          } else {
-            setProjections(result); // Set the successful projections data
-          }
-        })
-        .catch(error => {
-          console.error("[ERROR] Failed to call techDrawWorker.generateProjections:", error);
-          setValidationErrors([`Projection worker error: ${error.message}`]);
-          setProjections({ error: true }); // Set error state
-        });
-    } else if (activeTab !== 'technical') {
-        // Clear projections if we navigate away from the technical tab
-        if (projections) { // Only clear if they exist
-            console.log("[INFO] Clearing projections as tab is not 'technical'.");
-            setProjections(null);
-        }
+  // Handler to update the selected layout
+  const handleLayoutChange = (newLayout) => { // Removed useCallback
+    setSelectedLayout(newLayout);
+    console.log(`[INFO] Selected layout changed to: ${newLayout}`);
+  }; // Removed useCallback wrapper
+
+  // Handler to update the selected view type
+  const handleViewSelectionChange = (newViewType) => {
+    setSelectedViewToAdd(newViewType);
+    console.log(`[INFO] Selected view to add changed to: ${newViewType}`);
+  };
+
+  // Handler to toggle hidden lines
+  const handleHiddenLinesToggle = (isChecked) => {
+    setIncludeHiddenLines(isChecked);
+    console.log(`[INFO] Include hidden lines toggled to: ${isChecked}`);
+  };
+
+  // Handler to update the selected target cell
+  const handleCellSelection = useCallback((viewboxId, cellIndex) => {
+    setSelectedTarget({ viewboxId, cellIndex });
+    console.log(`[INFO] Selected target cell: Viewbox ${viewboxId}, Cell ${cellIndex}`);
+  }, []);
+
+  // Handler for updating title block fields
+  const handleTitleBlockChange = useCallback((viewboxId, fieldName, value) => {
+    setViewboxes(prevViewboxes =>
+      prevViewboxes.map(vb =>
+        vb.id === viewboxId
+          ? { ...vb, titleBlock: { ...vb.titleBlock, [fieldName]: value } }
+          : vb
+      )
+    );
+    console.log(`[INFO] Updated title block for Viewbox ${viewboxId}: Field=${fieldName}, Value=${value}`);
+  }, []); // No dependencies needed as setViewboxes handles closure
+
+  // Handler for adding the selected view to the selected cell
+  const handleAddViewToCell = async () => { // Make async
+    if (!selectedTarget) {
+      console.warn("[WARN] No target cell selected to add view.");
+      alert("Please click on a cell in a viewbox first to select where to add the view."); // User feedback
+      return;
     }
-    // Dependencies: Only trigger when tab changes, or model/params change *while* on the technical tab
-  }, [activeTab, selectedModel, params]); // Removed mesh, projections, explosionFactor dependencies
+
+    const { viewboxId: targetViewboxId, cellIndex: targetCellIndex } = selectedTarget;
+
+    // --- Parse selectedViewToAdd to determine if it's a part view ---
+    let viewTypeToAdd = selectedViewToAdd; // Default to the whole value
+    let partIdForWorker = null; // Changed from partNameForWorker
+    const separator = " - ";
+
+    // Check if the selected value contains the separator (indicating a part view)
+    if (selectedViewToAdd.includes(separator)) {
+      const parts = selectedViewToAdd.split(separator);
+      if (parts.length === 2) {
+        partIdForWorker = parts[0].trim(); // e.g., "SS001"
+        viewTypeToAdd = parts[1].trim(); // e.g., "Top"
+        console.log(`[INFO] Parsed part view: Part ID='${partIdForWorker}', View='${viewTypeToAdd}'`);
+      } else {
+        // Handle unexpected format if necessary, maybe default to whole model view
+        console.warn(`[WARN] Unexpected format for part view selection: ${selectedViewToAdd}. Treating as whole model view.`);
+        viewTypeToAdd = selectedViewToAdd; // Use the original value as view type
+        partIdForWorker = null;
+      }
+    } else {
+      // It's a standard whole model view (e.g., "Front", "Isometric")
+      console.log(`[INFO] Adding whole model view: ${viewTypeToAdd}`);
+      partIdForWorker = null; // Ensure partId is null for whole model views
+    }
+    // --- End Parsing ---
+
+    console.log(`[ACTION] Attempting to add view to Viewbox ${targetViewboxId}, Cell ${targetCellIndex}: View='${viewTypeToAdd}', Part ID='${partIdForWorker || 'Whole Model'}', Hidden: ${includeHiddenLines}, Params:`, params);
+
+
+    // 1. Generate the projection data using the worker
+    let projectionResult;
+    try {
+      console.log(`[INFO] Calling techDrawWorker.generateSingleProjection for ${selectedModel} (Part ID: ${partIdForWorker || 'N/A'})...`);
+      projectionResult = await techDrawWorker.generateSingleProjection(
+        selectedModel,
+        { ...params }, // Pass a copy of current params
+        viewTypeToAdd, // Use the parsed view type
+        includeHiddenLines,
+        partIdForWorker // Pass the extracted part ID (or null)
+      );
+      console.log("[INFO] Received projection result from worker:", projectionResult);
+
+      if (!projectionResult || projectionResult.error) {
+        console.error("[ERROR] Worker failed to generate single projection:", projectionResult?.message || "Unknown worker error");
+        // TODO: Show error to user
+        return;
+      }
+    } catch (workerError) {
+      console.error("[ERROR] Error calling techDrawWorker.generateSingleProjection:", workerError);
+      // TODO: Show error to user
+      return;
+    }
+
+    // 2. Update the state with the generated data
+    setViewboxes(prevViewboxes => {
+      // Find the correct viewbox index using the selected target ID
+      const currentTargetViewboxIndex = prevViewboxes.findIndex(vb => vb.id === targetViewboxId);
+
+      if (currentTargetViewboxIndex === -1) {
+        console.warn(`[WARN] Target viewbox ${targetViewboxId} not found in current state.`);
+        return prevViewboxes; // Target viewbox no longer exists
+      }
+
+      // Use the selected cell index
+      const currentTargetCellIndex = targetCellIndex;
+
+      // Create a deep copy to avoid direct state mutation issues
+      const updatedViewboxes = JSON.parse(JSON.stringify(prevViewboxes));
+      const targetViewbox = updatedViewboxes[currentTargetViewboxIndex]; // Get the target viewbox
+
+      // Ensure items array exists
+      if (!targetViewbox.items) {
+        targetViewbox.items = [];
+      }
+
+      // Create the new view item object with data from the worker
+      const newViewItem = {
+        id: `view-${Date.now()}-${Math.random().toString(16).slice(2)}`, // Unique ID
+        type: 'projection',
+        viewType: viewTypeToAdd, // Use parsed view type
+        partName: partIdForWorker, // Store the part ID (or null) - might rename state later if confusing
+        includeHiddenLines: includeHiddenLines,
+        params: { ...params }, // Store parameters used for this specific view
+        // Store the generated SVG data
+        svgData: {
+          paths: projectionResult.paths,
+          viewBox: projectionResult.viewBox,
+        },
+      };
+
+      console.log("[INFO] Adding generated view item:", newViewItem);
+
+      // Place the new item into the *selected* target cell index
+      // Ensure the items array is long enough, fill with null if needed
+      while (targetViewbox.items.length <= currentTargetCellIndex) {
+        targetViewbox.items.push(null);
+      }
+      targetViewbox.items[currentTargetCellIndex] = newViewItem;
+
+      // The targetViewbox object within updatedViewboxes is already updated by reference
+
+      console.log(`[INFO] View added to Viewbox ${targetViewboxId}, Cell ${currentTargetCellIndex}. Final state:`, updatedViewboxes);
+      return updatedViewboxes;
+    });
+  }; // End handleAddViewToCell
+
 
   const handleModelChange = (e) => {
     const newModel = e.target.value;
@@ -168,7 +314,8 @@ const requestHighDetailMesh = useCallback(async () => {
     setSelectedModel(newModel);
     setParams(createDefaultParams(modelRegistry[newModel]));
     setExplosionFactor(0);
-    setProjections(null); // Clear projections
+    // setProjections(null); // Clear projections - Removed
+    setViewboxes([]); // Clear custom viewboxes when model changes
     setBomData(null); // Clear BoM data
     // NOTE: We don't reset verifiedModels here. Verification is per-session, per-model.
     // Reset to 3D tab if the new model doesn't support the current tab
@@ -486,17 +633,34 @@ return (
             
             {/* Technical Drawing View */}
             {activeTab === 'technical' ? (
-              projections ? (
-                <TechnicalDrawingCanvas // Updated component name
-                  projections={projections}
-                  isMobile={isMobile}
-                />
-              ) : (
-                <div style={{ 
+              // Always render canvas, pass viewboxes state
+              <TechnicalDrawingCanvas
+                selectedModelName={selectedModel} // Pass the selected model name
+                viewboxes={viewboxes} // Pass new state
+                isMobile={isMobile}
+                onAddViewbox={handleAddViewbox} // Pass the handler down
+                selectedLayout={selectedLayout} // Pass selected layout state
+                onLayoutChange={handleLayoutChange} // Pass layout change handler
+                // Pass view selection state and handlers
+                selectedViewToAdd={selectedViewToAdd}
+                onViewSelectionChange={handleViewSelectionChange}
+                includeHiddenLines={includeHiddenLines}
+                onHiddenLinesToggle={handleHiddenLinesToggle}
+                onAddViewToCell={handleAddViewToCell} // Pass view add handler
+                selectedTarget={selectedTarget} // Pass selection state
+                onCellSelection={handleCellSelection} // Pass cell selection handler
+                onTitleBlockChange={handleTitleBlockChange} // Pass title block update handler
+                // Pass functions to update viewboxes later
+                // onViewboxesChange={setViewboxes}
+              />
+              // Removed old conditional loading/error logic based on 'projections'
+              /*
+              projections ? ( ... ) : (
+                <div style={{
                   height: "100%",
-                  width: "100%", 
-                  display: "flex", 
-                  alignItems: "center", 
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
                   justifyContent: "center",
                   fontSize: isMobile ? "14px" : "12px",
                   color: "#999"
@@ -504,8 +668,9 @@ return (
                   Loading technical drawings...
                 </div>
               )
+              */
             ) : null}
-            
+
             {/* 360° Rendering View */}
             {activeTab === 'rendering' ? (
               mesh ? (

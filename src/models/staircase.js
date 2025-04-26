@@ -11,6 +11,13 @@ import { compoundShapes } from "replicad";
 import { Vector } from "replicad";
 import { isPositive, validateAll } from "../validators.js";
 
+// Static structure for technical drawing part identification
+const componentDataStructure = [
+  { id: "ST001", name: "Stringer" },
+  { id: "LP001", name: "L-Profile" },
+  { id: "SS001", name: "Side Stringer" }
+];
+
 /**
  * Creates a staircase model with stringers and L-profiles
  */
@@ -191,30 +198,29 @@ export function createStaircase({
   // Combine all parts
   const finalModel = compoundShapes(allParts);
   
-  // Prepare BOM data - no models, just metadata
-  const componentData = [
-    {
-      id: "ST001",
-      name: "Stringer",
-      quantity: n_steps,
-      dimensions: `${width-1}×20×0.5cm`,
-      material: "Steel"
-    },
-    {
-      id: "LP001",
-      name: "L-Profile",
-      quantity: n_steps * 2,
-      dimensions: `4.5×4.5×20cm`,
-      material: "Steel"
-    },
-    {
-      id: "SS001",
-      name: "Side Stringer",
-      quantity: 2,
-      dimensions: "Variable",
-      material: "Steel"
+  // Prepare BOM data - use static structure and add dynamic values
+  const componentData = componentDataStructure.map(comp => {
+    let quantity = 0;
+    let dimensions = "Variable"; // Default
+
+    if (comp.id === "ST001") {
+      quantity = n_steps;
+      dimensions = `${width-1}×20×0.5cm`;
+    } else if (comp.id === "LP001") {
+      quantity = n_steps * 2;
+      dimensions = `4.5×4.5×20cm`;
+    } else if (comp.id === "SS001") {
+      quantity = 2;
+      // Dimensions remain 'Variable'
     }
-  ];
+
+    return {
+      ...comp, // Spread id and name from static structure
+      quantity: quantity,
+      dimensions: dimensions,
+      material: "Steel" // Assuming all steel for now
+    };
+  });
   
   // Store the technical drawing models internally - these won't be serialized
   const technicalDrawingModels = {
@@ -246,5 +252,7 @@ export const staircaseModel = {
   validators: [
     validateAll(isPositive, ["width", "depth", "height"])
   ],
-  hasExplosion: true
+  hasExplosion: true,
+  hasTechnicalDrawingParts: true, // Add static flag
+  componentDataStructure: componentDataStructure // Expose static structure
 };

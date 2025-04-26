@@ -1,56 +1,63 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react'; // Combined imports
 import { vec } from '../../utils/geometryUtils.js'; // Import vector utils
 
-// --- Measurement Display Component ---
-export default function MeasurementDisplay({ measurementData, svgRef, onUpdatePosition }) {
+// --- Measurement Display Component --- Handles its own dragging using CTM ---
+export default function MeasurementDisplay({
+  measurementData,
+  innerSvgRef, // Receive ref to the parent SVG element
+  onUpdatePosition, // Receive update handler
+  // Removed onDragStart
+}) {
   const { pathId, type, geometry, textPosition, viewId } = measurementData;
+  // Restore internal drag state
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 }); // Screen coords
-  const [dragStartTextPos, setDragStartTextPos] = useState({ x: 0, y: 0 }); // SVG coords
+  const [dragStartTextPos, setDragStartTextPos] = useState({ x: 0, y: 0 }); // SVG coords (relative to innerSvgRef)
 
-  const handleMouseDown = (e) => {
-    // Use currentTarget to ensure we get the SVG element for coordinate transforms
-    if (!svgRef?.current) return;
-    e.stopPropagation(); // Prevent triggering pan
+  // --- Restore Drag Handlers ---
+  const handleMouseDown = useCallback((e) => {
+    e.stopPropagation(); // Prevent canvas pan/zoom etc.
     setIsDragging(true);
     setDragStartPos({ x: e.clientX, y: e.clientY });
     setDragStartTextPos(textPosition); // Store initial SVG position
-    // Add global listeners
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  };
+  }, [textPosition]); // Dependency: initial text position
 
-  const handleMouseMove = (e) => {
-    if (!isDragging || !svgRef?.current) return;
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging || !innerSvgRef?.current) return;
 
     const dxScreen = e.clientX - dragStartPos.x;
     const dyScreen = e.clientY - dragStartPos.y;
 
-    // Convert screen delta to SVG delta (approximately, ignoring rotation/skew)
-    const ctm = svgRef.current.getScreenCTM();
-    if (!ctm) return;
-    // Use ctm.a for x scaling and ctm.d for y scaling
-    const svgDeltaX = dxScreen / ctm.a;
-    const svgDeltaY = dyScreen / ctm.d;
+    try {
+      const invMatrix = innerSvgRef.current.getScreenCTM().inverse();
+      // Use matrix components for delta calculation
+      const deltaX_svg = dxScreen * invMatrix.a + dyScreen * invMatrix.c;
+      const deltaY_svg = dxScreen * invMatrix.b + dyScreen * invMatrix.d;
 
-    const newTextPos = {
-      x: dragStartTextPos.x + svgDeltaX,
-      y: dragStartTextPos.y + svgDeltaY,
-    };
-    onUpdatePosition(pathId, newTextPos); // Update state in parent
-  };
+      const newTextPos = {
+        x: dragStartTextPos.x + deltaX_svg,
+        y: dragStartTextPos.y + deltaY_svg,
+      };
+      onUpdatePosition(pathId, newTextPos); // Update state in parent
+    } catch (error) {
+      console.error("Error calculating CTM or transforming point:", error);
+      // Handle potential errors (e.g., matrix not invertible)
+    }
 
-  const handleMouseUp = () => {
+  }, [isDragging, dragStartPos, dragStartTextPos, innerSvgRef, onUpdatePosition, pathId]); // Add dependencies
+
+  const handleMouseUp = useCallback(() => {
     if (!isDragging) return;
     setIsDragging(false);
-    // Remove global listeners
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', handleMouseUp);
-  };
+  }, [isDragging, handleMouseMove]); // Dependency: isDragging, handleMouseMove
 
-  // Touch handlers (similar logic)
-  const handleTouchStart = (e) => {
-     if (!svgRef?.current || e.touches.length !== 1) return;
+  // Touch handlers (similar logic using CTM)
+  const handleTouchStart = useCallback((e) => {
+     if (e.touches.length !== 1) return;
      e.stopPropagation();
      const touch = e.touches[0];
      setIsDragging(true);
@@ -59,42 +66,48 @@ export default function MeasurementDisplay({ measurementData, svgRef, onUpdatePo
      window.addEventListener('touchmove', handleTouchMove, { passive: false });
      window.addEventListener('touchend', handleTouchEnd);
      window.addEventListener('touchcancel', handleTouchEnd);
-  };
+  }, [textPosition]); // Dependency: initial text position
 
-   const handleTouchMove = (e) => {
-    if (!isDragging || !svgRef?.current || e.touches.length !== 1) return;
+   const handleTouchMove = useCallback((e) => {
+    if (!isDragging || e.touches.length !== 1 || !innerSvgRef?.current) return;
     e.preventDefault(); // Prevent scrolling while dragging measurement
     const touch = e.touches[0];
     const dxScreen = touch.clientX - dragStartPos.x;
     const dyScreen = touch.clientY - dragStartPos.y;
 
-    const ctm = svgRef.current.getScreenCTM();
-    if (!ctm) return;
-    const svgDeltaX = dxScreen / ctm.a;
-    const svgDeltaY = dyScreen / ctm.d;
+    try {
+      const invMatrix = innerSvgRef.current.getScreenCTM().inverse();
+      const deltaX_svg = dxScreen * invMatrix.a + dyScreen * invMatrix.c;
+      const deltaY_svg = dxScreen * invMatrix.b + dyScreen * invMatrix.d;
 
-    const newTextPos = {
-      x: dragStartTextPos.x + svgDeltaX,
-      y: dragStartTextPos.y + svgDeltaY,
-    };
-    onUpdatePosition(pathId, newTextPos);
-  };
+      const newTextPos = {
+        x: dragStartTextPos.x + deltaX_svg,
+        y: dragStartTextPos.y + deltaY_svg,
+      };
+      onUpdatePosition(pathId, newTextPos);
+    } catch (error) {
+      console.error("Error calculating CTM or transforming point (touch):", error);
+    }
+  }, [isDragging, dragStartPos, dragStartTextPos, innerSvgRef, onUpdatePosition, pathId]); // Add dependencies
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = useCallback(() => {
     if (!isDragging) return;
     setIsDragging(false);
     window.removeEventListener('touchmove', handleTouchMove);
     window.removeEventListener('touchend', handleTouchEnd);
     window.removeEventListener('touchcancel', handleTouchEnd);
-  };
+  }, [isDragging, handleTouchMove]); // Dependency: isDragging, handleTouchMove
+  // --- End Restore Drag Handlers ---
 
 
   // --- Rendering Logic ---
+  // --- Restore Original Styles ---
   const strokeColor = "#222222"; // Darker gray for better contrast
   const strokeWidth = 0.15; // Thinner lines for professional look
   const fontSize = 2.2; // Smaller text to fit better
   const arrowSize = 1.2; // Smaller arrows
   const textOffset = 1.2; // Offset text from dimension line
+  // --- End Original Styles ---
   const extensionGap = 0.8; // Small gap from the geometry
   const extensionOverhang = 1.2; // How much to extend past the dimension line
 
@@ -278,12 +291,13 @@ export default function MeasurementDisplay({ measurementData, svgRef, onUpdatePo
             x={textPosition.x}
             y={textPosition.y}
             fontSize={fontSize}
-            fill={strokeColor}
+            fill={strokeColor} // Use restored color
             stroke="none"
             textAnchor="middle"
             dominantBaseline="middle"
             fontFamily="Arial, sans-serif"
-            style={{ cursor: 'move', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+            style={{ cursor: 'move', userSelect: 'none', vectorEffect: 'non-scaling-stroke', pointerEvents: 'auto' }} // Explicitly enable pointer events
+            // Use restored internal handlers
             onMouseDown={handleMouseDown}
             onTouchStart={handleTouchStart}
           >
@@ -399,18 +413,19 @@ export default function MeasurementDisplay({ measurementData, svgRef, onUpdatePo
             />
             <text
               x={textPosition.x}
-              y={textPosition.y}
-              fontSize={fontSize}
-              fill={strokeColor}
-              stroke="none"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontFamily="Arial, sans-serif"
-              style={{ cursor: 'move', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
-              onMouseDown={handleMouseDown}
-              onTouchStart={handleTouchStart}
-            >
-              {textContent}
+            y={textPosition.y}
+            fontSize={fontSize}
+            fill={strokeColor} // Use restored color
+            stroke="none"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontFamily="Arial, sans-serif"
+            style={{ cursor: 'move', userSelect: 'none', vectorEffect: 'non-scaling-stroke', pointerEvents: 'auto' }} // Explicitly enable pointer events
+            // Use restored internal handlers
+            onMouseDown={handleMouseDown}
+            onTouchStart={handleTouchStart}
+          >
+            {textContent}
             </text>
           </g>
         </g>
