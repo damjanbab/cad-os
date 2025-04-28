@@ -21,6 +21,7 @@ export default function DrawingControls({
   includeHiddenLines, // Add prop for hidden lines state
   onHiddenLinesToggle, // Add handler for hidden lines toggle
   onAddViewToCell, // Add handler to trigger adding the view
+  onSetupStandardViews, // Add handler for setting up standard assembly/part views
   // Interaction mode props
   interactionMode,
   onInteractionModeChange,
@@ -296,6 +297,24 @@ export default function DrawingControls({
         onClick={onAddViewbox} // Call the passed-in handler
       >
         Add Viewbox
+      </button>
+
+      {/* Setup Standard Views Button */}
+      <button
+        title="Setup Standard Views (Assembly & Parts)"
+        style={{
+          marginTop: '5px',
+          padding: isMobile ? '5px 10px' : '2px 8px',
+          cursor: 'pointer',
+          fontSize: isMobile ? '14px' : 'inherit',
+          backgroundColor: '#ffc107', // Amber background
+          color: 'black',
+          border: 'none',
+          borderRadius: '3px'
+        }}
+        onClick={onSetupStandardViews} // Call the new handler
+      >
+        Setup Standard Views
       </button>
 
       {/* Export Button */}

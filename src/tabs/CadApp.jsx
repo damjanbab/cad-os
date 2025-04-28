@@ -192,6 +192,123 @@ const requestHighDetailMesh = useCallback(async () => {
     console.log(`[INFO] Updated title block for Viewbox ${viewboxId}: Field=${fieldName}, Value=${value}`);
   }, []); // No dependencies needed as setViewboxes handles closure
 
+  // Handler to remove a viewbox
+  const handleRemoveViewbox = useCallback((viewboxIdToRemove) => {
+    setViewboxes(prevViewboxes => {
+      const updatedViewboxes = prevViewboxes.filter(vb => vb.id !== viewboxIdToRemove);
+      console.log(`[INFO] Removed Viewbox ${viewboxIdToRemove}. Remaining:`, updatedViewboxes);
+      // Also clear selection if the removed viewbox was selected
+      if (selectedTarget?.viewboxId === viewboxIdToRemove) {
+        setSelectedTarget(null);
+      }
+      return updatedViewboxes;
+    });
+  }, [selectedTarget]); // Add selectedTarget dependency
+
+
+  // --- Handler for Setting Up Standard Views (Assembly & Parts) ---
+  const handleSetupStandardViews = useCallback(async () => {
+    console.log(`[ACTION] Setting up standard views for ${selectedModel}`);
+    setIncludeHiddenLines(true); // Ensure hidden lines are on for this operation
+
+    const modelDefinition = modelRegistry[selectedModel];
+    const standardViews = ['Front', 'Left', 'Bottom'];
+    const layout = '2x2';
+    const includeHidden = true; // Explicitly true for this function
+
+    // 1. Determine entities to process (Assembly + Parts)
+    const entitiesToProcess = [{ id: null, name: modelDefinition.name || selectedModel }]; // Start with assembly
+
+    if (modelDefinition?.hasTechnicalDrawingParts && Array.isArray(modelDefinition.componentDataStructure)) {
+      modelDefinition.componentDataStructure.forEach(partInfo => {
+        if (partInfo.id) {
+          entitiesToProcess.push({ id: partInfo.id, name: partInfo.name || partInfo.id });
+        } else {
+          console.warn("[WARN] Skipping part due to missing ID in componentDataStructure:", partInfo);
+        }
+      });
+    }
+    console.log("[INFO] Entities to process for standard views:", entitiesToProcess);
+
+    // 2. Generate view data for all entities and views concurrently
+    try {
+      const allViewboxDataPromises = entitiesToProcess.map(async (entity) => {
+        console.log(`[INFO] Generating standard views for entity: ${entity.name} (ID: ${entity.id || 'Assembly'})`);
+        const viewPromises = standardViews.map(viewType =>
+          techDrawWorker.generateSingleProjection(
+            selectedModel,
+            { ...params },
+            viewType,
+            includeHidden,
+            entity.id // Pass null for assembly, partId for parts
+          ).catch(err => { // Add individual catch for robustness
+            console.error(`[ERROR] Worker failed for ${entity.name} - ${viewType}:`, err);
+            return null; // Return null on error for this specific view
+          })
+        );
+        const projectionResults = await Promise.all(viewPromises);
+        console.log(`[INFO] Received projection results for ${entity.name}:`, projectionResults);
+        return { entity, projectionResults }; // Return entity info along with results
+      });
+
+      const allViewboxData = await Promise.all(allViewboxDataPromises);
+
+      // 3. Construct new viewbox objects from the results
+      const newViewboxes = allViewboxData.map(({ entity, projectionResults }) => {
+        const viewboxId = `vb-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const items = new Array(4).fill(null); // Initialize 2x2 grid (4 cells)
+
+        projectionResults.forEach((result, index) => {
+          if (result && !result.error && result.paths) { // Check if result is valid
+            items[index] = { // Place in cells 0, 1, 2
+              id: `view-${viewboxId}-${standardViews[index]}-${entity.id || 'asm'}`,
+              type: 'projection',
+              viewType: standardViews[index],
+              partName: entity.id, // Store part ID (null for assembly)
+              includeHiddenLines: includeHidden,
+              params: { ...params },
+              svgData: {
+                paths: result.paths,
+                viewBox: result.viewBox,
+              },
+            };
+          } else {
+            console.warn(`[WARN] Skipping invalid/error result for ${entity.name} - ${standardViews[index]}`);
+            // items[index] remains null
+          }
+        });
+
+        return {
+          id: viewboxId,
+          layout: layout,
+          titleBlock: { // Basic title block, adjust as needed
+            project: selectedModel,
+            partName: entity.name, // Use entity name
+            scale: 'NTS',
+            material: 'N/A',
+            drawnBy: 'Cline',
+            date: new Date().toLocaleDateString()
+          },
+          items: items,
+        };
+      }).filter(vb => vb !== null); // Filter out any potential nulls if all views failed for an entity
+
+      console.log("[INFO] Constructed new viewboxes:", newViewboxes);
+
+      // 4. Update state, replacing existing viewboxes
+      setViewboxes(newViewboxes);
+      setSelectedLayout(layout); // Also update the layout dropdown to match
+      console.log("[INFO] Viewboxes state updated with standard views.");
+
+    } catch (error) {
+      console.error("[ERROR] Failed to generate standard views:", error);
+      // TODO: Show a user-friendly error message
+      alert("An error occurred while generating the standard views. Please check the console for details.");
+    }
+  }, [selectedModel, params, techDrawWorker, setViewboxes, setSelectedLayout, setIncludeHiddenLines]); // Add dependencies
+  // --- End Handler ---
+
+
   // Handler for adding the selected view to the selected cell
   const handleAddViewToCell = async () => { // Make async
     if (!selectedTarget) {
@@ -650,6 +767,8 @@ return (
                 selectedTarget={selectedTarget} // Pass selection state
                 onCellSelection={handleCellSelection} // Pass cell selection handler
                 onTitleBlockChange={handleTitleBlockChange} // Pass title block update handler
+                onRemoveViewbox={handleRemoveViewbox} // Pass remove handler
+                onSetupStandardViews={handleSetupStandardViews} // Pass the new handler
                 // Pass functions to update viewboxes later
                 // onViewboxesChange={setViewboxes}
               />

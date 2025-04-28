@@ -32,6 +32,10 @@ export default function TechnicalDrawingCanvas({
   onCellSelection,
   // Title block editing prop
   onTitleBlockChange,
+  // Viewbox removal prop
+  onRemoveViewbox,
+  // Standard views setup prop
+  onSetupStandardViews,
 }) {
   // Removed loading check for projections
   // if (!projections) return <div>Loading projections...</div>;
@@ -400,6 +404,8 @@ export default function TechnicalDrawingCanvas({
         // Pass interaction mode state and setter
         interactionMode={interactionMode}
         onInteractionModeChange={setInteractionMode}
+        // Pass the standard views setup handler
+        onSetupStandardViews={onSetupStandardViews}
         />
       </div>
 
@@ -446,6 +452,7 @@ export default function TechnicalDrawingCanvas({
               // Removed onMeasurementDragStart
               zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay rendering
               snapPoints={snapPoints} // Pass down the array of snap points
+              onRemove={onRemoveViewbox} // Pass down the remove handler
             />
           ))
         )}

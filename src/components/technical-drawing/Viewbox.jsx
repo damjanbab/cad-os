@@ -23,6 +23,7 @@ export default function Viewbox({
   // Removed onMeasurementDragStart
   zoomLevel,
   snapPoints, // Renamed prop
+  onRemove, // Add prop for remove handler
 }) {
   const { id: viewboxId, layout, titleBlock, items } = viewboxData; // Rename id to viewboxId for clarity
   const [gridRows, gridCols] = parseLayout(layout);
@@ -88,8 +89,55 @@ export default function Viewbox({
     transition: 'border-color 0.2s ease-in-out', // Smooth transition for selection highlight
   };
 
+  // Style for the remove button
+  const removeButtonStyle = {
+    position: 'absolute',
+    top: '5px',
+    right: '5px',
+    background: 'rgba(255, 0, 0, 0.7)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '50%',
+    width: '20px',
+    height: '20px',
+    fontSize: '12px',
+    lineHeight: '18px', // Adjust for vertical centering
+    textAlign: 'center',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+    zIndex: 1, // Ensure it's above other content
+    boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+    transition: 'background 0.2s ease',
+  };
+
+  const removeButtonHoverStyle = {
+    background: 'rgba(200, 0, 0, 0.9)',
+  };
+
+  // State for hover effect on remove button
+  const [isHoveringRemove, setIsHoveringRemove] = React.useState(false);
+
   return (
     <div style={viewboxStyle} data-viewbox-id={viewboxId}>
+      {/* Remove Button */}
+      {onRemove && ( // Only render if onRemove handler is provided
+        <button
+          style={{
+            ...removeButtonStyle,
+            ...(isHoveringRemove ? removeButtonHoverStyle : {}),
+          }}
+          onClick={(e) => {
+            e.stopPropagation(); // Prevent triggering cell selection
+            onRemove(viewboxId);
+          }}
+          onMouseEnter={() => setIsHoveringRemove(true)}
+          onMouseLeave={() => setIsHoveringRemove(false)}
+          title="Remove Viewbox" // Tooltip for accessibility
+        >
+          X
+        </button>
+      )}
+
       {/* Grid Layout Area */}
       <div style={gridContainerStyle}>
         {/* Render grid cells, placing items if they exist */}

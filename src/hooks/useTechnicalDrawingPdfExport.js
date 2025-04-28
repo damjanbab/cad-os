@@ -367,38 +367,55 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
           itemGroup.setAttribute('transform', itemTranslate);
           viewboxContentGroup.appendChild(itemGroup); // Add to the main scaled group
 
-          // Render item paths within its translated group
+          // Separate paths into hidden and visible
+          const hiddenPathObjects = [];
+          const visiblePathObjects = [];
           item.svgData.paths.forEach(path => {
+            const isHidden = path.type === 'hidden' || path.id?.includes('_hidden');
+            if (isHidden) {
+              hiddenPathObjects.push(path);
+            } else {
+              visiblePathObjects.push(path);
+            }
+          });
+
+          // Function to render a path and its measurement
+          const renderPathAndMeasurement = (path) => {
             const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             pathEl.setAttribute('d', path.data);
-            const isHidden = path.type === 'hidden' || path.id?.includes('_hidden');
+            const isHidden = path.type === 'hidden' || path.id?.includes('_hidden'); // Re-check for clarity
             pathEl.setAttribute('stroke', isHidden ? '#777777' : '#000000');
-            // Use effective stroke widths calculated from the single viewboxScale
             pathEl.setAttribute('stroke-width', isHidden ? effectiveHiddenStrokeWidth : effectiveStrokeWidth);
             pathEl.setAttribute('stroke-linecap', 'round');
             pathEl.setAttribute('stroke-linejoin', 'round');
             if (isHidden) {
-              // Use strokeScaleFactor calculated from the single viewboxScale
               pathEl.setAttribute('stroke-dasharray', `${2 * strokeScaleFactor},${1 * strokeScaleFactor}`);
             }
             pathEl.setAttribute('fill', 'none');
             pathEl.setAttribute('vector-effect', 'non-scaling-stroke');
             itemGroup.appendChild(pathEl); // Add path to the item's translated group
 
-            // --- Render Measurements Associated with this Path ---
-            // Measurements need to be rendered using the single viewboxScale
+            // Render Measurements Associated with this Path
             const measurement = activeMeasurements[path.id];
             if (measurement && measurement.viewInstanceId === item.id && path.geometry) {
-               console.log(`${LOG_PREFIX}       Rendering measurement for path ${path.id} in item ${item.id} using scale ${viewboxScale.toFixed(4)}`);
-               // Pass the single viewboxScale to the measurement renderer
-               const measurementSvgGroup = renderMeasurementToSvg(measurement, path.geometry, viewboxScale);
-               if (measurementSvgGroup) {
-                   itemGroup.appendChild(measurementSvgGroup); // Append to the item's translated group
-               } else {
-                   console.warn(`${LOG_PREFIX}       renderMeasurementToSvg returned null for ${measurement.pathId}`);
-               }
+              console.log(`${LOG_PREFIX}       Rendering measurement for path ${path.id} (hidden=${isHidden}) in item ${item.id} using scale ${viewboxScale.toFixed(4)}`);
+              const measurementSvgGroup = renderMeasurementToSvg(measurement, path.geometry, viewboxScale);
+              if (measurementSvgGroup) {
+                itemGroup.appendChild(measurementSvgGroup); // Append measurement group right after its path
+              } else {
+                console.warn(`${LOG_PREFIX}       renderMeasurementToSvg returned null for ${measurement.pathId}`);
+              }
             }
-          });
+          };
+
+          // Render hidden paths first
+          console.log(`${LOG_PREFIX}       Rendering ${hiddenPathObjects.length} hidden paths...`);
+          hiddenPathObjects.forEach(renderPathAndMeasurement);
+
+          // Render visible paths second
+          console.log(`${LOG_PREFIX}       Rendering ${visiblePathObjects.length} visible paths...`);
+          visiblePathObjects.forEach(renderPathAndMeasurement);
+
         } // End loop through cells for rendering
 
         // --- 8. Add Border around the printable area ---
@@ -556,4 +573,3 @@ function calculatePartLayout(part, viewGap) {
     console.log(`${logPrefixPart}   Collected original paths: Front=${pathGroups.frontPaths.length}, Top=${pathGroups.topPaths.length}, Right=${pathGroups.rightPaths.length}`);
     return { combinedLayoutViewBox, pathGroups, layoutOffsets };
 }
-

@@ -59,18 +59,28 @@ export default function SvgView({
         preserveAspectRatio="xMidYMid meet" // Scale SVG to fit, maintain aspect ratio
         style={{ display: 'block' }} // Prevent extra space below SVG
       >
-        <g stroke="#333" strokeWidth="0.5" fill="none"> {/* Default styling */}
-          {paths.map((path) => (
-            <PathElement
-              key={path.id}
-              path={path}
-              onPathClick={onPathClick} // Pass the handler down
-              viewInstanceId={viewId} // Pass the unique ID of this SvgView instance
-              // isActive={activeMeasurements && activeMeasurements[path.id]} // Keep commented for now
-              // partName={partName} // Keep commented for now - partName is on viewItemData if needed
-              // partIndex={partIndex} // Pass part context if needed
-            />
-          ))}
+        <g fill="none"> {/* Removed default stroke and strokeWidth */}
+          {paths.map((path) => {
+            const isHidden = path.id?.includes('_hidden');
+            const stroke = isHidden ? '#888888' : '#333333';
+            const strokeWidth = isHidden ? 0.35 : 0.5; // Slightly thinner for hidden lines
+            const strokeDasharray = isHidden ? '4 2' : 'none';
+
+            return (
+              <PathElement
+                key={path.id}
+                path={path}
+                stroke={stroke}
+                strokeWidth={strokeWidth}
+                strokeDasharray={strokeDasharray}
+                onPathClick={onPathClick} // Pass the handler down
+                viewInstanceId={viewId} // Pass the unique ID of this SvgView instance
+                // isActive={activeMeasurements && activeMeasurements[path.id]} // Keep commented for now
+                // partName={partName} // Keep commented for now - partName is on viewItemData if needed
+                // partIndex={partIndex} // Pass part context if needed
+              />
+            );
+          })}
           {/* Render measurements belonging to this view */}
           {measurements && measurements.map(measurement => (
             <MeasurementDisplay
