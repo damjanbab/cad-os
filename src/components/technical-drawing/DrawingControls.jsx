@@ -21,6 +21,9 @@ export default function DrawingControls({
   includeHiddenLines, // Add prop for hidden lines state
   onHiddenLinesToggle, // Add handler for hidden lines toggle
   onAddViewToCell, // Add handler to trigger adding the view
+  // Interaction mode props
+  interactionMode,
+  onInteractionModeChange,
 }) {
 
   const availableLayouts = ['1x1', '1x2', '2x1', '2x2']; // Define available layouts
@@ -133,6 +136,27 @@ export default function DrawingControls({
           onClick={onResetView}
         >
           Reset
+        </button>
+      </div>
+
+      {/* Interaction Mode Toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', marginTop: '5px' }}>
+         <button
+          title={`Switch to ${interactionMode === 'measure' ? 'Snap' : 'Measure'} Mode`}
+          style={{
+            width: '100%',
+            padding: isMobile ? '5px 10px' : '2px 8px',
+            cursor: 'pointer',
+            fontSize: isMobile ? '14px' : 'inherit',
+            backgroundColor: interactionMode === 'snap' ? '#ff9800' : '#bdbdbd', // Orange when snap is active
+            color: 'white',
+            border: 'none',
+            borderRadius: '3px',
+            textAlign: 'center',
+          }}
+          onClick={() => onInteractionModeChange(interactionMode === 'measure' ? 'snap' : 'measure')}
+        >
+          {interactionMode === 'measure' ? 'Measure Mode' : 'Snap Mode'}
         </button>
       </div>
 

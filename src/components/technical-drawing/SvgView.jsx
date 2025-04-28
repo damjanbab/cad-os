@@ -8,6 +8,8 @@ export default function SvgView({
   onPathClick,
   // Receive measurement props
   measurements,
+  // Receive snap points array prop
+  snapPoints,
   // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
   // Removed onMeasurementDragStart
   // zoomLevel, // zoomLevel is not needed here anymore
@@ -37,8 +39,18 @@ export default function SvgView({
     // Removed pointerEvents: 'none'
   };
 
+  // Log received snapPoints prop
+  console.log(`[SvgView ${viewId}] Received snapPoints:`, snapPoints);
+
+  // Filter snap points that belong to this specific view instance
+  const relevantSnapPoints = snapPoints.filter(sp => sp.viewInstanceId === viewId);
+
+  // Log the filtered points for this view
+  console.log(`[SvgView ${viewId}] Relevant snapPoints for rendering:`, relevantSnapPoints);
+
   return (
-    <div style={svgContainerStyle}>
+    // Add data attribute to the container div
+    <div style={svgContainerStyle} data-view-instance-id={viewId}>
       <svg
         ref={innerSvgRef} // Assign ref to the SVG element
         width="100%"
@@ -67,6 +79,20 @@ export default function SvgView({
               innerSvgRef={innerSvgRef} // Pass the ref down
               // onUpdatePosition={onMeasurementUpdate} // REMOVED - Update is handled via hook callback
               // Removed onDragStart
+            />
+          ))}
+          {/* Render highlights for all relevant snap points */}
+          {relevantSnapPoints.map((snapPoint, index) => (
+            <circle
+              key={`snap-highlight-${index}`}
+              cx={snapPoint.coordinates.x}
+              cy={snapPoint.coordinates.y}
+              r="4" // Increased radius slightly
+              // fill="#ff00ff" // DEBUG: Temporarily fill to check rendering
+              fill="none" // Keep fill as none for final
+              stroke="#ff00ff" // Magenta color for visibility
+              strokeWidth="2" // Increased strokeWidth significantly
+              style={{ pointerEvents: 'none', vectorEffect: 'non-scaling-stroke' }} // Ensure it doesn't interfere with clicks and scales correctly
             />
           ))}
         </g>

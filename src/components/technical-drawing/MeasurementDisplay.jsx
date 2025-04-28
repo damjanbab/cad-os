@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from 'react'; // Combined imports
+import React from 'react'; // Removed useState, useCallback
 import { vec } from '../../utils/geometryUtils.js'; // Import vector utils
+import { distance } from '../../hooks/useCanvasInteraction.js'; // Import distance helper
 
-// --- Measurement Display Component --- Handles its own dragging using CTM ---
+// --- Measurement Display Component --- Renders measurement graphics ---
 export default function MeasurementDisplay({
   measurementData,
   innerSvgRef, // Receive ref to the parent SVG element
@@ -214,6 +215,70 @@ export default function MeasurementDisplay({
             style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
           >
             {textContent} // Display only
+          </text>
+        </g>
+      </g>
+    );
+
+  } else if (type === 'distance' && geometry.endpoints && geometry.endpoints.length === 2) {
+    // --- Logic for Point-to-Point Distance Measurement ---
+    const [p1, p2] = geometry.endpoints;
+    // Calculate the actual distance between the two points
+    const calculatedDistance = distance({ x: p1[0], y: p1[1] }, { x: p2[0], y: p2[1] });
+    const textContent = calculatedDistance.toFixed(2);
+
+    // --- Reuse rendering logic similar to 'line' type ---
+    const vx = p2[0] - p1[0];
+    const vy = p2[1] - p1[1];
+    const midX = (p1[0] + p2[0]) / 2;
+    const midY = (p1[1] + p2[1]) / 2;
+    const lineLen = Math.sqrt(vx * vx + vy * vy); // Use calculated length for line segment representation
+    const ux = lineLen > 1e-6 ? vx / lineLen : 1;
+    const uy = lineLen > 1e-6 ? vy / lineLen : 0;
+    const nx = -uy;
+    const ny = ux;
+    const textOffsetX = textPosition.x - midX;
+    const textOffsetY = textPosition.y - midY;
+    const offsetDist = textOffsetX * nx + textOffsetY * ny;
+    const actualOffsetDist = Math.abs(offsetDist) < textOffset ? Math.sign(offsetDist || 1) * textOffset : offsetDist;
+    const dimLineP1 = [p1[0] + nx * actualOffsetDist, p1[1] + ny * actualOffsetDist];
+    const dimLineP2 = [p2[0] + nx * actualOffsetDist, p2[1] + ny * actualOffsetDist];
+    const extLineP1Start = [p1[0] + nx * Math.sign(actualOffsetDist) * extensionGap, p1[1] + ny * Math.sign(actualOffsetDist) * extensionGap];
+    const extLineP2Start = [p2[0] + nx * Math.sign(actualOffsetDist) * extensionGap, p2[1] + ny * Math.sign(actualOffsetDist) * extensionGap];
+    const extLineP1End = [dimLineP1[0] + nx * Math.sign(actualOffsetDist) * extensionOverhang, dimLineP1[1] + ny * Math.sign(actualOffsetDist) * extensionOverhang];
+    const extLineP2End = [dimLineP2[0] + nx * Math.sign(actualOffsetDist) * extensionOverhang, dimLineP2[1] + ny * Math.sign(actualOffsetDist) * extensionOverhang];
+    const arrowLen = lineLen;
+    const arrowNormX = ux;
+    const arrowNormY = uy;
+    const arrow1 = `M ${dimLineP1[0]} ${dimLineP1[1]} l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize} l ${-arrowNormY * arrowSize * 0.35} ${arrowNormX * arrowSize * 0.35} l ${-arrowNormX * arrowSize * 0.65} ${-arrowNormY * arrowSize * 0.65} z`;
+    const arrow2 = `M ${dimLineP2[0]} ${dimLineP2[1]} l ${-arrowNormX * arrowSize} ${-arrowNormY * arrowSize} l ${arrowNormY * arrowSize * 0.35} ${-arrowNormX * arrowSize * 0.35} l ${arrowNormX * arrowSize * 0.65} ${arrowNormY * arrowSize * 0.65} z`;
+    const textWidthEstimate = textContent.length * fontSize * 0.65;
+    const gapSize = textWidthEstimate + textOffset * 2;
+    const halfGap = gapSize / 2;
+    const textProj = (textPosition.x - dimLineP1[0]) * arrowNormX + (textPosition.y - dimLineP1[1]) * arrowNormY;
+    const breakStartPos = Math.max(arrowSize, textProj - halfGap);
+    const breakEndPos = Math.min(arrowLen - arrowSize, textProj + halfGap);
+    const dimLine1End = [dimLineP1[0] + arrowNormX * breakStartPos, dimLineP1[1] + arrowNormY * breakStartPos];
+    const dimLine2Start = [dimLineP1[0] + arrowNormX * breakEndPos, dimLineP1[1] + arrowNormY * breakEndPos];
+    const showDimLine1 = breakStartPos > arrowSize + 1e-6;
+    const showDimLine2 = breakEndPos < arrowLen - arrowSize - 1e-6;
+
+    elements = (
+      <g id={pathId} className="measurement-group">
+        {/* Extension Lines */}
+        <line x1={extLineP1Start[0]} y1={extLineP1Start[1]} x2={extLineP1End[0]} y2={extLineP1End[1]} stroke={strokeColor} strokeWidth={strokeWidth} style={{ vectorEffect: 'non-scaling-stroke' }} />
+        <line x1={extLineP2Start[0]} y1={extLineP2Start[1]} x2={extLineP2End[0]} y2={extLineP2End[1]} stroke={strokeColor} strokeWidth={strokeWidth} style={{ vectorEffect: 'non-scaling-stroke' }} />
+        {/* Dimension Line (broken) */}
+        {showDimLine1 && <line x1={dimLineP1[0]} y1={dimLineP1[1]} x2={dimLine1End[0]} y2={dimLine1End[1]} stroke={strokeColor} strokeWidth={strokeWidth} style={{ vectorEffect: 'non-scaling-stroke' }} />}
+        {showDimLine2 && <line x1={dimLine2Start[0]} y1={dimLine2Start[1]} x2={dimLineP2[0]} y2={dimLineP2[1]} stroke={strokeColor} strokeWidth={strokeWidth} style={{ vectorEffect: 'non-scaling-stroke' }} />}
+        {/* Arrowheads */}
+        <path d={arrow1} fill={strokeColor} stroke="none" style={{ vectorEffect: 'non-scaling-stroke' }} />
+        <path d={arrow2} fill={strokeColor} stroke="none" style={{ vectorEffect: 'non-scaling-stroke' }} />
+        {/* Text */}
+        <g>
+          <rect x={textPosition.x - (textContent.length * fontSize * 0.3)} y={textPosition.y - fontSize * 0.7} width={textContent.length * fontSize * 0.6} height={fontSize * 1.4} fill="white" fillOpacity="0.8" rx={fontSize * 0.2} ry={fontSize * 0.2} style={{ vectorEffect: 'non-scaling-stroke' }} />
+          <text x={textPosition.x} y={textPosition.y} fontSize={fontSize} fill={strokeColor} stroke="none" textAnchor="middle" dominantBaseline="middle" fontFamily="Arial, sans-serif" style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}>
+            {textContent}
           </text>
         </g>
       </g>

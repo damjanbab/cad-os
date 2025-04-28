@@ -11,8 +11,8 @@ export default function PathElement({ path, stroke, strokeWidth, strokeDasharray
   const handleClick = useCallback((event) => {
     event.stopPropagation(); // Prevent click from bubbling to parent cell
     if (onPathClick) {
-      // Pass unique path ID, path object, partName, partIndex, AND viewInstanceId
-      onPathClick(path.id, path, partName, partIndex, viewInstanceId);
+      // Pass event, unique path ID, path object, partName, partIndex, AND viewInstanceId
+      onPathClick(event, path.id, path, partName, partIndex, viewInstanceId);
     }
   }, [onPathClick, path, partName, partIndex, viewInstanceId]); // Add dependencies
 
@@ -24,6 +24,20 @@ export default function PathElement({ path, stroke, strokeWidth, strokeDasharray
   // Ensure strokeWidth is a valid number, default to 1 if not
   const validStrokeWidth = typeof strokeWidth === 'number' && !isNaN(strokeWidth) ? strokeWidth : 1;
   const clickTargetStrokeWidth = Math.max(5, validStrokeWidth * 5); // Make click target wider, at least 5 units
+
+  // Prepare data attributes for snapping
+  const dataAttributes = {};
+  if (path.geometry?.type) {
+    dataAttributes['data-geometry-type'] = path.geometry.type;
+    if (path.geometry.type === 'line' && path.geometry.endpoints) {
+      // Stringify endpoints for the data attribute
+      try {
+        dataAttributes['data-endpoints'] = JSON.stringify(path.geometry.endpoints);
+      } catch (e) {
+        console.error("Failed to stringify endpoints for path:", uniquePathId, e);
+      }
+    }
+  }
 
   // Use vector-effect to keep stroke width consistent regardless of SVG scaling
   return (
@@ -46,6 +60,7 @@ export default function PathElement({ path, stroke, strokeWidth, strokeDasharray
         fill="none"
         style={{ vectorEffect: 'non-scaling-stroke', cursor: 'pointer' }} // Cursor on the click target
         onClick={handleClick} // Click handler on the click target
+        {...dataAttributes} // Spread the data attributes onto the element
       />
     </g>
   );

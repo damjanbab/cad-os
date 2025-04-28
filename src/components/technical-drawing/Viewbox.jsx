@@ -22,9 +22,13 @@ export default function Viewbox({
   // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
   // Removed onMeasurementDragStart
   zoomLevel,
+  snapPoints, // Renamed prop
 }) {
   const { id: viewboxId, layout, titleBlock, items } = viewboxData; // Rename id to viewboxId for clarity
   const [gridRows, gridCols] = parseLayout(layout);
+
+  // Log received snapPoints prop
+  console.log(`[Viewbox ${viewboxId}] Received snapPoints:`, snapPoints);
 
   // Handler for input changes in the title block
   const handleInputChange = (fieldName, value) => {
@@ -129,6 +133,7 @@ export default function Viewbox({
                   // onMeasurementUpdate={onMeasurementUpdate} // REMOVED - Update is handled via hook callback
                   // Removed onMeasurementDragStart
                   zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay
+                  snapPoints={snapPoints} // Pass snapPoints array down to SvgView
                 />
               ) : (
                 // If no item, display empty cell placeholder

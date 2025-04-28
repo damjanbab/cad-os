@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
 // Helper to get SVG coordinates from screen coordinates using CTM
-const getSvgCoordinates = (screenX, screenY, svgElement) => {
+export const getSvgCoordinates = (screenX, screenY, svgElement) => { // Add export keyword
   // ... (keep existing helper function)
   if (!svgElement) {
     console.error("SVG element not provided for coordinate conversion.");
@@ -28,8 +28,15 @@ const getSvgCoordinates = (screenX, screenY, svgElement) => {
   }
 };
 
-// Centralized hook for canvas interactions: panning, zooming, and measurement dragging
-export function useCanvasInteraction(containerRef, getMeasurementState) {
+// Helper to calculate distance between two points
+export const distance = (p1, p2) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+
+// Define snap threshold (in SVG coordinates)
+export const SNAP_THRESHOLD = 5;
+
+// Centralized hook for canvas interactions: panning, zooming, measurement dragging
+// Note: Snap logic is now handled in TechnicalDrawingCanvas onClick
+export function useCanvasInteraction(containerRef, getMeasurementState, interactionMode) { // Add interactionMode
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -39,9 +46,10 @@ export function useCanvasInteraction(containerRef, getMeasurementState) {
   const [draggingMeasurementId, setDraggingMeasurementId] = useState(null);
   const [dragStartScreenPos, setDragStartScreenPos] = useState({ x: 0, y: 0 });
   const [dragStartSvgPos, setDragStartSvgPos] = useState({ x: 0, y: 0 });
+  // Removed snapPoint state
 
   // Refs
-  const svgRef = useRef(null);
+  const svgRef = useRef(null); // Ref for the *specific* SVG being interacted with (set during drag/snap)
   const onMeasurementDragRef = useRef(null);
   // Ref to store the currently active listeners (wrappers)
   const activeListenersRef = useRef({ move: null, end: null, cancel: null, target: null, type: null, options: null });
@@ -77,11 +85,15 @@ export function useCanvasInteraction(containerRef, getMeasurementState) {
     setPanOffset({ x: newPanOffsetX, y: newPanOffsetY });
   }, [containerRef, panOffset, zoomLevel]);
 
+
   // --- Update Logic Refs ---
   // This effect updates the logic refs whenever state they depend on changes
   useEffect(() => {
-    // --- Move Logic ---
+    // --- Panning/Measurement Drag Move Logic ---
     moveLogicRef.current = (e) => {
+      // Only handle pan/drag move, snap move is separate
+      if (interactionMode === 'snap') return;
+
       const isTouchEvent = activeListenersRef.current.type === 'touch'; // Use stored type
       const eventPos = isTouchEvent ? e.touches[0] : e;
       if (!eventPos) return;
@@ -117,8 +129,11 @@ export function useCanvasInteraction(containerRef, getMeasurementState) {
       }
     };
 
-    // --- End Logic ---
+    // --- Panning/Measurement Drag End Logic ---
     endLogicRef.current = (e) => {
+      // Only handle pan/drag end, snap has no explicit "end" via this mechanism
+      if (interactionMode === 'snap') return;
+
       const { move, end, cancel, target, type, options } = activeListenersRef.current;
 
       if (target && move && end) {
@@ -152,15 +167,23 @@ export function useCanvasInteraction(containerRef, getMeasurementState) {
     isPanning, draggingMeasurementId, // State dependencies for logic
     panStart, panStartOffset, dragStartScreenPos, dragStartSvgPos, // Other state
     onMeasurementDragRef, svgRef, containerRef, // Refs
-    setPanOffset, setDraggingMeasurementId, setIsPanning // Setters
+    setPanOffset, setDraggingMeasurementId, setIsPanning, // Setters
+    interactionMode // Add interactionMode dependency
   ]);
 
 
-  // --- Combined Interaction Start Handler ---
+  // --- Combined Interaction Start Handler (Panning / Measurement Drag) ---
   const handleInteractionStart = useCallback((e) => {
+    // Ignore interaction starts if in snap mode (handled by separate listener)
+    if (interactionMode === 'snap') {
+        // Potentially handle click *in* snap mode here later if needed
+        // For now, just prevent pan/drag start
+        return;
+    }
+
     // Ensure no existing listeners are active (safety check)
     if (activeListenersRef.current.target) {
-      console.warn("Interaction start called while listeners were still active. Cleaning up.");
+      console.warn("[Interaction] Start called while listeners were still active. Cleaning up.");
       endLogicRef.current(e); // Attempt cleanup
     }
 
@@ -278,14 +301,15 @@ export function useCanvasInteraction(containerRef, getMeasurementState) {
       setIsPanning,
       setPanStart,
       setPanStartOffset,
-      svgRef // Ref needed for CTM check
+      svgRef, // Ref needed for CTM check
+      interactionMode // Add interactionMode dependency
   ]);
 
-  // Cleanup listeners on unmount
+  // Cleanup pan/drag listeners on unmount
   useEffect(() => {
     // Return a cleanup function
     return () => {
-      endLogicRef.current(); // Call the end logic to remove any active listeners
+      endLogicRef.current(); // Call the end logic to remove any active pan/drag listeners
     };
   }, []); // Empty dependency array ensures this runs only on unmount
 
@@ -301,6 +325,7 @@ export function useCanvasInteraction(containerRef, getMeasurementState) {
         if (draggingMeasurementId) setDraggingMeasurementId(null);
         if (isPanning) setIsPanning(false);
     }
+    // Removed snapPoint reset
   }, [draggingMeasurementId, isPanning]); // Depend on state to check if reset is needed
 
   // Handlers attached to the container element
@@ -321,5 +346,6 @@ export function useCanvasInteraction(containerRef, getMeasurementState) {
     setPanOffset,
     setOnMeasurementDrag,
     setInteractionSvgRef,
+    // Removed snapPoint from return
   };
 }
