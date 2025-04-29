@@ -29,7 +29,8 @@ export default function MeasurementDisplay({
   if (type === 'line' && geometry.endpoints) {
     const [p1, p2] = geometry.endpoints;
     const length = geometry.length || 0;
-    const textContent = length.toFixed(2);
+    // Format number: remove trailing .00, keep other decimals
+    const textContent = parseFloat(length.toFixed(2)).toString();
 
     // Vector from p1 to p2
     const vx = p2[0] - p1[0];
@@ -225,7 +226,8 @@ export default function MeasurementDisplay({
     const [p1, p2] = geometry.endpoints;
     // Calculate the actual distance between the two points
     const calculatedDistance = distance({ x: p1[0], y: p1[1] }, { x: p2[0], y: p2[1] });
-    const textContent = calculatedDistance.toFixed(2);
+    // Format number: remove trailing .00, keep other decimals
+    const textContent = parseFloat(calculatedDistance.toFixed(2)).toString();
 
     // --- Reuse rendering logic similar to 'line' type ---
     const vx = p2[0] - p1[0];
@@ -288,7 +290,8 @@ export default function MeasurementDisplay({
     const [cx, cy] = geometry.center;
     const diameter = geometry.diameter;
     const radius = geometry.radius || diameter / 2;
-    const textContent = `⌀${diameter.toFixed(2)}`;
+    // Format number: remove trailing .00, keep other decimals
+    const textContent = `⌀${parseFloat(diameter.toFixed(2)).toString()}`;
 
     // Calculate text width estimate
     const textWidthEstimate = textContent.length * fontSize * 0.65;

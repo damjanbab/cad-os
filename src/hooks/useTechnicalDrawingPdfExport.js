@@ -142,7 +142,8 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
   if (type === 'line' && geometry?.endpoints) {
     const [p1, p2] = geometry.endpoints;
     const length = geometry.length || 0;
-    const textContent = length.toFixed(2);
+    // Format number: remove trailing .00, keep other decimals
+    const textContent = parseFloat(length.toFixed(2)).toString();
     const vx = p2[0] - p1[0]; const vy = p2[1] - p1[1];
     const midX = (p1[0] + p2[0]) / 2; const midY = (p1[1] + p2[1]) / 2;
     const lineLen = Math.sqrt(vx * vx + vy * vy);
@@ -184,7 +185,8 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
     const [cx, cy] = geometry.center;
     const diameter = geometry.diameter;
     const radius = geometry.radius || diameter / 2;
-    const textContent = `⌀${diameter.toFixed(2)}`;
+    // Format number: remove trailing .00, keep other decimals
+    const textContent = `⌀${parseFloat(diameter.toFixed(2)).toString()}`;
     const textPosX = textPosition.x; const textPosY = textPosition.y;
     const textVecX = textPosX - cx; const textVecY = textPosY - cy;
     const distSqr = textVecX * textVecX + textVecY * textVecY;
@@ -445,10 +447,30 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
             pageLayout.marginLeft, pageLayout.marginTop, pageLayout.marginRight, pageLayout.marginBottom,
             pageLayout.orientation, PAPER_SIZES, DEFAULT_PAPER_SIZE
         );
+
+        // Calculate the true scale ratio: Paper Size (mm) / Real Size (mm)
+        // viewboxScale = Paper Size (mm) / Real Size (cm)
+        // trueScaleRatio = viewboxScale / 10
+        const trueScaleRatio = viewboxScale / 10;
+        let scaleString = "NTS"; // Default if calculation fails
+
+        if (trueScaleRatio > 1e-6) { // Avoid division by zero or tiny scales
+            if (Math.abs(trueScaleRatio - 1) < 1e-6) {
+                scaleString = "1 : 1"; // Exactly 1:1
+            } else if (trueScaleRatio < 1) {
+                // Reduction scale (e.g., 1 : 5.2)
+                scaleString = `1 : ${(1 / trueScaleRatio).toFixed(1)}`;
+            } else {
+                // Enlargement scale (e.g., 2 : 1)
+                scaleString = `${trueScaleRatio.toFixed(1)} : 1`;
+            }
+        }
+        console.log(`${LOG_PREFIX}       Calculated True Scale Ratio: ${trueScaleRatio.toFixed(4)}, Formatted String: ${scaleString}`);
+
         // Add calculated scale to title block data
         const titleBlockData = {
             ...viewbox.titleBlock, // Existing data
-            scale: `1 : ${(1 / viewboxScale).toFixed(1)}` // Display scale based on calculated viewboxScale
+            scale: scaleString // Use the correctly calculated and formatted scale string
         };
         drawTitleBlock(pdf, titleBlockLayout, titleBlockData);
 

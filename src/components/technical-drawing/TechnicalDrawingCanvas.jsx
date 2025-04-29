@@ -107,8 +107,9 @@ export default function TechnicalDrawingCanvas({
     const p1Coords = point1.coordinates;
     const p2Coords = point2.coordinates;
 
-    // Calculate the distance between the points
-    const measurementLength = distance(p1Coords, p2Coords);
+    // Calculate the distance between the points (in original units, assumed cm)
+    const rawMeasurementLength = distance(p1Coords, p2Coords);
+    const measurementLength = rawMeasurementLength * 10; // Convert cm to mm for display
 
     // Calculate initial text position (midpoint)
     const initialTextPosition = {
@@ -123,9 +124,9 @@ export default function TechnicalDrawingCanvas({
       viewInstanceId: point1.viewInstanceId, // Both points are in the same view
       geometry: {
         type: 'line', // Store as a line for rendering purposes
-        length: measurementLength, // Add the calculated length
+        length: measurementLength, // Store the scaled length (mm)
         endpoints: [
-          [p1Coords.x, p1Coords.y],
+          [p1Coords.x, p1Coords.y], // Endpoints remain in original SVG coordinates
           [p2Coords.x, p2Coords.y]
         ]
       },
@@ -284,9 +285,20 @@ export default function TechnicalDrawingCanvas({
           const [x2, y2] = path.geometry.endpoints[1];
           initialTextPosition.x = (x1 + x2) / 2;
           initialTextPosition.y = (y1 + y2) / 2 - 5; // Offset slightly above midpoint
-        } else if (path.geometry.type === 'circle' && path.geometry.center) {
+        } else if (path.geometry.type === 'circle' && path.geometry.center && path.geometry.diameter != null) {
           initialTextPosition.x = path.geometry.center[0];
           initialTextPosition.y = path.geometry.center[1]; // Place inside initially
+        }
+
+        // Scale the geometry values before storing
+        const scaledGeometry = { ...path.geometry };
+        if (scaledGeometry.type === 'line' && scaledGeometry.length != null) {
+          scaledGeometry.length *= 10; // Scale length
+        } else if (scaledGeometry.type === 'circle' && scaledGeometry.diameter != null) {
+          scaledGeometry.diameter *= 10; // Scale diameter
+          if (scaledGeometry.radius != null) {
+            scaledGeometry.radius *= 10; // Scale radius if present
+          }
         }
 
         // Determine the correct viewId for the measurement state
@@ -313,9 +325,8 @@ export default function TechnicalDrawingCanvas({
           pathId: uniquePathId, // This is the full, unique path segment ID
           type: path.geometry.type,
           textPosition: initialTextPosition,
-          // viewId: measurementViewId, // Store the determined view ID - REMOVED, use viewInstanceId
           viewInstanceId: viewInstanceId, // Store the ID of the specific view instance
-          geometry: path.geometry, // Store the geometry directly
+          geometry: scaledGeometry, // Store the SCALED geometry
         };
         console.log(`--- Added Measurement ---`);
         console.log(`  Path ID: ${uniquePathId}`);

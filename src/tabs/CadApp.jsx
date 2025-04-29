@@ -140,7 +140,7 @@ const requestHighDetailMesh = useCallback(async () => {
       titleBlock: {
         project: 'Project Name', // Default placeholder
         partName: 'Part Name',   // Default placeholder
-        scale: 'NTS',            // Default scale
+        scale: 'CALCULATED ON PDF', // Default scale text reflecting PDF behavior
         material: 'Steel',       // Default material (or make dynamic later)
         drawnBy: 'Cline',        // Default drawer
         date: new Date().toLocaleDateString() // Current date
