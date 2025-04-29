@@ -9,6 +9,7 @@ import { modelRegistry, createModelWithValidation } from "./models";
 import { exportableModel } from './helperUtils.js';
 import { parseViewBox, combineViewBoxes } from './utils/svgUtils.js'; // Assuming these are needed by helpers
 import { TOLERANCE, arePointsClose, areCollinear } from './utils/geometryUtils.js'; // Assuming these are needed by helpers
+import { parsePathData, transformPathData, serializePathData } from './utils/svgPathUtils.js'; // Import SVG path helpers
 
 // --- OpenCascade Initialization (Copied from original worker) ---
 let loaded = false;
@@ -32,59 +33,6 @@ const init = async () => {
   }
 };
 const started = init();
-
-// --- SVG Path Transformation Helpers (Moved from technicalDrawingProcessor.js) ---
-// Includes: parsePathData, transformPathData, serializePathData
-function parsePathData(d) {
-  if (!d || typeof d !== 'string') {
-    console.error("Invalid input to parsePathData:", d);
-    return [];
-  }
-  const commandRegex = /([MLHVCSQTAZ])([^MLHVCSQTAZ]*)/ig;
-  const commands = [];
-  let match;
-  while ((match = commandRegex.exec(d)) !== null) {
-    const command = match[1];
-    const paramString = match[2].trim();
-    const paramRegex = /[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g;
-    const values = (paramString.match(paramRegex) || []).map(Number);
-    if (values.some(isNaN)) {
-      console.warn(`Skipping command due to invalid parameters: ${match[0]}`);
-      continue;
-    }
-    commands.push({ command, values });
-  }
-  return commands;
-}
-function transformPathData(pathDataArray, tx, ty) {
-  pathDataArray.forEach(item => {
-    const command = item.command;
-    const values = item.values;
-    if (command === command.toUpperCase() && command !== 'Z') {
-      for (let i = 0; i < values.length; i++) {
-        switch (command) {
-          case 'M': case 'L': case 'T': values[i] += (i % 2 === 0) ? tx : ty; break;
-          case 'H': values[i] += tx; break;
-          case 'V': values[i] += ty; break;
-          case 'C': values[i] += (i % 2 === 0) ? tx : ty; break;
-          case 'S': case 'Q': values[i] += (i % 2 === 0) ? tx : ty; break;
-          case 'A': if (i >= 5) { values[i] += (i % 2 !== 0) ? tx : ty; } break;
-        }
-      }
-    }
-  });
-}
-function serializePathData(pathDataArray) {
-  return pathDataArray.map(item => {
-    const paramsString = item.values.map(v => {
-        if (Math.abs(v) > 1e6 || (Math.abs(v) < 1e-4 && v !== 0)) { return v.toExponential(4); }
-        return parseFloat(v.toFixed(4));
-    }).join(' ');
-    return `${item.command}${paramsString}`;
-  }).join('');
-}
-// --- End SVG Path Transformation Helpers ---
-
 
 // --- Projection Generation Logic (Moved from technicalDrawingProcessor.js) ---
 // Includes: createOrthographicProjections, processProjectionsForRendering, createNormalizedViewBox,

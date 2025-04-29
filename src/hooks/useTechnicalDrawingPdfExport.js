@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import 'svg2pdf.js'; // Side-effect import
 import { parseViewBox } from '../utils/svgUtils.js';
 import { vec } from '../utils/geometryUtils.js'; // Keep for potential future use
+import { parsePathData, transformPathData, serializePathData } from '../utils/svgPathUtils.js'; // Import SVG path helpers
 
 const LOG_PREFIX = "[PDF Export]";
 
@@ -32,61 +33,29 @@ const VIEW_TITLE_FONT_SIZE = 3; // Not currently used
 const VIEW_GAP = 5; // Gap between grid cells for PDF
 const PDF_SCALE = 1; // Default scale factor (can be overridden)
 
-// --- SVG Path Transformation Helpers ---
-// (Keep existing parsePathData, transformPathData, serializePathData)
-function parsePathData(d) {
-  if (!d || typeof d !== 'string') {
-    console.error("Invalid input to parsePathData:", d);
-    return [];
-  }
-  const commandRegex = /([MLHVCSQTAZ])([^MLHVCSQTAZ]*)/ig;
-  const commands = [];
-  let match;
-  while ((match = commandRegex.exec(d)) !== null) {
-    const command = match[1];
-    const paramString = match[2].trim();
-    const paramRegex = /[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g;
-    const values = (paramString.match(paramRegex) || []).map(Number);
-    if (values.some(isNaN)) {
-      console.warn(`Skipping command due to invalid parameters: ${match[0]}`);
-      continue;
-    }
-    commands.push({ command, values });
-  }
-  return commands;
-}
-function transformPathData(pathDataArray, tx, ty) {
-  pathDataArray.forEach(item => {
-    const command = item.command;
-    const values = item.values;
-    if (command === command.toUpperCase() && command !== 'Z') {
-      for (let i = 0; i < values.length; i++) {
-        switch (command) {
-          case 'M': case 'L': case 'T':
-            values[i] += (i % 2 === 0) ? tx : ty; break;
-          case 'H': values[i] += tx; break;
-          case 'V': values[i] += ty; break;
-          case 'C': values[i] += (i % 2 === 0) ? tx : ty; break;
-          case 'S': case 'Q':
-            values[i] += (i % 2 === 0) ? tx : ty; break;
-          case 'A':
-            if (i >= 5) { values[i] += (i % 2 !== 0) ? tx : ty; } break;
-        }
-      }
-    }
-  });
-}
-function serializePathData(pathDataArray) {
-  return pathDataArray.map(item => {
-    const paramsString = item.values.map(v => {
-        if (Math.abs(v) > 1e6 || (Math.abs(v) < 1e-4 && v !== 0)) { return v.toExponential(4); }
-        return parseFloat(v.toFixed(4));
-    }).join(' ');
-    return `${item.command}${paramsString}`;
-  }).join('');
-}
-// --- End SVG Path Transformation Helpers ---
+// --- PDF Styling Constants (mm unless specified) ---
+const PDF_VISIBLE_STROKE_COLOR = '#000000';
+const PDF_HIDDEN_STROKE_COLOR = '#777777';
+const PDF_MEASUREMENT_STROKE_COLOR = '#222222';
+const PDF_MEASUREMENT_FILL_COLOR = '#222222';
+const PDF_MEASUREMENT_FONT_FAMILY = 'Arial, sans-serif';
+const PDF_TITLE_BLOCK_FONT_FAMILY = 'helvetica';
+const PDF_TITLE_BLOCK_FONT_SIZE_LABEL = 11; // pt
+const PDF_TITLE_BLOCK_FONT_SIZE_VALUE = 10; // pt
+const PDF_TITLE_BLOCK_LINE_WEIGHT = 0.15; // mm
+const PDF_BORDER_LINE_WEIGHT = 0.2; // mm
 
+// Base values (will be scaled)
+const PDF_BASE_VISIBLE_STROKE_WIDTH = 0.5; // mm
+const PDF_BASE_HIDDEN_STROKE_WIDTH = 0.35;  // mm
+const PDF_BASE_MEASUREMENT_STROKE_WIDTH = 0.08; // mm
+const PDF_BASE_MEASUREMENT_FONT_SIZE = 2.2; // mm
+const PDF_BASE_MEASUREMENT_ARROW_SIZE = 1.2; // mm
+const PDF_BASE_MEASUREMENT_TEXT_OFFSET = 1.2; // mm
+const PDF_BASE_MEASUREMENT_EXTENSION_GAP = 0.8; // mm
+const PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG = 1.2; // mm
+const PDF_HIDDEN_DASH_LENGTH = 2; // mm (base)
+const PDF_HIDDEN_DASH_GAP = 1; // mm (base)
 
 // --- Helper Function to Determine Optimal Page Layout ---
 const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAULT_PAPER_SIZE) => {
@@ -118,22 +87,21 @@ const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAU
 
 // --- Helper Function for Measurement SVG Rendering (for PDF) ---
 const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
-  // (Keep existing function, including scaling adjustments)
+  // Use defined constants, applying scale factor
   const { pathId, type, textPosition } = measurementData;
   const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  const baseStrokeWidth = 0.08;
-  const baseFontSize = 2.2;
-  const baseArrowSize = 1.2;
-  const baseTextOffset = 1.2;
-  const baseExtensionGap = 0.8;
-  const baseExtensionOverhang = 1.2;
-  const strokeColor = "#222222";
-  const strokeWidth = scale > 1e-6 ? baseStrokeWidth / scale : baseStrokeWidth;
-  const fontSize = scale > 1e-6 ? baseFontSize / scale : baseFontSize;
-  const arrowSize = scale > 1e-6 ? baseArrowSize / scale : baseArrowSize;
-  const textOffset = scale > 1e-6 ? baseTextOffset / scale : baseTextOffset;
-  const extensionGap = scale > 1e-6 ? baseExtensionGap / scale : baseExtensionGap;
-  const extensionOverhang = scale > 1e-6 ? baseExtensionOverhang / scale : baseExtensionOverhang;
+
+  // Calculate scaled values, handling potential zero scale
+  const scaleFactor = scale > 1e-6 ? 1 / scale : 1;
+  const strokeWidth = PDF_BASE_MEASUREMENT_STROKE_WIDTH * scaleFactor;
+  const fontSize = PDF_BASE_MEASUREMENT_FONT_SIZE * scaleFactor;
+  const arrowSize = PDF_BASE_MEASUREMENT_ARROW_SIZE * scaleFactor;
+  const textOffset = PDF_BASE_MEASUREMENT_TEXT_OFFSET * scaleFactor;
+  const extensionGap = PDF_BASE_MEASUREMENT_EXTENSION_GAP * scaleFactor;
+  const extensionOverhang = PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG * scaleFactor;
+  const strokeColor = PDF_MEASUREMENT_STROKE_COLOR;
+  const fillColor = PDF_MEASUREMENT_FILL_COLOR;
+  const fontFamily = PDF_MEASUREMENT_FONT_FAMILY;
   const createSvgElement = (tag, attributes) => {
     const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
     for (const key in attributes) { el.setAttribute(key, attributes[key]); }
@@ -143,7 +111,7 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
     const [p1, p2] = geometry.endpoints;
     const length = geometry.length || 0;
     // Format number: remove trailing .00, keep other decimals
-    const textContent = parseFloat(length.toFixed(2)).toString();
+    const textContent = parseFloat(length.toFixed(2)).toString(); // Keep precision logic
     const vx = p2[0] - p1[0]; const vy = p2[1] - p1[1];
     const midX = (p1[0] + p2[0]) / 2; const midY = (p1[1] + p2[1]) / 2;
     const lineLen = Math.sqrt(vx * vx + vy * vy);
@@ -160,10 +128,13 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
     const extLineP1End = [dimLineP1[0] + nx * Math.sign(actualOffsetDist) * extensionOverhang, dimLineP1[1] + ny * Math.sign(actualOffsetDist) * extensionOverhang];
     const extLineP2End = [dimLineP2[0] + nx * Math.sign(actualOffsetDist) * extensionOverhang, dimLineP2[1] + ny * Math.sign(actualOffsetDist) * extensionOverhang];
     const arrowNormX = ux; const arrowNormY = uy;
-    const arrow1 = `M ${dimLineP1[0]} ${dimLineP1[1]} l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize} l ${-arrowNormY * arrowSize * 0.35} ${arrowNormX * arrowSize * 0.35} l ${-arrowNormX * arrowSize * 0.65} ${-arrowNormY * arrowSize * 0.65} z`;
-    const arrow2 = `M ${dimLineP2[0]} ${dimLineP2[1]} l ${-arrowNormX * arrowSize} ${-arrowNormY * arrowSize} l ${arrowNormY * arrowSize * 0.35} ${-arrowNormX * arrowSize * 0.35} l ${arrowNormX * arrowSize * 0.65} ${arrowNormY * arrowSize * 0.65} z`;
-    const textWidthEstimate = textContent.length * fontSize * 0.65;
-    const gapSize = textWidthEstimate + textOffset * 2;
+    // Arrow path calculation (adjust factors if needed for appearance)
+    const arrowHeadFactor = 0.35; // Width factor of arrowhead base
+    const arrowTailFactor = 1 - arrowHeadFactor; // Length factor of arrowhead tail
+    const arrow1 = `M ${dimLineP1[0]} ${dimLineP1[1]} l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize} l ${-arrowNormY * arrowSize * arrowHeadFactor} ${arrowNormX * arrowSize * arrowHeadFactor} l ${-arrowNormX * arrowSize * arrowTailFactor} ${-arrowNormY * arrowSize * arrowTailFactor} z`;
+    const arrow2 = `M ${dimLineP2[0]} ${dimLineP2[1]} l ${-arrowNormX * arrowSize} ${-arrowNormY * arrowSize} l ${arrowNormY * arrowSize * arrowHeadFactor} ${-arrowNormX * arrowSize * arrowHeadFactor} l ${arrowNormX * arrowSize * arrowTailFactor} ${arrowNormY * arrowSize * arrowTailFactor} z`;
+    const textWidthEstimate = textContent.length * fontSize * 0.6; // Adjust multiplier as needed
+    const gapSize = textWidthEstimate + textOffset * 1.5; // Adjust gap calculation
     const halfGap = gapSize / 2;
     const textProj = (textPosX - dimLineP1[0]) * arrowNormX + (textPosY - dimLineP1[1]) * arrowNormY;
     const breakStartPos = Math.max(arrowSize, textProj - halfGap);
@@ -176,9 +147,9 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
     group.appendChild(createSvgElement('line', { x1: extLineP2Start[0], y1: extLineP2Start[1], x2: extLineP2End[0], y2: extLineP2End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     if (showDimLine1) group.appendChild(createSvgElement('line', { x1: dimLineP1[0], y1: dimLineP1[1], x2: dimLine1End[0], y2: dimLine1End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     if (showDimLine2) group.appendChild(createSvgElement('line', { x1: dimLine2Start[0], y1: dimLine2Start[1], x2: dimLineP2[0], y2: dimLineP2[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-    group.appendChild(createSvgElement('path', { d: arrow1, fill: strokeColor, stroke: 'none' }));
-    group.appendChild(createSvgElement('path', { d: arrow2, fill: strokeColor, stroke: 'none' }));
-    const textEl = createSvgElement('text', { x: textPosX, y: textPosY, 'font-size': fontSize, fill: strokeColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial, sans-serif' });
+    group.appendChild(createSvgElement('path', { d: arrow1, fill: fillColor, stroke: 'none' })); // Use fillColor
+    group.appendChild(createSvgElement('path', { d: arrow2, fill: fillColor, stroke: 'none' })); // Use fillColor
+    const textEl = createSvgElement('text', { x: textPosX, y: textPosY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily }); // Use constants
     textEl.textContent = textContent;
     group.appendChild(textEl);
   } else if (type === 'circle' && geometry?.center && geometry.diameter != null) {
@@ -193,9 +164,10 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
     let angle = (distSqr < 1e-9) ? 0 : Math.atan2(textVecY, textVecX);
     const cosA = Math.cos(angle); const sinA = Math.sin(angle);
     const leaderStart = [cx + cosA * radius, cy + sinA * radius];
-    const leaderEnd = [textPosX - cosA * textOffset, textPosY - sinA * textOffset];
+    // Ensure leader line ends slightly before text
+    const leaderEnd = [textPosX - cosA * (textOffset * 0.5), textPosY - sinA * (textOffset * 0.5)]; // Adjust end point
     group.appendChild(createSvgElement('line', { x1: leaderStart[0], y1: leaderStart[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-    const textEl = createSvgElement('text', { x: textPosX, y: textPosY, 'font-size': fontSize, fill: strokeColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial, sans-serif' });
+    const textEl = createSvgElement('text', { x: textPosX, y: textPosY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily }); // Use constants
     textEl.textContent = textContent;
     group.appendChild(textEl);
   }
@@ -338,14 +310,16 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
         svgPageGroup.appendChild(viewboxContentGroup); // Add to page group
 
         // --- 7. Render Items into the Scaled Content Group ---
-        const baseStrokeWidth = 0.15;
-        const hiddenStrokeWidth = 0.1;
-        // Calculate effective stroke widths based on the single viewboxScale
-        const effectiveStrokeWidth = viewboxScale > 1e-6 ? baseStrokeWidth / viewboxScale : baseStrokeWidth;
-        const effectiveHiddenStrokeWidth = viewboxScale > 1e-6 ? hiddenStrokeWidth / viewboxScale : hiddenStrokeWidth;
-        const strokeScaleFactor = viewboxScale > 1e-6 ? 1 / viewboxScale : 1; // For dash array scaling
+        // Calculate effective stroke widths and dash scale based on the single viewboxScale
+        const scaleFactor = viewboxScale > 1e-6 ? 1 / viewboxScale : 1;
+        const effectiveVisibleStrokeWidth = PDF_BASE_VISIBLE_STROKE_WIDTH * scaleFactor;
+        const effectiveHiddenStrokeWidth = PDF_BASE_HIDDEN_STROKE_WIDTH * scaleFactor;
+        const effectiveDashLength = PDF_HIDDEN_DASH_LENGTH * scaleFactor;
+        const effectiveDashGap = PDF_HIDDEN_DASH_GAP * scaleFactor;
+        const hiddenDashArray = `${effectiveDashLength},${effectiveDashGap}`;
 
-        console.log(`${LOG_PREFIX}   Effective Stroke Widths (Viewbox): Vis=${effectiveStrokeWidth.toFixed(4)}, Hid=${effectiveHiddenStrokeWidth.toFixed(4)}, DashScale=${strokeScaleFactor.toFixed(3)}`);
+        console.log(`${LOG_PREFIX}   Effective Stroke Widths (Viewbox): Vis=${effectiveVisibleStrokeWidth.toFixed(4)}, Hid=${effectiveHiddenStrokeWidth.toFixed(4)}`);
+        console.log(`${LOG_PREFIX}   Effective Hidden Dash: ${hiddenDashArray}`);
 
         // Second pass: Render items at their calculated positions
         for (let cellIndex = 0; cellIndex < gridRows * gridCols; cellIndex++) {
@@ -386,15 +360,15 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
             const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             pathEl.setAttribute('d', path.data);
             const isHidden = path.type === 'hidden' || path.id?.includes('_hidden'); // Re-check for clarity
-            pathEl.setAttribute('stroke', isHidden ? '#777777' : '#000000');
-            pathEl.setAttribute('stroke-width', isHidden ? effectiveHiddenStrokeWidth : effectiveStrokeWidth);
+            pathEl.setAttribute('stroke', isHidden ? PDF_HIDDEN_STROKE_COLOR : PDF_VISIBLE_STROKE_COLOR);
+            pathEl.setAttribute('stroke-width', isHidden ? effectiveHiddenStrokeWidth : effectiveVisibleStrokeWidth);
             pathEl.setAttribute('stroke-linecap', 'round');
             pathEl.setAttribute('stroke-linejoin', 'round');
             if (isHidden) {
-              pathEl.setAttribute('stroke-dasharray', `${2 * strokeScaleFactor},${1 * strokeScaleFactor}`);
+              pathEl.setAttribute('stroke-dasharray', hiddenDashArray);
             }
             pathEl.setAttribute('fill', 'none');
-            pathEl.setAttribute('vector-effect', 'non-scaling-stroke');
+            pathEl.setAttribute('vector-effect', 'non-scaling-stroke'); // Keep this!
             itemGroup.appendChild(pathEl); // Add path to the item's translated group
           };
 
@@ -431,8 +405,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
         borderRect.setAttribute('width', printableDimensions.width);
         borderRect.setAttribute('height', printableDimensions.height);
         borderRect.setAttribute('fill', 'none');
-        borderRect.setAttribute('stroke', '#000000');
-        borderRect.setAttribute('stroke-width', 0.2);
+        borderRect.setAttribute('stroke', PDF_VISIBLE_STROKE_COLOR); // Use constant
+        borderRect.setAttribute('stroke-width', PDF_BORDER_LINE_WEIGHT); // Use constant
         svgPageGroup.appendChild(borderRect); // Add border to the main page group
 
         // --- 9. Add SVG element to the current PDF page ---
@@ -543,33 +517,59 @@ function drawTitleBlock(pdf, titleBlockLayout, data = {}) {
     // (Keep existing function)
     if (!pdf || !titleBlockLayout) { console.warn(`${LOG_PREFIX} DrawTitleBlock: Missing pdf instance or layout data.`); return; }
     const logPrefixTB = `${LOG_PREFIX} DrawTitleBlock`; console.log(`${logPrefixTB} Drawing title block... Data:`, data);
-    const { outerBox, cells, fontSize } = titleBlockLayout;
+    const { outerBox, cells } = titleBlockLayout; // Font size handled below
     const cellData = [
         [ { label: "Project:", value: data.project || "CAD-OS Demo" }, { label: "Part Name:", value: data.partName || "N/A" } ],
-        [ { label: "Scale:", value: data.scale || "1:1" },        { label: "Material:", value: data.material || "Steel" } ],
+        [ { label: "Scale:", value: data.scale || "NTS" },        { label: "Material:", value: data.material || "Steel" } ], // Default scale NTS
         [ { label: "Drawn By:", value: data.drawnBy || "Cline" },   { label: "Date:", value: data.date || new Date().toLocaleDateString() } ]
     ];
-    const lineWeight = 0.15; pdf.saveGraphicsState(); pdf.setLineWidth(lineWeight); pdf.setDrawColor(0); pdf.setTextColor(0);
-    pdf.rect(outerBox.x, outerBox.y, outerBox.width, outerBox.height, 'S');
+    pdf.saveGraphicsState();
+    pdf.setLineWidth(PDF_TITLE_BLOCK_LINE_WEIGHT); // Use constant
+    pdf.setDrawColor(0);
+    pdf.setTextColor(0);
+
+    // Draw outer box and internal lines
+    pdf.rect(outerBox.x, outerBox.y, outerBox.width, outerBox.height, 'S'); // Stroke only
     let currentX = outerBox.x;
-    for (let c = 0; c < cells[0].length - 1; c++) { currentX += cells[0][c].width; pdf.line(currentX, outerBox.y, currentX, outerBox.y + outerBox.height); }
+    for (let c = 0; c < cells[0].length - 1; c++) { // Vertical lines
+        currentX += cells[0][c].width;
+        pdf.line(currentX, outerBox.y, currentX, outerBox.y + outerBox.height);
+    }
     let currentY = outerBox.y;
     for (let r = 0; r < cells.length - 1; r++) { currentY += cells[r][0].height; pdf.line(outerBox.x, currentY, outerBox.x + outerBox.width, currentY); }
+    for (let r = 0; r < cells.length - 1; r++) { // Horizontal lines
+        currentY += cells[r][0].height;
+        pdf.line(outerBox.x, currentY, outerBox.x + outerBox.width, currentY);
+    }
+
+    // Draw text content
     for (let r = 0; r < cells.length; r++) {
         for (let c = 0; c < cells[r].length; c++) {
-            const cell = cells[r][c]; const content = cellData[r] && cellData[r][c];
+            const cell = cells[r][c];
+            const content = cellData[r]?.[c];
             if (content) {
-                const labelText = content.label || ''; const valueText = content.value || '';
-                const labelFontSize = 11; const valueFontSize = 10;
-                const adjustedLabelY = cell.textY - labelFontSize * 0.15; const adjustedValueY = cell.textY + valueFontSize * 0.35;
-                pdf.setFont('helvetica', 'bold'); pdf.setFontSize(labelFontSize);
-                pdf.text(labelText, cell.textX, adjustedLabelY, { align: 'left', baseline: 'middle', maxWidth: cell.maxWidth });
-                pdf.setFont('helvetica', 'normal'); pdf.setFontSize(valueFontSize);
-                pdf.text(valueText, cell.textX, adjustedValueY, { align: 'left', baseline: 'middle', maxWidth: cell.maxWidth });
-            } else { console.warn(`${logPrefixTB} Missing data for cell [${r}][${c}]`); }
+                const labelText = content.label || '';
+                const valueText = content.value || '';
+                // Adjust Y position slightly for better vertical centering within the cell height
+                const labelY = cell.textY - (PDF_TITLE_BLOCK_FONT_SIZE_LABEL * 0.1); // Adjust baseline slightly up
+                const valueY = cell.textY + (PDF_TITLE_BLOCK_FONT_SIZE_VALUE * 0.2); // Adjust baseline slightly down
+
+                // Draw Label
+                pdf.setFont(PDF_TITLE_BLOCK_FONT_FAMILY, 'bold');
+                pdf.setFontSize(PDF_TITLE_BLOCK_FONT_SIZE_LABEL); // Use constant (pt)
+                pdf.text(labelText, cell.textX, labelY, { align: 'left', baseline: 'middle', maxWidth: cell.maxWidth });
+
+                // Draw Value
+                pdf.setFont(PDF_TITLE_BLOCK_FONT_FAMILY, 'normal');
+                pdf.setFontSize(PDF_TITLE_BLOCK_FONT_SIZE_VALUE); // Use constant (pt)
+                pdf.text(valueText, cell.textX, valueY, { align: 'left', baseline: 'middle', maxWidth: cell.maxWidth });
+            } else {
+                console.warn(`${logPrefixTB} Missing data for cell [${r}][${c}]`);
+            }
         }
     }
-    pdf.restoreGraphicsState(); console.log(`${logPrefixTB} Finished drawing title block.`);
+    pdf.restoreGraphicsState();
+    console.log(`${logPrefixTB} Finished drawing title block.`);
 }
 
 

@@ -1,10 +1,21 @@
 import React, { useRef } from 'react'; // Import useRef
+
 import PathElement from './PathElement.jsx'; // Reuse PathElement for rendering
 import MeasurementDisplay from './MeasurementDisplay.jsx'; // Import MeasurementDisplay
 
+// --- UI Styling Constants ---
+const UI_VISIBLE_STROKE_COLOR = '#333333';
+const UI_HIDDEN_STROKE_COLOR = '#888888';
+const UI_VISIBLE_STROKE_WIDTH = 0.5;
+const UI_HIDDEN_STROKE_WIDTH = 0.35;
+const UI_HIDDEN_DASH_ARRAY = '4 2';
+const UI_SNAP_POINT_STROKE_COLOR = '#ff00ff'; // Magenta
+const UI_SNAP_POINT_STROKE_WIDTH = 2;
+const UI_SNAP_POINT_RADIUS = 4;
+
 // Component to render the SVG content of a single view, including measurements
 export default function SvgView({
-  viewItemData,
+  viewInstanceData, // Renamed from viewItemData
   onPathClick,
   // Receive measurement props
   measurements,
@@ -14,7 +25,7 @@ export default function SvgView({
   // Removed onMeasurementDragStart
   // zoomLevel, // zoomLevel is not needed here anymore
 }) {
-  const { id: viewId, viewType, svgData } = viewItemData;
+  const { id: viewId, viewType, svgData } = viewInstanceData; // Use renamed prop
   const innerSvgRef = useRef(null); // Create ref for the inner SVG
 
   if (!svgData || !svgData.paths || !svgData.viewBox) {
@@ -59,12 +70,13 @@ export default function SvgView({
         preserveAspectRatio="xMidYMid meet" // Scale SVG to fit, maintain aspect ratio
         style={{ display: 'block' }} // Prevent extra space below SVG
       >
-        <g fill="none"> {/* Removed default stroke and strokeWidth */}
+        <g fill="none"> {/* Default fill to none */}
           {paths.map((path) => {
             const isHidden = path.id?.includes('_hidden');
-            const stroke = isHidden ? '#888888' : '#333333';
-            const strokeWidth = isHidden ? 0.35 : 0.5; // Slightly thinner for hidden lines
-            const strokeDasharray = isHidden ? '4 2' : 'none';
+            // Use defined constants for styling
+            const stroke = isHidden ? UI_HIDDEN_STROKE_COLOR : UI_VISIBLE_STROKE_COLOR;
+            const strokeWidth = isHidden ? UI_HIDDEN_STROKE_WIDTH : UI_VISIBLE_STROKE_WIDTH;
+            const strokeDasharray = isHidden ? UI_HIDDEN_DASH_ARRAY : 'none';
 
             return (
               <PathElement
@@ -97,12 +109,11 @@ export default function SvgView({
               key={`snap-highlight-${index}`}
               cx={snapPoint.coordinates.x}
               cy={snapPoint.coordinates.y}
-              r="4" // Increased radius slightly
-              // fill="#ff00ff" // DEBUG: Temporarily fill to check rendering
-              fill="none" // Keep fill as none for final
-              stroke="#ff00ff" // Magenta color for visibility
-              strokeWidth="2" // Increased strokeWidth significantly
-              style={{ pointerEvents: 'none', vectorEffect: 'non-scaling-stroke' }} // Ensure it doesn't interfere with clicks and scales correctly
+              r={UI_SNAP_POINT_RADIUS} // Use constant
+              fill="none"
+              stroke={UI_SNAP_POINT_STROKE_COLOR} // Use constant
+              strokeWidth={UI_SNAP_POINT_STROKE_WIDTH} // Use constant
+              style={{ pointerEvents: 'none' }} // vector-effect not needed for UI SVG
             />
           ))}
         </g>

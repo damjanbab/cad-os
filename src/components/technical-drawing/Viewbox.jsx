@@ -174,7 +174,7 @@ export default function Viewbox({
               {item ? (
                 // If item exists, render the SvgView component
                 <SvgView
-                  viewItemData={item}
+                  viewInstanceData={item} // Pass renamed prop
                   onPathClick={onPathClick}
                   // Filter measurements based on the specific view instance ID
                   measurements={measurements.filter(m => m.viewInstanceId === item.id)}
