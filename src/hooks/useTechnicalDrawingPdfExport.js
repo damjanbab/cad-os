@@ -379,8 +379,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
             }
           });
 
-          // Function to render a path and its measurement
-          const renderPathAndMeasurement = (path) => {
+          // Function to render just a path
+          const renderPath = (path) => {
             const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             pathEl.setAttribute('d', path.data);
             const isHidden = path.type === 'hidden' || path.id?.includes('_hidden'); // Re-check for clarity
@@ -394,27 +394,31 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
             pathEl.setAttribute('fill', 'none');
             pathEl.setAttribute('vector-effect', 'non-scaling-stroke');
             itemGroup.appendChild(pathEl); // Add path to the item's translated group
-
-            // Render Measurements Associated with this Path
-            const measurement = activeMeasurements[path.id];
-            if (measurement && measurement.viewInstanceId === item.id && path.geometry) {
-              console.log(`${LOG_PREFIX}       Rendering measurement for path ${path.id} (hidden=${isHidden}) in item ${item.id} using scale ${viewboxScale.toFixed(4)}`);
-              const measurementSvgGroup = renderMeasurementToSvg(measurement, path.geometry, viewboxScale);
-              if (measurementSvgGroup) {
-                itemGroup.appendChild(measurementSvgGroup); // Append measurement group right after its path
-              } else {
-                console.warn(`${LOG_PREFIX}       renderMeasurementToSvg returned null for ${measurement.pathId}`);
-              }
-            }
           };
 
           // Render hidden paths first
           console.log(`${LOG_PREFIX}       Rendering ${hiddenPathObjects.length} hidden paths...`);
-          hiddenPathObjects.forEach(renderPathAndMeasurement);
+          hiddenPathObjects.forEach(renderPath);
 
           // Render visible paths second
           console.log(`${LOG_PREFIX}       Rendering ${visiblePathObjects.length} visible paths...`);
-          visiblePathObjects.forEach(renderPathAndMeasurement);
+          visiblePathObjects.forEach(renderPath);
+
+          // --- Render ALL Measurements associated with this item ---
+          console.log(`${LOG_PREFIX}       Rendering measurements for item ${item.id}...`);
+          Object.values(activeMeasurements).forEach(measurement => {
+            // Check if the measurement belongs to the current view instance
+            if (measurement && measurement.viewInstanceId === item.id && measurement.geometry) {
+              console.log(`${LOG_PREFIX}         Rendering measurement ${measurement.pathId} (Type: ${measurement.type}) in item ${item.id} using scale ${viewboxScale.toFixed(4)}`);
+              // Use the measurement's own geometry
+              const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewboxScale);
+              if (measurementSvgGroup) {
+                itemGroup.appendChild(measurementSvgGroup); // Append measurement group to the item's group
+              } else {
+                console.warn(`${LOG_PREFIX}         renderMeasurementToSvg returned null for ${measurement.pathId}`);
+              }
+            }
+          });
 
         } // End loop through cells for rendering
 

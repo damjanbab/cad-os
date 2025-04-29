@@ -107,6 +107,9 @@ export default function TechnicalDrawingCanvas({
     const p1Coords = point1.coordinates;
     const p2Coords = point2.coordinates;
 
+    // Calculate the distance between the points
+    const measurementLength = distance(p1Coords, p2Coords);
+
     // Calculate initial text position (midpoint)
     const initialTextPosition = {
       x: (p1Coords.x + p2Coords.x) / 2,
@@ -115,11 +118,12 @@ export default function TechnicalDrawingCanvas({
 
     const newMeasurement = {
       pathId: newMeasurementId, // Unique ID for this measurement
-      type: 'distance', // New type for point-to-point distance
+      type: 'line', // Use 'line' type so renderMeasurementToSvg handles it correctly
       textPosition: initialTextPosition,
       viewInstanceId: point1.viewInstanceId, // Both points are in the same view
       geometry: {
         type: 'line', // Store as a line for rendering purposes
+        length: measurementLength, // Add the calculated length
         endpoints: [
           [p1Coords.x, p1Coords.y],
           [p2Coords.x, p2Coords.y]

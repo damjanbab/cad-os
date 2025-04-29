@@ -179,12 +179,12 @@ function createCloset({ width, depth, board_thickness }) {
   }
   const vertical_board_biscuits_side = makeCompound(vertical_board_biscuits_side_array);
   
-  const pin = makeCylinder(0.4, 3, [between_short/2, -width/4, bottom_shelf_height + shelf_height + 1.5*board_thickness], [0, -1, 0]);
+  const pin = makeCylinder(0.4, 3, [between_short/2, width/4+board_thickness, bottom_shelf_height + shelf_height + 1.5*board_thickness], [0, -1, 0]);
   const vertical_board_pins_array = [];
 	for (let i=0; i<5; i++) {
 		for (let j=0; j<nr_biscuits_short+1; j++) {
 			const pinInstance = pin.clone().translate(j*(between_short+5), 0, i*(shelf_height+board_thickness));
-			vertical_board_pins_array.push(pinInstance);
+			vertical_board_pins_array.push(pinInstance.clone());
 			closet.push(pinInstance.clone());
 			closet.push(pinInstance.clone().mirror("XZ"));
 		}
@@ -195,7 +195,7 @@ function createCloset({ width, depth, board_thickness }) {
     .cut(vertical_board_biscuits_bottom)
     .cut(vertical_board_biscuits_top)
     .cut(vertical_board_biscuits_side)
-    .cut(vertical_board_pins);
+    .cut(vertical_board_pins.clone());
   const vertical_board_tape = makeBox([2 * depth / 3, width / 4 - board_thickness / 2, bottom_shelf_height + board_thickness], [2 * depth / 3 + 0.2, width / 4 + board_thickness / 2, bottom_shelf_height + 6 * (board_thickness + shelf_height)]);
 
   // --- Technical Drawing Model: Vertical Board + Tape ---
@@ -215,7 +215,7 @@ function createCloset({ width, depth, board_thickness }) {
 		small_shelf_pins_array.push(pinInstance);
 	}
 	const small_shelf_pins = makeCompound(small_shelf_pins_array);
-	const small_shelf = makeBox([0, width/4+board_thickness/2, bottom_shelf_height+board_thickness+shelf_height], [2*depth/3, width/2, bottom_shelf_height+2*board_thickness+shelf_height]).cut(small_shelf_pins);
+	const small_shelf = makeBox([0, width/4+board_thickness/2, bottom_shelf_height+board_thickness+shelf_height], [2*depth/3, width/2, bottom_shelf_height+2*board_thickness+shelf_height]).cut(small_shelf_pins.clone());
 	// Define tape once, before variations and drawing models
 	const small_shelf_tape = makeBox([2*depth/3, width/4+board_thickness/2, bottom_shelf_height+board_thickness+shelf_height], [2*depth/3+0.2, width/2, bottom_shelf_height+2*board_thickness+shelf_height]);
 
