@@ -25,6 +25,9 @@ export default function DrawingControls({
   // Interaction mode props
   interactionMode,
   onInteractionModeChange,
+  // Snap sub-type props
+  snapSubType,
+  onSnapSubTypeChange,
 }) {
 
   const availableLayouts = ['1x1', '1x2', '2x1', '2x2']; // Define available layouts
@@ -160,6 +163,41 @@ export default function DrawingControls({
           {interactionMode === 'measure' ? 'Measure Mode' : 'Snap Mode'}
         </button>
       </div>
+
+      {/* Snap Sub-Type Selection (Only visible in Snap mode) */}
+      {interactionMode === 'snap' && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginTop: '5px', paddingLeft: '5px', borderLeft: '2px solid #ff9800' }}>
+          <label style={{ fontSize: isMobile ? '11px' : '9px', marginBottom: '3px', color: '#555' }}>Snap Type:</label>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+            <input
+              type="radio"
+              id="snap-point-to-point"
+              name="snapSubType"
+              value="point-to-point"
+              checked={snapSubType === 'point-to-point'}
+              onChange={() => onSnapSubTypeChange('point-to-point')}
+              style={{ marginRight: '4px', cursor: 'pointer' }}
+            />
+            <label htmlFor="snap-point-to-point" style={{ fontSize: isMobile ? '12px' : '10px', cursor: 'pointer' }}>
+              Point-to-Point
+            </label>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <input
+              type="radio"
+              id="snap-point-to-line"
+              name="snapSubType"
+              value="point-to-line"
+              checked={snapSubType === 'point-to-line'}
+              onChange={() => onSnapSubTypeChange('point-to-line')}
+              style={{ marginRight: '4px', cursor: 'pointer' }}
+            />
+            <label htmlFor="snap-point-to-line" style={{ fontSize: isMobile ? '12px' : '10px', cursor: 'pointer' }}>
+              Point-to-Line
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* Scale Control */}
       <div style={{ display: 'flex', alignItems: 'center' }}>
