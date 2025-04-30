@@ -3,7 +3,8 @@ import { jsPDF } from "jspdf";
 import 'svg2pdf.js'; // Side-effect import
 import { parseViewBox } from '../utils/svgUtils.js';
 import { vec } from '../utils/geometryUtils.js'; // Keep for potential future use
-import { parsePathData, transformPathData, serializePathData } from '../utils/svgPathUtils.js'; // Import SVG path helpers
+// Import SVG path helpers including the new scalePathData
+import { parsePathData, transformPathData, scalePathData, serializePathData } from '../utils/svgPathUtils.js';
 
 const LOG_PREFIX = "[PDF Export]";
 
@@ -30,7 +31,7 @@ const MARGIN_OTHER = 10;
 const VIEW_TITLE_HEIGHT = 5; // Not currently used for viewbox titles, but kept for potential use
 const MAIN_TITLE_FONT_SIZE = 4; // Not currently used
 const VIEW_TITLE_FONT_SIZE = 3; // Not currently used
-const VIEW_GAP = 5; // Gap between grid cells for PDF
+const VIEW_GAP = 20; // Gap between grid cells for PDF (Changed from 5)
 const PDF_SCALE = 1; // Default scale factor (can be overridden)
 
 // --- PDF Styling Constants (mm unless specified) ---
@@ -56,6 +57,8 @@ const PDF_BASE_MEASUREMENT_EXTENSION_GAP = 0.8; // mm
 const PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG = 1.2; // mm
 const PDF_HIDDEN_DASH_LENGTH = 2; // mm (base)
 const PDF_HIDDEN_DASH_GAP = 1; // mm (base)
+const MIN_MARGIN = 25; // Minimum margin from printable area edges (mm)
+const FIXED_GAP = 20; // Fixed visual gap between views on the PDF (mm)
 
 // --- Helper Function to Determine Optimal Page Layout ---
 const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAULT_PAPER_SIZE) => {
@@ -86,19 +89,20 @@ const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAU
 
 
 // --- Helper Function for Measurement SVG Rendering (for PDF) ---
+// Note: geometry coordinates (endpoints, center, textPosition) are UNscaled.
+// The 'scale' parameter (viewScale) is applied internally here.
 const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
-  // Use defined constants, applying scale factor
-  const { pathId, type, textPosition } = measurementData;
+  const { pathId, type, textPosition: unscaledTextPos } = measurementData;
   const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
-  // Calculate scaled values, handling potential zero scale
-  const scaleFactor = scale > 1e-6 ? 1 / scale : 1;
+  // Calculate style values based on inverse scale
+  const scaleFactor = scale > 1e-6 ? 1 / scale : 1; // For styles that need inverse scaling
   const strokeWidth = PDF_BASE_MEASUREMENT_STROKE_WIDTH * scaleFactor;
-  const fontSize = PDF_BASE_MEASUREMENT_FONT_SIZE * scaleFactor;
-  const arrowSize = PDF_BASE_MEASUREMENT_ARROW_SIZE * scaleFactor;
-  const textOffset = PDF_BASE_MEASUREMENT_TEXT_OFFSET * scaleFactor;
-  const extensionGap = PDF_BASE_MEASUREMENT_EXTENSION_GAP * scaleFactor;
-  const extensionOverhang = PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG * scaleFactor;
+  const fontSize = PDF_BASE_MEASUREMENT_FONT_SIZE; // Font size in mm should remain constant on paper
+  const arrowSize = PDF_BASE_MEASUREMENT_ARROW_SIZE; // Arrow size in mm should remain constant on paper
+  const textOffset = PDF_BASE_MEASUREMENT_TEXT_OFFSET; // Text offset in mm should remain constant
+  const extensionGap = PDF_BASE_MEASUREMENT_EXTENSION_GAP; // Extension gap in mm should remain constant
+  const extensionOverhang = PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG; // Extension overhang in mm should remain constant
   const strokeColor = PDF_MEASUREMENT_STROKE_COLOR;
   const fillColor = PDF_MEASUREMENT_FILL_COLOR;
   const fontFamily = PDF_MEASUREMENT_FONT_FAMILY;
@@ -107,67 +111,94 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
     for (const key in attributes) { el.setAttribute(key, attributes[key]); }
     return el;
   };
-  if (type === 'line' && geometry?.endpoints) {
-    const [p1, p2] = geometry.endpoints;
-    const length = geometry.length || 0;
-    // Format number: remove trailing .00, keep other decimals
+
+  // Apply scale to geometry coordinates
+  const scaleCoord = (coord) => [coord[0] * scale, coord[1] * scale];
+  const scaleValue = (val) => val * scale;
+
+  if (type === 'line' && geometry?.endpoints && unscaledTextPos) {
+    const [usp1, usp2] = geometry.endpoints; // Unscaled points
+    const p1 = scaleCoord(usp1);
+    const p2 = scaleCoord(usp2);
+    const textPos = scaleCoord([unscaledTextPos.x, unscaledTextPos.y]);
+    const length = geometry.length || 0; // Use the actual model length
     const textContent = parseFloat(length.toFixed(2)).toString(); // Keep precision logic
+
     const vx = p2[0] - p1[0]; const vy = p2[1] - p1[1];
     const midX = (p1[0] + p2[0]) / 2; const midY = (p1[1] + p2[1]) / 2;
-    const lineLen = Math.sqrt(vx * vx + vy * vy);
+    const lineLen = Math.sqrt(vx * vx + vy * vy); // Length on paper
     const ux = lineLen > 1e-6 ? vx / lineLen : 1; const uy = lineLen > 1e-6 ? vy / lineLen : 0;
     const nx = -uy; const ny = ux;
-    const textPosX = textPosition.x; const textPosY = textPosition.y;
-    const textOffsetX = textPosX - midX; const textOffsetY = textPosY - midY;
-    const offsetDist = textOffsetX * nx + textOffsetY * ny;
+
+    // Calculate offset direction based on scaled text position relative to scaled midpoint
+    const textOffsetX = textPos[0] - midX; const textOffsetY = textPos[1] - midY;
+    const offsetDist = textOffsetX * nx + textOffsetY * ny; // Projected distance
+    // Use fixed textOffset (mm) for the actual offset distance
     const actualOffsetDist = Math.abs(offsetDist) < textOffset ? Math.sign(offsetDist || 1) * textOffset : offsetDist;
+
+    // Calculate points using fixed offsets (mm) from the scaled line
     const dimLineP1 = [p1[0] + nx * actualOffsetDist, p1[1] + ny * actualOffsetDist];
     const dimLineP2 = [p2[0] + nx * actualOffsetDist, p2[1] + ny * actualOffsetDist];
     const extLineP1Start = [p1[0] + nx * Math.sign(actualOffsetDist) * extensionGap, p1[1] + ny * Math.sign(actualOffsetDist) * extensionGap];
     const extLineP2Start = [p2[0] + nx * Math.sign(actualOffsetDist) * extensionGap, p2[1] + ny * Math.sign(actualOffsetDist) * extensionGap];
     const extLineP1End = [dimLineP1[0] + nx * Math.sign(actualOffsetDist) * extensionOverhang, dimLineP1[1] + ny * Math.sign(actualOffsetDist) * extensionOverhang];
     const extLineP2End = [dimLineP2[0] + nx * Math.sign(actualOffsetDist) * extensionOverhang, dimLineP2[1] + ny * Math.sign(actualOffsetDist) * extensionOverhang];
+
+    // Arrow heads (fixed size in mm)
     const arrowNormX = ux; const arrowNormY = uy;
-    // Arrow path calculation (adjust factors if needed for appearance)
-    const arrowHeadFactor = 0.35; // Width factor of arrowhead base
-    const arrowTailFactor = 1 - arrowHeadFactor; // Length factor of arrowhead tail
+    const arrowHeadFactor = 0.35;
+    const arrowTailFactor = 1 - arrowHeadFactor;
     const arrow1 = `M ${dimLineP1[0]} ${dimLineP1[1]} l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize} l ${-arrowNormY * arrowSize * arrowHeadFactor} ${arrowNormX * arrowSize * arrowHeadFactor} l ${-arrowNormX * arrowSize * arrowTailFactor} ${-arrowNormY * arrowSize * arrowTailFactor} z`;
     const arrow2 = `M ${dimLineP2[0]} ${dimLineP2[1]} l ${-arrowNormX * arrowSize} ${-arrowNormY * arrowSize} l ${arrowNormY * arrowSize * arrowHeadFactor} ${-arrowNormX * arrowSize * arrowHeadFactor} l ${arrowNormX * arrowSize * arrowTailFactor} ${arrowNormY * arrowSize * arrowTailFactor} z`;
-    const textWidthEstimate = textContent.length * fontSize * 0.6; // Adjust multiplier as needed
-    const gapSize = textWidthEstimate + textOffset * 1.5; // Adjust gap calculation
+
+    // Text breaking logic (using fixed sizes in mm)
+    const textWidthEstimate = textContent.length * fontSize * 0.6; // Estimate based on fixed font size
+    const gapSize = textWidthEstimate + textOffset * 1.5;
     const halfGap = gapSize / 2;
-    const textProj = (textPosX - dimLineP1[0]) * arrowNormX + (textPosY - dimLineP1[1]) * arrowNormY;
+    // Project scaled text position onto the dimension line
+    const textProj = (textPos[0] - dimLineP1[0]) * arrowNormX + (textPos[1] - dimLineP1[1]) * arrowNormY;
     const breakStartPos = Math.max(arrowSize, textProj - halfGap);
     const breakEndPos = Math.min(lineLen - arrowSize, textProj + halfGap);
     const dimLine1End = [dimLineP1[0] + arrowNormX * breakStartPos, dimLineP1[1] + arrowNormY * breakStartPos];
     const dimLine2Start = [dimLineP1[0] + arrowNormX * breakEndPos, dimLineP1[1] + arrowNormY * breakEndPos];
     const showDimLine1 = breakStartPos > arrowSize + 1e-6;
     const showDimLine2 = breakEndPos < lineLen - arrowSize - 1e-6;
+
+    // Draw elements
     group.appendChild(createSvgElement('line', { x1: extLineP1Start[0], y1: extLineP1Start[1], x2: extLineP1End[0], y2: extLineP1End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     group.appendChild(createSvgElement('line', { x1: extLineP2Start[0], y1: extLineP2Start[1], x2: extLineP2End[0], y2: extLineP2End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     if (showDimLine1) group.appendChild(createSvgElement('line', { x1: dimLineP1[0], y1: dimLineP1[1], x2: dimLine1End[0], y2: dimLine1End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     if (showDimLine2) group.appendChild(createSvgElement('line', { x1: dimLine2Start[0], y1: dimLine2Start[1], x2: dimLineP2[0], y2: dimLineP2[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-    group.appendChild(createSvgElement('path', { d: arrow1, fill: fillColor, stroke: 'none' })); // Use fillColor
-    group.appendChild(createSvgElement('path', { d: arrow2, fill: fillColor, stroke: 'none' })); // Use fillColor
-    const textEl = createSvgElement('text', { x: textPosX, y: textPosY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily }); // Use constants
+    group.appendChild(createSvgElement('path', { d: arrow1, fill: fillColor, stroke: 'none' }));
+    group.appendChild(createSvgElement('path', { d: arrow2, fill: fillColor, stroke: 'none' }));
+
+    // Position text using fixed offset from dim line
+    const textDrawX = dimLineP1[0] + arrowNormX * textProj + ny * textOffset; // Position along dim line + offset normal
+    const textDrawY = dimLineP1[1] + arrowNormY * textProj - nx * textOffset;
+    const textEl = createSvgElement('text', { x: textDrawX, y: textDrawY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
     textEl.textContent = textContent;
     group.appendChild(textEl);
-  } else if (type === 'circle' && geometry?.center && geometry.diameter != null) {
-    const [cx, cy] = geometry.center;
-    const diameter = geometry.diameter;
-    const radius = geometry.radius || diameter / 2;
-    // Format number: remove trailing .00, keep other decimals
+
+  } else if (type === 'circle' && geometry?.center && geometry.diameter != null && unscaledTextPos) {
+    const [uscx, uscy] = geometry.center; // Unscaled center
+    const cx = uscx * scale;
+    const cy = uscy * scale;
+    const diameter = geometry.diameter; // Actual model diameter
+    const radius = (geometry.radius || diameter / 2) * scale; // Scaled radius for drawing
     const textContent = `⌀${parseFloat(diameter.toFixed(2)).toString()}`;
-    const textPosX = textPosition.x; const textPosY = textPosition.y;
-    const textVecX = textPosX - cx; const textVecY = textPosY - cy;
+    const textPos = scaleCoord([unscaledTextPos.x, unscaledTextPos.y]); // Scaled text position
+
+    // Calculate leader line based on scaled positions and fixed offset
+    const textVecX = textPos[0] - cx; const textVecY = textPos[1] - cy;
     const distSqr = textVecX * textVecX + textVecY * textVecY;
     let angle = (distSqr < 1e-9) ? 0 : Math.atan2(textVecY, textVecX);
     const cosA = Math.cos(angle); const sinA = Math.sin(angle);
     const leaderStart = [cx + cosA * radius, cy + sinA * radius];
-    // Ensure leader line ends slightly before text
-    const leaderEnd = [textPosX - cosA * (textOffset * 0.5), textPosY - sinA * (textOffset * 0.5)]; // Adjust end point
+    // End leader line using fixed offset (mm)
+    const leaderEnd = [textPos[0] - cosA * (textOffset * 0.5), textPos[1] - sinA * (textOffset * 0.5)];
+
     group.appendChild(createSvgElement('line', { x1: leaderStart[0], y1: leaderStart[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-    const textEl = createSvgElement('text', { x: textPosX, y: textPosY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily }); // Use constants
+    const textEl = createSvgElement('text', { x: textPos[0], y: textPos[1], 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
     textEl.textContent = textContent;
     group.appendChild(textEl);
   }
@@ -205,13 +236,13 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
           continue;
         }
 
-        // --- 1. Calculate Accurate Unscaled Grid Layout & Combined Bounds ---
+        // --- 1. Calculate Grid and Unscaled View Dimensions ---
         const [gridRows, gridCols] = parseLayout(viewbox.layout);
-        const colWidths = Array(gridCols).fill(0);
-        const rowHeights = Array(gridRows).fill(0);
+        const colWidths = Array(gridCols).fill(0); // Max unscaled width per column
+        const rowHeights = Array(gridRows).fill(0); // Max unscaled height per row
         const itemData = []; // Store { item, itemVB } for valid items
 
-        // First pass: Find max width per column and max height per row
+        // First pass: Find max unscaled width per column and max height per row
         for (let cellIndex = 0; cellIndex < gridRows * gridCols; cellIndex++) {
           const item = viewbox.items[cellIndex];
           if (!item || !item.svgData || !item.svgData.viewBox) {
@@ -233,47 +264,112 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
           rowHeights[rowIndex] = Math.max(rowHeights[rowIndex], itemVB.height);
         }
 
-        // Calculate cumulative offsets for columns and rows including gaps
-        const colOffsets = [0];
-        for (let i = 0; i < gridCols - 1; i++) {
-          colOffsets.push(colOffsets[i] + colWidths[i] + VIEW_GAP);
-        }
-        const rowOffsets = [0];
-        for (let i = 0; i < gridRows - 1; i++) {
-          rowOffsets.push(rowOffsets[i] + rowHeights[i] + VIEW_GAP);
-        }
-
-        // Calculate total unscaled dimensions based on max widths/heights and gaps
-        const combinedUnscaledWidth = colOffsets[gridCols - 1] + colWidths[gridCols - 1];
-        const combinedUnscaledHeight = rowOffsets[gridRows - 1] + rowHeights[gridRows - 1];
-        // Assuming the layout starts at (0,0) in unscaled space
-        const combinedUnscaledVB = { x: 0, y: 0, width: combinedUnscaledWidth, height: combinedUnscaledHeight };
+        // Calculate total unscaled dimensions of *only* the views
+        const totalUnscaledViewsWidth = colWidths.reduce((sum, w) => sum + w, 0);
+        const totalUnscaledViewsHeight = rowHeights.reduce((sum, h) => sum + h, 0);
 
         console.log(`${LOG_PREFIX}   Grid Dimensions: ${gridRows}x${gridCols}`);
-        console.log(`${LOG_PREFIX}   Max Col Widths: [${colWidths.map(w => w.toFixed(2)).join(', ')}]`);
-        console.log(`${LOG_PREFIX}   Max Row Heights: [${rowHeights.map(h => h.toFixed(2)).join(', ')}]`);
-        console.log(`${LOG_PREFIX}   Calculated Combined Unscaled Bounds: W=${combinedUnscaledWidth.toFixed(2)}, H=${combinedUnscaledHeight.toFixed(2)}`);
+        console.log(`${LOG_PREFIX}   Max Unscaled Col Widths: [${colWidths.map(w => w.toFixed(2)).join(', ')}]`);
+        console.log(`${LOG_PREFIX}   Max Unscaled Row Heights: [${rowHeights.map(h => h.toFixed(2)).join(', ')}]`);
+        console.log(`${LOG_PREFIX}   Total Unscaled Views Size: W=${totalUnscaledViewsWidth.toFixed(2)}, H=${totalUnscaledViewsHeight.toFixed(2)}`);
 
-        if (combinedUnscaledWidth <= 1e-6 || combinedUnscaledHeight <= 1e-6) {
-            console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative combined dimensions.`);
+        if (totalUnscaledViewsWidth <= 1e-6 || totalUnscaledViewsHeight <= 1e-6) {
+            console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative combined view dimensions.`);
             continue;
         }
 
-        // --- 2. Determine Page Layout & Single Scale Factor ---
-        const pageLayout = getStandardPageLayout(combinedUnscaledWidth, combinedUnscaledHeight);
+        // --- 2. Determine Page Layout ---
+        // Use a rough estimate for page layout (views + estimated gaps) - actual fitting happens later
+        const estimatedGapWidth = (gridCols - 1) * FIXED_GAP;
+        const estimatedGapHeight = (gridRows - 1) * FIXED_GAP;
+        const estimatedTotalWidth = totalUnscaledViewsWidth + estimatedGapWidth;
+        const estimatedTotalHeight = totalUnscaledViewsHeight + estimatedGapHeight;
+        const pageLayout = getStandardPageLayout(estimatedTotalWidth, estimatedTotalHeight);
         const printableDimensions = { width: pageLayout.printableWidth, height: pageLayout.printableHeight };
         const printableAreaPos = [pageLayout.printableX, pageLayout.printableY];
-
-        // Calculate the single scale factor for the entire viewbox content
-        const scaleX = printableDimensions.width / combinedUnscaledWidth;
-        const scaleY = printableDimensions.height / combinedUnscaledHeight;
-        const viewboxScale = Math.min(scaleX, scaleY); // Fit combined content
-
         console.log(`${LOG_PREFIX}   Page Layout: size=${DEFAULT_PAPER_SIZE}, orientation=${pageLayout.orientation}, W=${pageLayout.width}mm, H=${pageLayout.height}mm`);
-        console.log(`${LOG_PREFIX}   Printable Area: W=${printableDimensions.width}mm, H=${printableDimensions.height}mm`);
-        console.log(`${LOG_PREFIX}   Single Viewbox Scale: ${viewboxScale.toFixed(4)}`);
+        console.log(`${LOG_PREFIX}   Printable Area: X=${printableAreaPos[0].toFixed(2)}, Y=${printableAreaPos[1].toFixed(2)}, W=${printableDimensions.width.toFixed(2)}, H=${printableDimensions.height.toFixed(2)}`);
 
-        // --- 3. Initialize PDF or Add Page ---
+        // --- 3. Calculate Available Space, View Scale, and Final Layout ---
+        let availableWidth, availableHeight;
+        let spaceForViewsWidth, spaceForViewsHeight;
+        let viewScale;
+        let finalScaledViewsWidth, finalScaledViewsHeight;
+        let finalTotalLayoutWidth, finalTotalLayoutHeight;
+        let originX, originY; // Top-left corner of the entire layout block
+
+        const totalFixedGapWidth = Math.max(0, gridCols - 1) * FIXED_GAP;
+        const totalFixedGapHeight = Math.max(0, gridRows - 1) * FIXED_GAP;
+        console.log(`${LOG_PREFIX}   Total Fixed Gaps: W=${totalFixedGapWidth.toFixed(2)}, H=${totalFixedGapHeight.toFixed(2)}`);
+
+        if (gridRows === 1) {
+          console.log(`${LOG_PREFIX}   Calculating layout for single row (gridRows === 1)...`);
+          const titleBlockLayout = calculateTitleBlockLayout( // Need actual title block position
+            pageLayout.width, pageLayout.height,
+            pageLayout.marginLeft, pageLayout.marginTop, pageLayout.marginRight, pageLayout.marginBottom,
+            pageLayout.orientation, PAPER_SIZES, DEFAULT_PAPER_SIZE
+          );
+
+          if (titleBlockLayout) {
+            availableWidth = printableDimensions.width - MIN_MARGIN * 2;
+            // Height available between top margin and margin above title block
+            availableHeight = titleBlockLayout.outerBox.y - printableAreaPos[1] - MIN_MARGIN * 2;
+            console.log(`${LOG_PREFIX}     Available Space (1 row): W=${availableWidth.toFixed(2)}, H=${availableHeight.toFixed(2)} (considering ${MIN_MARGIN}mm margins and title block at Y=${titleBlockLayout.outerBox.y.toFixed(2)})`);
+          } else {
+            console.warn(`${LOG_PREFIX}     Could not calculate title block layout for 1 row. Using full printable height minus margins.`);
+            availableWidth = printableDimensions.width - MIN_MARGIN * 2;
+            availableHeight = printableDimensions.height - MIN_MARGIN * 2;
+          }
+        } else {
+          console.log(`${LOG_PREFIX}   Calculating general layout (gridRows !== 1)...`);
+          availableWidth = printableDimensions.width - MIN_MARGIN * 2;
+          availableHeight = printableDimensions.height - MIN_MARGIN * 2;
+          console.log(`${LOG_PREFIX}     Available Space (General): W=${availableWidth.toFixed(2)}, H=${availableHeight.toFixed(2)} (considering ${MIN_MARGIN}mm margins)`);
+        }
+
+        // Calculate space purely for views
+        spaceForViewsWidth = Math.max(0, availableWidth - totalFixedGapWidth);
+        spaceForViewsHeight = Math.max(0, availableHeight - totalFixedGapHeight);
+        console.log(`${LOG_PREFIX}   Space For Scaled Views: W=${spaceForViewsWidth.toFixed(2)}, H=${spaceForViewsHeight.toFixed(2)}`);
+
+        if (spaceForViewsWidth <= 1e-6 || spaceForViewsHeight <= 1e-6) {
+          console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative space available for views after gaps/margins.`);
+          continue;
+        }
+
+        // Calculate the single scale factor for the views
+        const scaleX = spaceForViewsWidth / totalUnscaledViewsWidth;
+        const scaleY = spaceForViewsHeight / totalUnscaledViewsHeight;
+        viewScale = Math.min(scaleX, scaleY);
+        console.log(`${LOG_PREFIX}   Calculated View Scale: ${viewScale.toFixed(4)}`);
+
+        if (viewScale <= 1e-6) {
+           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative view scale.`);
+           continue;
+        }
+
+        // Calculate final dimensions of the scaled views and the total layout block
+        finalScaledViewsWidth = totalUnscaledViewsWidth * viewScale;
+        finalScaledViewsHeight = totalUnscaledViewsHeight * viewScale;
+        finalTotalLayoutWidth = finalScaledViewsWidth + totalFixedGapWidth;
+        finalTotalLayoutHeight = finalScaledViewsHeight + totalFixedGapHeight;
+        console.log(`${LOG_PREFIX}   Final Scaled Views Size: W=${finalScaledViewsWidth.toFixed(2)}, H=${finalScaledViewsHeight.toFixed(2)}`);
+        console.log(`${LOG_PREFIX}   Final Total Layout Size (Views + Gaps): W=${finalTotalLayoutWidth.toFixed(2)}, H=${finalTotalLayoutHeight.toFixed(2)}`);
+
+        // Calculate translation to center the final layout block within the available space
+        const offsetX = (availableWidth - finalTotalLayoutWidth) / 2;
+        const offsetY = (availableHeight - finalTotalLayoutHeight) / 2;
+        originX = printableAreaPos[0] + MIN_MARGIN + offsetX;
+        originY = printableAreaPos[1] + MIN_MARGIN + offsetY; // This origin is relative to the available space top-left
+
+        // Adjust originY if it was calculated relative to title block (1-row case)
+        // Note: The availableHeight calculation for gridRows=1 already accounts for the title block position relative to printableAreaPos[1] and MIN_MARGINs.
+        // So, the originY calculation using that availableHeight and its corresponding offsetY should place it correctly.
+
+        console.log(`${LOG_PREFIX}   Final Layout Origin (Top-Left): X=${originX.toFixed(2)}, Y=${originY.toFixed(2)}`);
+
+
+        // --- 4. Initialize PDF or Add Page ---
         if (isFirstPage) {
           pdf = new jsPDF({ orientation: pageLayout.orientation, unit: 'mm', format: DEFAULT_PAPER_SIZE });
           isFirstPage = false;
@@ -283,122 +379,140 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
         const currentPageNum = pdf.internal.getNumberOfPages();
         pdf.setPage(currentPageNum);
 
-        // --- 4. Create Temporary SVG for this page ---
+        // --- 5. Create Temporary SVG for this page ---
         const tempSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         tempSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
         tempSvg.setAttribute('width', pageLayout.width);
         tempSvg.setAttribute('height', pageLayout.height);
         tempSvg.setAttribute('viewBox', `0 0 ${pageLayout.width} ${pageLayout.height}`);
         const svgPageGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g'); // Group for all content on this page
-        tempSvg.appendChild(svgPageGroup);
+        tempSvg.appendChild(svgPageGroup); // Add page group (used for border)
 
-        // --- 5. Calculate Translation for Centering Scaled Content ---
-        const scaledContentWidth = combinedUnscaledWidth * viewboxScale;
-        const scaledContentHeight = combinedUnscaledHeight * viewboxScale;
-        // Center the entire scaled block within the printable area
-        const viewboxTranslateX = printableAreaPos[0] + (printableDimensions.width - scaledContentWidth) / 2;
-        const viewboxTranslateY = printableAreaPos[1] + (printableDimensions.height - scaledContentHeight) / 2;
-        // combinedUnscaledVB.x and y are 0 based on current calculation
+        // --- 6. Render Items with Manual Positioning and Internal Scaling ---
+        console.log(`${LOG_PREFIX}   Starting item rendering loop...`);
+        let currentX = originX;
+        let currentY = originY;
+        const scaledColWidths = colWidths.map(w => w * viewScale);
+        const scaledRowHeights = rowHeights.map(h => h * viewScale);
 
-        console.log(`${LOG_PREFIX}   Scaled Content Size: ${scaledContentWidth.toFixed(2)}x${scaledContentHeight.toFixed(2)}mm`);
-        console.log(`${LOG_PREFIX}   Overall Translation: dX=${viewboxTranslateX.toFixed(2)}, dY=${viewboxTranslateY.toFixed(2)}`);
+        // Correct nested loops for rendering
+        for (let rowIndex = 0; rowIndex < gridRows; rowIndex++) {
+          currentX = originX; // Reset X for each new row
+          for (let colIndex = 0; colIndex < gridCols; colIndex++) {
+            const cellIndex = rowIndex * gridCols + colIndex;
+            const storedItemData = itemData[cellIndex];
 
-        // --- 6. Create Main Content Group with Single Scale & Translation ---
-        const viewboxContentGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        // Apply the centering translation and the single scale factor
-        viewboxContentGroup.setAttribute('transform', `translate(${viewboxTranslateX}, ${viewboxTranslateY}) scale(${viewboxScale})`);
-        svgPageGroup.appendChild(viewboxContentGroup); // Add to page group
+            if (storedItemData) {
+              const { item, itemVB } = storedItemData;
+              const itemScaledWidth = itemVB.width * viewScale;
+              const itemScaledHeight = itemVB.height * viewScale;
 
-        // --- 7. Render Items into the Scaled Content Group ---
-        // Calculate effective stroke widths and dash scale based on the single viewboxScale
-        const scaleFactor = viewboxScale > 1e-6 ? 1 / viewboxScale : 1;
-        const effectiveVisibleStrokeWidth = PDF_BASE_VISIBLE_STROKE_WIDTH * scaleFactor;
-        const effectiveHiddenStrokeWidth = PDF_BASE_HIDDEN_STROKE_WIDTH * scaleFactor;
-        const effectiveDashLength = PDF_HIDDEN_DASH_LENGTH * scaleFactor;
-        const effectiveDashGap = PDF_HIDDEN_DASH_GAP * scaleFactor;
-        const hiddenDashArray = `${effectiveDashLength},${effectiveDashGap}`;
+              // Calculate alignment offset within the cell (based on max scaled size for the row/col)
+              const cellWidth = scaledColWidths[colIndex];
+              const cellHeight = scaledRowHeights[rowIndex];
+              const alignOffsetX = (cellWidth - itemScaledWidth) / 2;
+              const alignOffsetY = (cellHeight - itemScaledHeight) / 2;
 
-        console.log(`${LOG_PREFIX}   Effective Stroke Widths (Viewbox): Vis=${effectiveVisibleStrokeWidth.toFixed(4)}, Hid=${effectiveHiddenStrokeWidth.toFixed(4)}`);
-        console.log(`${LOG_PREFIX}   Effective Hidden Dash: ${hiddenDashArray}`);
+              // Item's top-left position on the page
+              const itemPosX = currentX + alignOffsetX;
+              const itemPosY = currentY + alignOffsetY;
 
-        // Second pass: Render items at their calculated positions
-        for (let cellIndex = 0; cellIndex < gridRows * gridCols; cellIndex++) {
-          const storedItemData = itemData[cellIndex];
-          if (!storedItemData) continue; // Skip empty/invalid cells
+              console.log(`${LOG_PREFIX}     Rendering Item ${item.id} in Cell[${rowIndex},${colIndex}] at page pos [${itemPosX.toFixed(2)}, ${itemPosY.toFixed(2)}]`);
 
-          const { item, itemVB } = storedItemData;
-          const colIndex = cellIndex % gridCols;
-          const rowIndex = Math.floor(cellIndex / gridCols);
+              // Create item group: Translate item's internal origin (itemVB.x, itemVB.y) *after scaling* to its calculated page position (itemPosX, itemPosY)
+              const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+              // Translation accounts for moving the scaled item's top-left (which corresponds to itemVB.x * viewScale, itemVB.y * viewScale) to itemPosX, itemPosY
+              const itemTranslate = `translate(${itemPosX - itemVB.x * viewScale}, ${itemPosY - itemVB.y * viewScale})`;
+              itemGroup.setAttribute('transform', itemTranslate);
+              svgPageGroup.appendChild(itemGroup); // Add directly to page group, scaling happens inside render functions
 
-          // Calculate the top-left origin for this item's grid cell in the unscaled layout
-          const itemOriginX = colOffsets[colIndex]; // Use calculated offset for the column
-          const itemOriginY = rowOffsets[rowIndex]; // Use calculated offset for the row
+              // Separate paths into hidden and visible
+              const hiddenPathObjects = [];
+              const visiblePathObjects = [];
+              item.svgData.paths.forEach(path => {
+                const isHidden = path.type === 'hidden' || path.id?.includes('_hidden');
+                if (isHidden) {
+                  hiddenPathObjects.push(path);
+                } else {
+                  visiblePathObjects.push(path);
+                }
+              });
 
-          console.log(`${LOG_PREFIX}     Rendering Item ${item.id} in Cell[${rowIndex},${colIndex}] at unscaled origin [${itemOriginX.toFixed(2)}, ${itemOriginY.toFixed(2)}]`);
+              // --- Render Paths for the current item ---
+              const renderAndAppendPath = (path, targetGroup) => {
+                const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-          // Create item group: Translate item's internal origin (itemVB.x, itemVB.y) to its calculated grid cell origin (itemOriginX, itemOriginY)
-          // This position is relative to the start of the viewboxContentGroup (which is at 0,0 before scaling/translation)
-          const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-          const itemTranslate = `translate(${itemOriginX - itemVB.x}, ${itemOriginY - itemVB.y})`; // Translate item's internal 0,0 to the cell's top-left
-          itemGroup.setAttribute('transform', itemTranslate);
-          viewboxContentGroup.appendChild(itemGroup); // Add to the main scaled group
+                // Apply viewScale to path data directly
+                try {
+                    const parsedData = parsePathData(path.data);
+                    // Scale the parsed data in place using the new function
+                    scalePathData(parsedData, viewScale);
+                    // Serialize the scaled data
+                    pathEl.setAttribute('d', serializePathData(parsedData));
+                } catch (e) {
+                    console.error(`${LOG_PREFIX} Error processing path data for item ${item.id}, path ${path.id}:`, e);
+                    console.error("Original path data:", path.data);
+                    return; // Skip this path if data is invalid
+                }
 
-          // Separate paths into hidden and visible
-          const hiddenPathObjects = [];
-          const visiblePathObjects = [];
-          item.svgData.paths.forEach(path => {
-            const isHidden = path.type === 'hidden' || path.id?.includes('_hidden');
-            if (isHidden) {
-              hiddenPathObjects.push(path);
-            } else {
-              visiblePathObjects.push(path);
-            }
-          });
 
-          // Function to render just a path
-          const renderPath = (path) => {
-            const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            pathEl.setAttribute('d', path.data);
-            const isHidden = path.type === 'hidden' || path.id?.includes('_hidden'); // Re-check for clarity
-            pathEl.setAttribute('stroke', isHidden ? PDF_HIDDEN_STROKE_COLOR : PDF_VISIBLE_STROKE_COLOR);
-            pathEl.setAttribute('stroke-width', isHidden ? effectiveHiddenStrokeWidth : effectiveVisibleStrokeWidth);
-            pathEl.setAttribute('stroke-linecap', 'round');
-            pathEl.setAttribute('stroke-linejoin', 'round');
-            if (isHidden) {
-              pathEl.setAttribute('stroke-dasharray', hiddenDashArray);
-            }
-            pathEl.setAttribute('fill', 'none');
-            pathEl.setAttribute('vector-effect', 'non-scaling-stroke'); // Keep this!
-            itemGroup.appendChild(pathEl); // Add path to the item's translated group
-          };
+                // Use BASE stroke widths and vector-effect for constant width
+                const effectiveVisibleStrokeWidth = PDF_BASE_VISIBLE_STROKE_WIDTH;
+                const effectiveHiddenStrokeWidth = PDF_BASE_HIDDEN_STROKE_WIDTH;
+                const hiddenDashArray = `${PDF_HIDDEN_DASH_LENGTH},${PDF_HIDDEN_DASH_GAP}`;
 
-          // Render hidden paths first
-          console.log(`${LOG_PREFIX}       Rendering ${hiddenPathObjects.length} hidden paths...`);
-          hiddenPathObjects.forEach(renderPath);
+                const isHidden = path.type === 'hidden' || path.id?.includes('_hidden');
+                pathEl.setAttribute('stroke', isHidden ? PDF_HIDDEN_STROKE_COLOR : PDF_VISIBLE_STROKE_COLOR);
+                // Set stroke width to BASE value
+                pathEl.setAttribute('stroke-width', isHidden ? effectiveHiddenStrokeWidth : effectiveVisibleStrokeWidth);
+                pathEl.setAttribute('stroke-linecap', 'round'); // Keep round style
+                pathEl.setAttribute('stroke-linejoin', 'round'); // Keep round style
+                if (isHidden) {
+                  pathEl.setAttribute('stroke-dasharray', hiddenDashArray);
+                }
+                pathEl.setAttribute('fill', 'none'); // Paths should not be filled
+                // Add back vector-effect to prevent stroke scaling by PDF renderer
+                pathEl.setAttribute('vector-effect', 'non-scaling-stroke');
 
-          // Render visible paths second
-          console.log(`${LOG_PREFIX}       Rendering ${visiblePathObjects.length} visible paths...`);
-          visiblePathObjects.forEach(renderPath);
+                targetGroup.appendChild(pathEl);
+              };
 
-          // --- Render ALL Measurements associated with this item ---
-          console.log(`${LOG_PREFIX}       Rendering measurements for item ${item.id}...`);
-          Object.values(activeMeasurements).forEach(measurement => {
-            // Check if the measurement belongs to the current view instance
-            if (measurement && measurement.viewInstanceId === item.id && measurement.geometry) {
-              console.log(`${LOG_PREFIX}         Rendering measurement ${measurement.pathId} (Type: ${measurement.type}) in item ${item.id} using scale ${viewboxScale.toFixed(4)}`);
-              // Use the measurement's own geometry
-              const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewboxScale);
-              if (measurementSvgGroup) {
-                itemGroup.appendChild(measurementSvgGroup); // Append measurement group to the item's group
-              } else {
-                console.warn(`${LOG_PREFIX}         renderMeasurementToSvg returned null for ${measurement.pathId}`);
-              }
-            }
-          });
+              // Render hidden paths first
+              console.log(`${LOG_PREFIX}       Rendering ${hiddenPathObjects.length} hidden paths...`);
+              hiddenPathObjects.forEach(path => renderAndAppendPath(path, itemGroup));
 
-        } // End loop through cells for rendering
+              // Render visible paths second
+              console.log(`${LOG_PREFIX}       Rendering ${visiblePathObjects.length} visible paths...`);
+              visiblePathObjects.forEach(path => renderAndAppendPath(path, itemGroup));
 
-        // --- 8. Add Border around the printable area ---
+              // --- Render ALL Measurements associated with this item ---
+              console.log(`${LOG_PREFIX}       Rendering measurements for item ${item.id}...`);
+              Object.values(activeMeasurements).forEach(measurement => {
+                // Check if the measurement belongs to the current view instance
+                if (measurement && measurement.viewInstanceId === item.id && measurement.geometry) {
+                  console.log(`${LOG_PREFIX}         Rendering measurement ${measurement.pathId} (Type: ${measurement.type}) in item ${item.id} using viewScale ${viewScale.toFixed(4)}`);
+                  // Use the measurement's own geometry, pass viewScale for internal scaling
+                  const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale); // Pass viewScale
+                  if (measurementSvgGroup) {
+                    itemGroup.appendChild(measurementSvgGroup); // Append measurement group to the item's group
+                  } else {
+                    console.warn(`${LOG_PREFIX}         renderMeasurementToSvg returned null for ${measurement.pathId}`);
+                  }
+                }
+              });
+            } // End if(storedItemData)
+
+            // Advance currentX for the next item in the row
+            currentX += scaledColWidths[colIndex] + (colIndex < gridCols - 1 ? FIXED_GAP : 0);
+
+          } // End loop columns
+          // Advance currentY for the next row
+          currentY += scaledRowHeights[rowIndex] + (rowIndex < gridRows - 1 ? FIXED_GAP : 0);
+        } // End loop rows
+
+
+        // --- 7. Add Border around the printable area --- (This section was correct)
+        // --- 8. Add Border around the printable area --- (Keep this)
         const borderRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         borderRect.setAttribute('x', printableAreaPos[0]);
         borderRect.setAttribute('y', printableAreaPos[1]);
@@ -409,12 +523,12 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
         borderRect.setAttribute('stroke-width', PDF_BORDER_LINE_WEIGHT); // Use constant
         svgPageGroup.appendChild(borderRect); // Add border to the main page group
 
-        // --- 9. Add SVG element to the current PDF page ---
+        // --- 9. Add SVG element to the current PDF page --- (Keep this)
         console.log(`${LOG_PREFIX}     Adding SVG element for page ${currentPageNum} (Viewbox ${viewbox.id}) to PDF...`);
         await pdf.svg(tempSvg, { x: 0, y: 0, width: pageLayout.width, height: pageLayout.height });
         console.log(`${LOG_PREFIX}     Finished adding SVG for page ${currentPageNum}`);
 
-        // --- 10. Draw Title Block ---
+        // --- 10. Draw Title Block --- (Update scale formatting)
         console.log(`${LOG_PREFIX}       Calculating and drawing title block for viewbox ${viewbox.id}...`);
         const titleBlockLayout = calculateTitleBlockLayout(
             pageLayout.width, pageLayout.height,
@@ -422,24 +536,30 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
             pageLayout.orientation, PAPER_SIZES, DEFAULT_PAPER_SIZE
         );
 
-        // Calculate the true scale ratio: Paper Size (mm) / Real Size (mm)
-        // viewboxScale = Paper Size (mm) / Real Size (cm)
-        // trueScaleRatio = viewboxScale / 10
-        const trueScaleRatio = viewboxScale / 10;
+        // Calculate the true scale ratio: Drawing Size (mm) / Real Size (mm)
+        // viewScale = Drawing Size (mm) / Real Size (cm)
+        // trueScaleRatio = viewScale / 10
+        const trueScaleRatio = viewScale / 10; // Use viewScale calculated earlier
         let scaleString = "NTS"; // Default if calculation fails
 
         if (trueScaleRatio > 1e-6) { // Avoid division by zero or tiny scales
             if (Math.abs(trueScaleRatio - 1) < 1e-6) {
                 scaleString = "1 : 1"; // Exactly 1:1
             } else if (trueScaleRatio < 1) {
-                // Reduction scale (e.g., 1 : 5.2)
-                scaleString = `1 : ${(1 / trueScaleRatio).toFixed(1)}`;
+                // Reduction scale (e.g., 1 : 8.5 becomes 1 : 9)
+                const reductionFactor = 1 / trueScaleRatio;
+                let integerY = Math.round(reductionFactor); // Round Y to nearest integer
+                integerY = Math.max(1, integerY); // Ensure Y is at least 1
+                scaleString = `1 : ${integerY}`; // Format as 1 : Integer
             } else {
-                // Enlargement scale (e.g., 2 : 1)
-                scaleString = `${trueScaleRatio.toFixed(1)} : 1`;
+                // Enlargement scale (e.g., 2.3 : 1 becomes 2 : 1)
+                const enlargementFactor = trueScaleRatio;
+                let integerX = Math.round(enlargementFactor); // Round X to nearest integer
+                integerX = Math.max(1, integerX); // Ensure X is at least 1
+                scaleString = `${integerX} : 1`; // Format as Integer : 1
             }
         }
-        console.log(`${LOG_PREFIX}       Calculated True Scale Ratio: ${trueScaleRatio.toFixed(4)}, Formatted String: ${scaleString}`);
+        console.log(`${LOG_PREFIX}       Calculated True Scale Ratio: ${trueScaleRatio.toFixed(4)}, Formatted String for Title Block: ${scaleString}`);
 
         // Add calculated scale to title block data
         const titleBlockData = {
@@ -482,8 +602,8 @@ function calculateTitleBlockLayout(pageWidth, pageHeight, marginLeft, marginTop,
   const pMarginRight = MARGIN_OTHER;
   const pPrintableWidth = portraitWidth - pMarginLeft - pMarginRight;
   const titleBlockWidth = pPrintableWidth / 2;
-  const baseHeight = portraitHeight * 0.25;
-  const titleBlockHeight = baseHeight * (2 / 3);
+  // const baseHeight = portraitHeight * 0.25; // No longer used for height
+  const titleBlockHeight = 35; // Fixed height as requested
   console.log(`${logPrefixTB} Base Calc (Portrait ${portraitWidth}x${portraitHeight}): PrintableW=${pPrintableWidth.toFixed(2)}, TB W=${titleBlockWidth.toFixed(2)}, TB H=${titleBlockHeight.toFixed(2)}`);
   const numRows = 3; const numCols = 2; const colRatio = [1, 2];
   const totalRatio = colRatio.reduce((a, b) => a + b, 0);
@@ -521,7 +641,7 @@ function drawTitleBlock(pdf, titleBlockLayout, data = {}) {
     const cellData = [
         [ { label: "Project:", value: data.project || "CAD-OS Demo" }, { label: "Part Name:", value: data.partName || "N/A" } ],
         [ { label: "Scale:", value: data.scale || "NTS" },        { label: "Material:", value: data.material || "Steel" } ], // Default scale NTS
-        [ { label: "Drawn By:", value: data.drawnBy || "Cline" },   { label: "Date:", value: data.date || new Date().toLocaleDateString() } ]
+        [ { label: "Drawn By:", value: data.drawnBy || "CAD-OS" },  { label: "Date:", value: data.date || new Date().toLocaleDateString() } ] // Changed default Drawn By
     ];
     pdf.saveGraphicsState();
     pdf.setLineWidth(PDF_TITLE_BLOCK_LINE_WEIGHT); // Use constant

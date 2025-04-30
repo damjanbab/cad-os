@@ -142,7 +142,7 @@ const requestHighDetailMesh = useCallback(async () => {
         partName: 'Part Name',   // Default placeholder
         scale: 'CALCULATED ON PDF', // Default scale text reflecting PDF behavior
         material: 'Steel',       // Default material (or make dynamic later)
-        drawnBy: 'Cline',        // Default drawer
+        drawnBy: 'CAD-OS',       // Corrected default drawer
         date: new Date().toLocaleDateString() // Current date
       },
       items: [] // Array to hold views/elements
@@ -286,7 +286,7 @@ const requestHighDetailMesh = useCallback(async () => {
             partName: entity.name, // Use entity name
             scale: 'NTS',
             material: 'N/A',
-            drawnBy: 'Cline',
+            drawnBy: 'CAD-OS', // Corrected default drawer here too
             date: new Date().toLocaleDateString()
           },
           items: items,

@@ -80,7 +80,55 @@ export function transformPathData(pathDataArray, tx, ty) {
       }
     }
   });
+  // Note: This function modifies the input array in place.
 }
+
+/**
+ * Scales the coordinates and relevant parameters within a parsed path data array.
+ * Modifies the input array in place.
+ * @param {Array<{command: string, values: number[]}>} pathDataArray - Parsed path data.
+ * @param {number} scale - The scaling factor.
+ */
+export function scalePathData(pathDataArray, scale) {
+  if (scale === 1 || !pathDataArray) return; // No scaling needed or invalid input
+
+  pathDataArray.forEach(item => {
+    const command = item.command;
+    const values = item.values;
+
+    // Scale absolute and relative coordinates/values
+    // For relative commands (lowercase), the offsets/deltas are scaled.
+    // For absolute commands (uppercase), the absolute coordinates are scaled.
+    // Z/z command has no values.
+    if (command.toUpperCase() !== 'Z') {
+      for (let i = 0; i < values.length; i++) {
+        switch (command.toUpperCase()) {
+          case 'M': // MoveTo: x, y
+          case 'L': // LineTo: x, y
+          case 'T': // Smooth quadratic Bézier curve: x, y
+          case 'C': // Cubic Bézier curve: x1, y1, x2, y2, x, y
+          case 'S': // Smooth cubic Bézier curve: x2, y2, x, y
+          case 'Q': // Quadratic Bézier curve: x1, y1, x, y
+            values[i] *= scale; // Scale x and y coordinates
+            break;
+          case 'H': // Horizontal LineTo: x
+          case 'V': // Vertical LineTo: y
+            values[i] *= scale; // Scale x or y coordinate
+            break;
+          case 'A': // Elliptical Arc: rx, ry, x-axis-rotation, large-arc-flag, sweep-flag, x, y
+            // Scale radii (rx, ry) and the final endpoint (x, y)
+            // Flags and rotation remain unchanged.
+            if (i < 2 || i >= 5) {
+              values[i] *= scale;
+            }
+            break;
+        }
+      }
+    }
+  });
+  // Note: This function modifies the input array in place.
+}
+
 
 /**
  * Serializes a parsed path data array back into an SVG path data string.
