@@ -154,38 +154,28 @@ export default function MeasurementDisplay({
                     l ${arrowNormX * arrowSize * 0.65} ${arrowNormY * arrowSize * 0.65} 
                     z`;
 
-    // Calculate points for broken dimension line
-    const textWidthEstimate = textContent.length * fontSize * 0.65; // Use textContent (which might be override)
-    const gapSize = textWidthEstimate + textOffset * 2; // Add padding
-    const halfGap = gapSize / 2;
+    // --- Calculate Text Position ---
+    // Place text centered above the dimension line midpoint
+    const textX = midX + nx * actualOffsetDist;
+    const textY = midY + ny * actualOffsetDist;
 
-    // Project text position onto the dimension line direction (relative to the start of the dim line)
-    const textProj = (textPosition.x - dimLineP1[0]) * arrowNormX + (textPosition.y - dimLineP1[1]) * arrowNormY;
-
-    // Points for the two segments of the dimension line, clamped by arrow positions
-    const breakStartPos = Math.max(arrowSize, textProj - halfGap);
-    const breakEndPos = Math.min(arrowLen - arrowSize, textProj + halfGap);
-
-    const dimLine1End = [
-      dimLineP1[0] + arrowNormX * breakStartPos, 
-      dimLineP1[1] + arrowNormY * breakStartPos
-    ];
-    
-    const dimLine2Start = [
-      dimLineP1[0] + arrowNormX * breakEndPos, 
-      dimLineP1[1] + arrowNormY * breakEndPos
-    ];
-
-    // Determine if segments should be shown
-    const showDimLine1 = breakStartPos > arrowSize + 1e-6; // Add tolerance
-    const showDimLine2 = breakEndPos < arrowLen - arrowSize - 1e-6; // Add tolerance
+    // --- Calculate Rotation for Vertical Lines ---
+    let textRotation = 0;
+    const angleRad = Math.atan2(vy, vx);
+    const angleDeg = angleRad * (180 / Math.PI);
+    // Check if the line is primarily vertical (angle between 45-135 or 225-315 degrees)
+    if (Math.abs(angleDeg) > 45 && Math.abs(angleDeg) < 135) {
+      textRotation = -90; // Rotate for readability from the right
+    }
 
     // --- Calculate Input Position and Size ---
     // Estimate width/height needed for the input based on font size and text length
-    const inputWidth = Math.max(50, textContent.length * fontSize * 0.7 + 10); // Min width 50
+    const inputWidthEstimate = textContent.length * fontSize * 0.7 + 10;
+    const inputWidth = Math.max(50, inputWidthEstimate); // Min width 50
     const inputHeight = fontSize * 1.8;
-    const inputX = textPosition.x - inputWidth / 2;
-    const inputY = textPosition.y - inputHeight / 2;
+    // Position input relative to the calculated text position
+    const inputX = textX - inputWidth / 2;
+    const inputY = textY - inputHeight / 2;
 
     elements = (
       // Add pathId as the ID for the interaction hook to find
@@ -211,30 +201,16 @@ export default function MeasurementDisplay({
           style={{ vectorEffect: 'non-scaling-stroke' }}
         />
         
-        {/* Dimension Line (broken) */}
-        {showDimLine1 && (
-          <line 
-            x1={dimLineP1[0]} 
-            y1={dimLineP1[1]} 
-            x2={dimLine1End[0]} 
-            y2={dimLine1End[1]} 
-            stroke={strokeColor}
-            strokeWidth={strokeWidth}
-            style={{ vectorEffect: 'non-scaling-stroke' }}
-          />
-        )}
-        
-        {showDimLine2 && (
-          <line 
-            x1={dimLine2Start[0]} 
-            y1={dimLine2Start[1]} 
-            x2={dimLineP2[0]} 
-            y2={dimLineP2[1]} 
-            stroke={strokeColor}
-            strokeWidth={strokeWidth}
-            style={{ vectorEffect: 'non-scaling-stroke' }}
-          />
-        )}
+        {/* Dimension Line (continuous) */}
+        <line 
+          x1={dimLineP1[0]} 
+          y1={dimLineP1[1]} 
+          x2={dimLineP2[0]} 
+          y2={dimLineP2[1]} 
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          style={{ vectorEffect: 'non-scaling-stroke' }}
+        />
         
         {/* Arrowheads */}
         <path 
@@ -251,10 +227,11 @@ export default function MeasurementDisplay({
         />
         
         {/* Text with slight background for better readability */}
-        <g>
+        {/* Apply rotation transform here */}
+        <g transform={`rotate(${textRotation} ${textX} ${textY})`}>
           <rect
-            x={textPosition.x - (textContent.length * fontSize * 0.3)}
-            y={textPosition.y - fontSize * 0.7}
+            x={textX - (textContent.length * fontSize * 0.3)} // Use calculated textX
+            y={textY - fontSize * 0.7} // Use calculated textY
             width={textContent.length * fontSize * 0.6}
             height={fontSize * 1.4}
             fill="white"
@@ -264,13 +241,13 @@ export default function MeasurementDisplay({
             style={{ vectorEffect: 'non-scaling-stroke' }}
           />
           <text
-            x={textPosition.x}
-            y={textPosition.y}
+            x={textX} // Use calculated textX
+            y={textY} // Use calculated textY
             fontSize={fontSize}
             fill={strokeColor} // Use restored color
             stroke="none"
             textAnchor="middle"
-            dominantBaseline="middle"
+            dominantBaseline={textRotation !== 0 ? "central" : "middle"} // Adjust baseline for rotation
             fontFamily="Arial, sans-serif"
             // Removed inline style for cursor, pointerEvents
             // Removed onMouseDown/onTouchStart handlers
@@ -282,7 +259,14 @@ export default function MeasurementDisplay({
 
         {/* --- Input Field (rendered conditionally) --- */}
         {isEditing && (
-          <foreignObject x={inputX} y={inputY} width={inputWidth} height={inputHeight}>
+          // Apply inverse rotation to the foreignObject container if text is rotated
+          <foreignObject 
+            x={inputX} 
+            y={inputY} 
+            width={inputWidth} 
+            height={inputHeight} 
+            transform={`rotate(${-textRotation} ${textX} ${textY})`} // Counter-rotate input
+          >
             {/* Need xmlns for HTML inside SVG */}
             <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: '100%', height: '100%' }}>
               <input
@@ -344,32 +328,33 @@ export default function MeasurementDisplay({
     const arrowNormY = uy;
     const arrow1 = `M ${dimLineP1[0]} ${dimLineP1[1]} l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize} l ${-arrowNormY * arrowSize * 0.35} ${arrowNormX * arrowSize * 0.35} l ${-arrowNormX * arrowSize * 0.65} ${-arrowNormY * arrowSize * 0.65} z`;
     const arrow2 = `M ${dimLineP2[0]} ${dimLineP2[1]} l ${-arrowNormX * arrowSize} ${-arrowNormY * arrowSize} l ${arrowNormY * arrowSize * 0.35} ${-arrowNormX * arrowSize * 0.35} l ${arrowNormX * arrowSize * 0.65} ${arrowNormY * arrowSize * 0.65} z`;
-    const textWidthEstimate = textContent.length * fontSize * 0.65; // Use calculated value
-    const gapSize = textWidthEstimate + textOffset * 2;
-    const halfGap = gapSize / 2;
-    const textProj = (textPosition.x - dimLineP1[0]) * arrowNormX + (textPosition.y - dimLineP1[1]) * arrowNormY;
-    const breakStartPos = Math.max(arrowSize, textProj - halfGap);
-    const breakEndPos = Math.min(arrowLen - arrowSize, textProj + halfGap);
-    const dimLine1End = [dimLineP1[0] + arrowNormX * breakStartPos, dimLineP1[1] + arrowNormY * breakStartPos];
-    const dimLine2Start = [dimLineP1[0] + arrowNormX * breakEndPos, dimLineP1[1] + arrowNormY * breakEndPos];
-    const showDimLine1 = breakStartPos > arrowSize + 1e-6;
-    const showDimLine2 = breakEndPos < arrowLen - arrowSize - 1e-6;
+    
+    // --- Calculate Text Position ---
+    const textX = midX + nx * actualOffsetDist;
+    const textY = midY + ny * actualOffsetDist;
+
+    // --- Calculate Rotation for Vertical Lines ---
+    let textRotation = 0;
+    const angleRad = Math.atan2(vy, vx);
+    const angleDeg = angleRad * (180 / Math.PI);
+    if (Math.abs(angleDeg) > 45 && Math.abs(angleDeg) < 135) {
+      textRotation = -90;
+    }
 
     elements = (
       <g id={pathId} className="measurement-group">
         {/* Extension Lines */}
         <line x1={extLineP1Start[0]} y1={extLineP1Start[1]} x2={extLineP1End[0]} y2={extLineP1End[1]} stroke={strokeColor} strokeWidth={strokeWidth} style={{ vectorEffect: 'non-scaling-stroke' }} />
         <line x1={extLineP2Start[0]} y1={extLineP2Start[1]} x2={extLineP2End[0]} y2={extLineP2End[1]} stroke={strokeColor} strokeWidth={strokeWidth} style={{ vectorEffect: 'non-scaling-stroke' }} />
-        {/* Dimension Line (broken) */}
-        {showDimLine1 && <line x1={dimLineP1[0]} y1={dimLineP1[1]} x2={dimLine1End[0]} y2={dimLine1End[1]} stroke={strokeColor} strokeWidth={strokeWidth} style={{ vectorEffect: 'non-scaling-stroke' }} />}
-        {showDimLine2 && <line x1={dimLine2Start[0]} y1={dimLine2Start[1]} x2={dimLineP2[0]} y2={dimLineP2[1]} stroke={strokeColor} strokeWidth={strokeWidth} style={{ vectorEffect: 'non-scaling-stroke' }} />}
+        {/* Dimension Line (continuous) */}
+        <line x1={dimLineP1[0]} y1={dimLineP1[1]} x2={dimLineP2[0]} y2={dimLineP2[1]} stroke={strokeColor} strokeWidth={strokeWidth} style={{ vectorEffect: 'non-scaling-stroke' }} />
         {/* Arrowheads */}
         <path d={arrow1} fill={strokeColor} stroke="none" style={{ vectorEffect: 'non-scaling-stroke' }} />
         <path d={arrow2} fill={strokeColor} stroke="none" style={{ vectorEffect: 'non-scaling-stroke' }} />
         {/* Text */}
-        <g>
-          <rect x={textPosition.x - (textContent.length * fontSize * 0.3)} y={textPosition.y - fontSize * 0.7} width={textContent.length * fontSize * 0.6} height={fontSize * 1.4} fill="white" fillOpacity="0.8" rx={fontSize * 0.2} ry={fontSize * 0.2} style={{ vectorEffect: 'non-scaling-stroke' }} />
-          <text x={textPosition.x} y={textPosition.y} fontSize={fontSize} fill={strokeColor} stroke="none" textAnchor="middle" dominantBaseline="middle" fontFamily="Arial, sans-serif" style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}>
+        <g transform={`rotate(${textRotation} ${textX} ${textY})`}>
+          <rect x={textX - (textContent.length * fontSize * 0.3)} y={textY - fontSize * 0.7} width={textContent.length * fontSize * 0.6} height={fontSize * 1.4} fill="white" fillOpacity="0.8" rx={fontSize * 0.2} ry={fontSize * 0.2} style={{ vectorEffect: 'non-scaling-stroke' }} />
+          <text x={textX} y={textY} fontSize={fontSize} fill={strokeColor} stroke="none" textAnchor="middle" dominantBaseline={textRotation !== 0 ? "central" : "middle"} fontFamily="Arial, sans-serif" style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}>
             {textContent} {/* Display calculated value */}
           </text>
         </g>
@@ -383,11 +368,11 @@ export default function MeasurementDisplay({
     const diameter = geometry.diameter; // Keep original for calculations if needed
     const radius = geometry.radius || diameter / 2;
 
-    // Calculate text width estimate
-    const textWidthEstimate = textContent.length * fontSize * 0.65; // Use textContent (might be override)
+    // Calculate text width estimate for circle
+    const textWidthEstimateCircle = textContent.length * fontSize * 0.65; // Use textContent (might be override)
 
     // Determine if this is a small circle where text doesn't fit well inside
-    const isSmallCircle = radius * 2 < textWidthEstimate * 1.5; // Use original radius for size check
+    const isSmallCircle = radius * 2 < textWidthEstimateCircle * 1.5; // Use original radius for size check
     
     // Calculate line endpoints based on text position relative to center
     const textVecX = textPosition.x - cx;
@@ -529,11 +514,12 @@ export default function MeasurementDisplay({
       );
     } else {
       // For larger circles, use the diameter line approach
-      // --- Calculate Input Position and Size ---
-      const inputWidth = Math.max(50, textContent.length * fontSize * 0.7 + 10);
-      const inputHeight = fontSize * 1.8;
-      const inputX = textPosition.x - inputWidth / 2;
-      const inputY = textPosition.y - inputHeight / 2;
+      // --- Calculate Input Position and Size (Circle Diameter) ---
+      const inputWidthCircle = Math.max(50, textContent.length * fontSize * 0.7 + 10);
+      const inputHeightCircle = fontSize * 1.8;
+      // Position input relative to the text position (which is centered on the line)
+      const inputXCircle = textPosition.x - inputWidthCircle / 2;
+      const inputYCircle = textPosition.y - inputHeightCircle / 2;
 
       // Endpoints of the diameter line
       const dimLineP1 = [cx - cosA * radius, cy - sinA * radius];
@@ -563,43 +549,21 @@ export default function MeasurementDisplay({
       // Clamp the break points to be within the radius +/- arrow size
       const startClamp = -radius + arrowSize;
       const endClamp = radius - arrowSize;
-      const breakStart = Math.max(startClamp, Math.min(endClamp, textProjDist - halfGap));
-      const breakEnd = Math.max(startClamp, Math.min(endClamp, textProjDist + halfGap));
-
-      const dimLine1End = [cx + cosA * breakStart, cy + sinA * breakStart];
-      const dimLine2Start = [cx + cosA * breakEnd, cy + sinA * breakEnd];
-
-      // Check if segments have valid length
-      const showDimLine1 = vec.len(vec.sub(dimLine1End, dimLineP1)) > 1e-6;
-      const showDimLine2 = vec.len(vec.sub(dimLineP2, dimLine2Start)) > 1e-6;
+      // No gap calculation needed for circle diameter line anymore
 
       elements = (
         // Add pathId as the ID for the interaction hook to find
-        <g id={pathId} className="measurement-group">
-          {/* Dimension Line (broken) */}
-          {showDimLine1 && (
-            <line 
-              x1={dimLineP1[0]} 
-              y1={dimLineP1[1]} 
-              x2={dimLine1End[0]} 
-              y2={dimLine1End[1]} 
-              stroke={strokeColor}
-              strokeWidth={strokeWidth}
-              style={{ vectorEffect: 'non-scaling-stroke' }}
-            />
-          )}
-          
-          {showDimLine2 && (
-            <line 
-              x1={dimLine2Start[0]} 
-              y1={dimLine2Start[1]} 
-              x2={dimLineP2[0]} 
-              y2={dimLineP2[1]} 
-              stroke={strokeColor}
-              strokeWidth={strokeWidth}
-              style={{ vectorEffect: 'non-scaling-stroke' }}
-            />
-          )}
+        <g id={pathId} className="measurement-group" onDoubleClick={handleDoubleClick}> {/* Added double-click */}
+          {/* Dimension Line (continuous) */}
+          <line 
+            x1={dimLineP1[0]} 
+            y1={dimLineP1[1]} 
+            x2={dimLineP2[0]} 
+            y2={dimLineP2[1]} 
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            style={{ vectorEffect: 'non-scaling-stroke' }}
+          />
           
           {/* Arrowheads */}
           <path 
@@ -644,9 +608,9 @@ export default function MeasurementDisplay({
             {textContent}
             </text>
           </g>
-          {/* --- Input Field (rendered conditionally) --- */}
+          {/* --- Input Field (rendered conditionally - Circle Diameter) --- */}
           {isEditing && (
-            <foreignObject x={inputX} y={inputY} width={inputWidth} height={inputHeight}>
+            <foreignObject x={inputXCircle} y={inputYCircle} width={inputWidthCircle} height={inputHeightCircle}>
               <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: '100%', height: '100%' }}>
                 <input
                   ref={inputRef}

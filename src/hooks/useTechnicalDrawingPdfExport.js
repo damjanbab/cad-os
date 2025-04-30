@@ -166,31 +166,58 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
     const arrow1 = `M ${dimLineP1[0]} ${dimLineP1[1]} l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize} l ${-arrowNormY * arrowSize * arrowHeadFactor} ${arrowNormX * arrowSize * arrowHeadFactor} l ${-arrowNormX * arrowSize * arrowTailFactor} ${-arrowNormY * arrowSize * arrowTailFactor} z`;
     const arrow2 = `M ${dimLineP2[0]} ${dimLineP2[1]} l ${-arrowNormX * arrowSize} ${-arrowNormY * arrowSize} l ${arrowNormY * arrowSize * arrowHeadFactor} ${-arrowNormX * arrowSize * arrowHeadFactor} l ${arrowNormX * arrowSize * arrowTailFactor} ${arrowNormY * arrowSize * arrowTailFactor} z`;
 
-    // Text breaking logic (using fixed sizes in mm)
-    const textWidthEstimate = textContent.length * fontSize * 0.6; // Estimate based on fixed font size
-    const gapSize = textWidthEstimate + textOffset * 1.5;
-    const halfGap = gapSize / 2;
-    // Project scaled text position onto the dimension line
-    const textProj = (textPos[0] - dimLineP1[0]) * arrowNormX + (textPos[1] - dimLineP1[1]) * arrowNormY;
-    const breakStartPos = Math.max(arrowSize, textProj - halfGap);
-    const breakEndPos = Math.min(lineLen - arrowSize, textProj + halfGap);
-    const dimLine1End = [dimLineP1[0] + arrowNormX * breakStartPos, dimLineP1[1] + arrowNormY * breakStartPos];
-    const dimLine2Start = [dimLineP1[0] + arrowNormX * breakEndPos, dimLineP1[1] + arrowNormY * breakEndPos];
-    const showDimLine1 = breakStartPos > arrowSize + 1e-6;
-    const showDimLine2 = breakEndPos < lineLen - arrowSize - 1e-6;
+    // --- Calculate Dimension Line Midpoint ---
+    const dimMidX = (dimLineP1[0] + dimLineP2[0]) / 2;
+    const dimMidY = (dimLineP1[1] + dimLineP2[1]) / 2;
+
+    // --- Calculate Rotation ---
+    let textRotation = 0;
+    const angleRad = Math.atan2(vy, vx); // Angle of the original geometry line
+    const angleDeg = angleRad * (180 / Math.PI); // Angle in degrees
+    if (Math.abs(angleDeg) > 45 && Math.abs(angleDeg) < 135) {
+      textRotation = -90;
+    }
+
+    // --- Calculate Final Text Position (Strict Rules) ---
+    let finalX, finalY;
+    if (textRotation === -90) { // Primarily Vertical Line
+      // Place text to the LEFT of the dimension line
+      const leftNx = -1; // Absolute left direction in page coords
+      const leftNy = 0;
+      finalX = dimMidX + leftNx * textOffset;
+      finalY = dimMidY; // Center vertically on the midpoint
+    } else { // Primarily Horizontal Line
+      // Place text ABOVE the dimension line
+      const upNx = 0;
+      const upNy = -1; // Absolute up direction in page coords (assuming Y increases downwards)
+      finalX = dimMidX; // Center horizontally on the midpoint
+      finalY = dimMidY + upNy * textOffset;
+    }
 
     // Draw elements
     group.appendChild(createSvgElement('line', { x1: extLineP1Start[0], y1: extLineP1Start[1], x2: extLineP1End[0], y2: extLineP1End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     group.appendChild(createSvgElement('line', { x1: extLineP2Start[0], y1: extLineP2Start[1], x2: extLineP2End[0], y2: extLineP2End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-    if (showDimLine1) group.appendChild(createSvgElement('line', { x1: dimLineP1[0], y1: dimLineP1[1], x2: dimLine1End[0], y2: dimLine1End[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-    if (showDimLine2) group.appendChild(createSvgElement('line', { x1: dimLine2Start[0], y1: dimLine2Start[1], x2: dimLineP2[0], y2: dimLineP2[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    // Draw continuous dimension line
+    group.appendChild(createSvgElement('line', { x1: dimLineP1[0], y1: dimLineP1[1], x2: dimLineP2[0], y2: dimLineP2[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     group.appendChild(createSvgElement('path', { d: arrow1, fill: fillColor, stroke: 'none' }));
     group.appendChild(createSvgElement('path', { d: arrow2, fill: fillColor, stroke: 'none' }));
 
-    // Position text using fixed offset from dim line
-    const textDrawX = dimLineP1[0] + arrowNormX * textProj + ny * textOffset; // Position along dim line + offset normal
-    const textDrawY = dimLineP1[1] + arrowNormY * textProj - nx * textOffset;
-    const textEl = createSvgElement('text', { x: textDrawX, y: textDrawY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
+    // Draw Text (using manually adjusted coordinates)
+    const textAttributes = {
+      x: finalX, // Use manually adjusted X
+      y: finalY, // Use manually adjusted Y
+      'font-size': fontSize,
+      fill: fillColor,
+      stroke: 'none',
+      'text-anchor': 'middle', // Always middle anchor
+      'dominant-baseline': 'central', // Always central baseline (works well with manual coord adjustment)
+      'font-family': fontFamily
+    };
+    if (textRotation !== 0) {
+      // Rotate around the final calculated center point
+      textAttributes.transform = `rotate(${textRotation} ${finalX} ${finalY})`;
+    }
+    const textEl = createSvgElement('text', textAttributes);
     textEl.textContent = textContent; // Use determined textContent
     group.appendChild(textEl);
 
