@@ -1,4 +1,4 @@
-import React from 'react'; // Removed useState, useCallback
+import React, { useState, useCallback, useRef, useEffect } from 'react'; // Added useState, useRef, useEffect
 import { vec } from '../../utils/geometryUtils.js'; // Import vector utils
 import { distance } from '../../hooks/useCanvasInteraction.js'; // Import distance helper
 
@@ -6,11 +6,13 @@ import { distance } from '../../hooks/useCanvasInteraction.js'; // Import distan
 export default function MeasurementDisplay({
   measurementData,
   innerSvgRef, // Receive ref to the parent SVG element
-  onUpdatePosition, // Receive update handler
-  // Removed onUpdatePosition - Handled by centralized hook
+  onUpdatePosition, // Receive update handler (for dragging text)
+  onUpdateOverrideValue, // Receive override update handler
 }) {
-  const { pathId, type, geometry, textPosition } = measurementData; // Removed viewId (not used here)
-  // Removed internal drag state and handlers - Logic moved to useCanvasInteraction hook
+  const { pathId, type, geometry, textPosition, overrideValue } = measurementData; // Added overrideValue
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const inputRef = useRef(null); // Ref for the input element
 
 
   // --- Rendering Logic --- (No event handlers needed here anymore)
@@ -24,13 +26,64 @@ export default function MeasurementDisplay({
   const extensionGap = 0.8; // Small gap from the geometry
   const extensionOverhang = 1.2; // How much to extend past the dimension line
 
+  // --- Calculate Display Value ---
+  let calculatedValue = '';
+  if (type === 'line' && geometry?.length != null) {
+    calculatedValue = parseFloat(geometry.length.toFixed(2)).toString();
+  } else if (type === 'circle' && geometry?.diameter != null) {
+    calculatedValue = `⌀${parseFloat(geometry.diameter.toFixed(2)).toString()}`;
+  }
+  // Use override if available and not empty, otherwise use calculated
+  const displayValue = (overrideValue !== null && overrideValue !== '') ? overrideValue : calculatedValue;
+
+  // --- Edit Mode Handlers ---
+  const handleDoubleClick = useCallback(() => {
+    console.log(`[MeasurementDisplay ${pathId}] Double clicked. Entering edit mode.`);
+    setEditValue(displayValue); // Initialize input with current display value
+    setIsEditing(true);
+  }, [displayValue, pathId]);
+
+  const handleInputChange = (e) => {
+    setEditValue(e.target.value);
+  };
+
+  const handleInputBlur = () => {
+    if (isEditing && onUpdateOverrideValue) {
+      console.log(`[MeasurementDisplay ${pathId}] Input blurred. Updating override to: "${editValue}"`);
+      onUpdateOverrideValue(pathId, editValue);
+    }
+    setIsEditing(false);
+  };
+
+  const handleInputKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (isEditing && onUpdateOverrideValue) {
+        console.log(`[MeasurementDisplay ${pathId}] Enter pressed. Updating override to: "${editValue}"`);
+        onUpdateOverrideValue(pathId, editValue);
+      }
+      setIsEditing(false);
+      e.preventDefault(); // Prevent potential form submission if wrapped
+    } else if (e.key === 'Escape') {
+      console.log(`[MeasurementDisplay ${pathId}] Escape pressed. Cancelling edit.`);
+      setIsEditing(false); // Cancel edit on Escape
+    }
+  };
+
+  // Focus input when entering edit mode
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select(); // Select text for easy replacement
+    }
+  }, [isEditing]);
+
+
   let elements = null;
 
   if (type === 'line' && geometry.endpoints) {
     const [p1, p2] = geometry.endpoints;
-    const length = geometry.length || 0;
-    // Format number: remove trailing .00, keep other decimals
-    const textContent = parseFloat(length.toFixed(2)).toString();
+    // Use displayValue calculated above
+    const textContent = displayValue;
 
     // Vector from p1 to p2
     const vx = p2[0] - p1[0];
@@ -102,7 +155,7 @@ export default function MeasurementDisplay({
                     z`;
 
     // Calculate points for broken dimension line
-    const textWidthEstimate = textContent.length * fontSize * 0.65; // Refined estimate
+    const textWidthEstimate = textContent.length * fontSize * 0.65; // Use textContent (which might be override)
     const gapSize = textWidthEstimate + textOffset * 2; // Add padding
     const halfGap = gapSize / 2;
 
@@ -127,9 +180,17 @@ export default function MeasurementDisplay({
     const showDimLine1 = breakStartPos > arrowSize + 1e-6; // Add tolerance
     const showDimLine2 = breakEndPos < arrowLen - arrowSize - 1e-6; // Add tolerance
 
+    // --- Calculate Input Position and Size ---
+    // Estimate width/height needed for the input based on font size and text length
+    const inputWidth = Math.max(50, textContent.length * fontSize * 0.7 + 10); // Min width 50
+    const inputHeight = fontSize * 1.8;
+    const inputX = textPosition.x - inputWidth / 2;
+    const inputY = textPosition.y - inputHeight / 2;
+
     elements = (
       // Add pathId as the ID for the interaction hook to find
-      <g id={pathId} className="measurement-group">
+      // Add double-click handler to the group
+      <g id={pathId} className="measurement-group" onDoubleClick={handleDoubleClick}>
         {/* Extension Lines */}
         <line
           x1={extLineP1Start[0]} 
@@ -213,21 +274,50 @@ export default function MeasurementDisplay({
             fontFamily="Arial, sans-serif"
             // Removed inline style for cursor, pointerEvents
             // Removed onMouseDown/onTouchStart handlers
-            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke', pointerEvents: isEditing ? 'none' : 'auto' }} // Disable pointer events on text when editing
           >
-            {textContent} // Display only
+            {textContent}
           </text>
         </g>
+
+        {/* --- Input Field (rendered conditionally) --- */}
+        {isEditing && (
+          <foreignObject x={inputX} y={inputY} width={inputWidth} height={inputHeight}>
+            {/* Need xmlns for HTML inside SVG */}
+            <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: '100%', height: '100%' }}>
+              <input
+                ref={inputRef}
+                type="text"
+                value={editValue}
+                onChange={handleInputChange}
+                onBlur={handleInputBlur}
+                onKeyDown={handleInputKeyDown}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  padding: '0 2px',
+                  border: '1px solid #777',
+                  borderRadius: '2px',
+                  backgroundColor: '#fff',
+                  fontSize: `${fontSize * 0.9}px`, // Slightly smaller than SVG text for fit
+                  textAlign: 'center',
+                  boxSizing: 'border-box', // Include padding/border in size
+                  fontFamily: 'Arial, sans-serif',
+                }}
+              />
+            </div>
+          </foreignObject>
+        )}
       </g>
     );
 
   } else if (type === 'distance' && geometry.endpoints && geometry.endpoints.length === 2) {
-    // --- Logic for Point-to-Point Distance Measurement ---
+    // NOTE: 'distance' type seems deprecated or unused based on handlePathClick logic.
+    // If it needs editing, similar logic as 'line' should be applied.
+    // For now, just display the calculated value without editing.
     const [p1, p2] = geometry.endpoints;
-    // Calculate the actual distance between the two points
     const calculatedDistance = distance({ x: p1[0], y: p1[1] }, { x: p2[0], y: p2[1] });
-    // Format number: remove trailing .00, keep other decimals
-    const textContent = parseFloat(calculatedDistance.toFixed(2)).toString();
+    const textContent = parseFloat(calculatedDistance.toFixed(2)).toString(); // Use calculated, no override here
 
     // --- Reuse rendering logic similar to 'line' type ---
     const vx = p2[0] - p1[0];
@@ -254,7 +344,7 @@ export default function MeasurementDisplay({
     const arrowNormY = uy;
     const arrow1 = `M ${dimLineP1[0]} ${dimLineP1[1]} l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize} l ${-arrowNormY * arrowSize * 0.35} ${arrowNormX * arrowSize * 0.35} l ${-arrowNormX * arrowSize * 0.65} ${-arrowNormY * arrowSize * 0.65} z`;
     const arrow2 = `M ${dimLineP2[0]} ${dimLineP2[1]} l ${-arrowNormX * arrowSize} ${-arrowNormY * arrowSize} l ${arrowNormY * arrowSize * 0.35} ${-arrowNormX * arrowSize * 0.35} l ${arrowNormX * arrowSize * 0.65} ${arrowNormY * arrowSize * 0.65} z`;
-    const textWidthEstimate = textContent.length * fontSize * 0.65;
+    const textWidthEstimate = textContent.length * fontSize * 0.65; // Use calculated value
     const gapSize = textWidthEstimate + textOffset * 2;
     const halfGap = gapSize / 2;
     const textProj = (textPosition.x - dimLineP1[0]) * arrowNormX + (textPosition.y - dimLineP1[1]) * arrowNormY;
@@ -280,7 +370,7 @@ export default function MeasurementDisplay({
         <g>
           <rect x={textPosition.x - (textContent.length * fontSize * 0.3)} y={textPosition.y - fontSize * 0.7} width={textContent.length * fontSize * 0.6} height={fontSize * 1.4} fill="white" fillOpacity="0.8" rx={fontSize * 0.2} ry={fontSize * 0.2} style={{ vectorEffect: 'non-scaling-stroke' }} />
           <text x={textPosition.x} y={textPosition.y} fontSize={fontSize} fill={strokeColor} stroke="none" textAnchor="middle" dominantBaseline="middle" fontFamily="Arial, sans-serif" style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}>
-            {textContent}
+            {textContent} {/* Display calculated value */}
           </text>
         </g>
       </g>
@@ -288,16 +378,16 @@ export default function MeasurementDisplay({
 
   } else if (type === 'circle' && geometry.center && geometry.diameter != null) {
     const [cx, cy] = geometry.center;
-    const diameter = geometry.diameter;
+    // Use displayValue calculated above
+    const textContent = displayValue;
+    const diameter = geometry.diameter; // Keep original for calculations if needed
     const radius = geometry.radius || diameter / 2;
-    // Format number: remove trailing .00, keep other decimals
-    const textContent = `⌀${parseFloat(diameter.toFixed(2)).toString()}`;
 
     // Calculate text width estimate
-    const textWidthEstimate = textContent.length * fontSize * 0.65;
-    
+    const textWidthEstimate = textContent.length * fontSize * 0.65; // Use textContent (might be override)
+
     // Determine if this is a small circle where text doesn't fit well inside
-    const isSmallCircle = radius * 2 < textWidthEstimate * 1.5;
+    const isSmallCircle = radius * 2 < textWidthEstimate * 1.5; // Use original radius for size check
     
     // Calculate line endpoints based on text position relative to center
     const textVecX = textPosition.x - cx;
@@ -403,15 +493,48 @@ export default function MeasurementDisplay({
             fontFamily="Arial, sans-serif"
             // Removed inline style for cursor, pointerEvents
             // Removed onMouseDown/onTouchStart handlers
-            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke', pointerEvents: isEditing ? 'none' : 'auto' }} // Disable pointer events on text when editing
           >
-            {textContent} // Display only
+            {textContent}
             </text>
           </g>
+          {/* --- Input Field (rendered conditionally) --- */}
+          {isEditing && (
+            <foreignObject x={adjustedTextPosition.x - inputWidth / 2} y={adjustedTextPosition.y - inputHeight / 2} width={inputWidth} height={inputHeight}>
+              <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: '100%', height: '100%' }}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={handleInputChange}
+                  onBlur={handleInputBlur}
+                  onKeyDown={handleInputKeyDown}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    padding: '0 2px',
+                    border: '1px solid #777',
+                    borderRadius: '2px',
+                    backgroundColor: '#fff',
+                    fontSize: `${fontSize * 0.9}px`,
+                    textAlign: 'center',
+                    boxSizing: 'border-box',
+                    fontFamily: 'Arial, sans-serif',
+                  }}
+                />
+              </div>
+            </foreignObject>
+          )}
         </g>
       );
     } else {
       // For larger circles, use the diameter line approach
+      // --- Calculate Input Position and Size ---
+      const inputWidth = Math.max(50, textContent.length * fontSize * 0.7 + 10);
+      const inputHeight = fontSize * 1.8;
+      const inputX = textPosition.x - inputWidth / 2;
+      const inputY = textPosition.y - inputHeight / 2;
+
       // Endpoints of the diameter line
       const dimLineP1 = [cx - cosA * radius, cy - sinA * radius];
       const dimLineP2 = [cx + cosA * radius, cy + sinA * radius];
@@ -516,11 +639,38 @@ export default function MeasurementDisplay({
             fontFamily="Arial, sans-serif"
             // Removed inline style for cursor
             // Removed onMouseDown/onTouchStart handlers
-            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke', pointerEvents: isEditing ? 'none' : 'auto' }} // Disable pointer events on text when editing
           >
-            {textContent} // Display only
+            {textContent}
             </text>
           </g>
+          {/* --- Input Field (rendered conditionally) --- */}
+          {isEditing && (
+            <foreignObject x={inputX} y={inputY} width={inputWidth} height={inputHeight}>
+              <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: '100%', height: '100%' }}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={handleInputChange}
+                  onBlur={handleInputBlur}
+                  onKeyDown={handleInputKeyDown}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    padding: '0 2px',
+                    border: '1px solid #777',
+                    borderRadius: '2px',
+                    backgroundColor: '#fff',
+                    fontSize: `${fontSize * 0.9}px`,
+                    textAlign: 'center',
+                    boxSizing: 'border-box',
+                    fontFamily: 'Arial, sans-serif',
+                  }}
+                />
+              </div>
+            </foreignObject>
+          )}
         </g>
       );
     }

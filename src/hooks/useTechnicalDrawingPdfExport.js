@@ -50,7 +50,7 @@ const PDF_BORDER_LINE_WEIGHT = 0.2; // mm
 const PDF_BASE_VISIBLE_STROKE_WIDTH = 0.5; // mm
 const PDF_BASE_HIDDEN_STROKE_WIDTH = 0.35;  // mm
 const PDF_BASE_MEASUREMENT_STROKE_WIDTH = 0.08; // mm
-const PDF_BASE_MEASUREMENT_FONT_SIZE = 2.2; // mm
+const PDF_BASE_MEASUREMENT_FONT_SIZE = 3.5; // mm
 const PDF_BASE_MEASUREMENT_ARROW_SIZE = 1.2; // mm
 const PDF_BASE_MEASUREMENT_TEXT_OFFSET = 1.2; // mm
 const PDF_BASE_MEASUREMENT_EXTENSION_GAP = 0.8; // mm
@@ -116,13 +116,28 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
   const scaleCoord = (coord) => [coord[0] * scale, coord[1] * scale];
   const scaleValue = (val) => val * scale;
 
+  // --- Determine Text Content (Check for Override) ---
+  let textContent = '';
+  if (measurementData.overrideValue !== null && measurementData.overrideValue !== '') {
+    textContent = measurementData.overrideValue;
+    console.log(`[PDF Export] Using override value for ${pathId}: "${textContent}"`);
+  } else if (type === 'line' && geometry?.length != null) {
+    textContent = parseFloat(geometry.length.toFixed(2)).toString();
+  } else if (type === 'circle' && geometry?.diameter != null) {
+    textContent = `⌀${parseFloat(geometry.diameter.toFixed(2)).toString()}`;
+  }
+  // Add a fallback if textContent is still empty
+  if (textContent === '') {
+      console.warn(`[PDF Export] Could not determine text content for measurement ${pathId}. Type: ${type}`);
+      textContent = '?'; // Placeholder for missing value
+  }
+
   if (type === 'line' && geometry?.endpoints && unscaledTextPos) {
     const [usp1, usp2] = geometry.endpoints; // Unscaled points
     const p1 = scaleCoord(usp1);
     const p2 = scaleCoord(usp2);
     const textPos = scaleCoord([unscaledTextPos.x, unscaledTextPos.y]);
-    const length = geometry.length || 0; // Use the actual model length
-    const textContent = parseFloat(length.toFixed(2)).toString(); // Keep precision logic
+    // Use textContent determined above (could be override or calculated)
 
     const vx = p2[0] - p1[0]; const vy = p2[1] - p1[1];
     const midX = (p1[0] + p2[0]) / 2; const midY = (p1[1] + p2[1]) / 2;
@@ -176,16 +191,16 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
     const textDrawX = dimLineP1[0] + arrowNormX * textProj + ny * textOffset; // Position along dim line + offset normal
     const textDrawY = dimLineP1[1] + arrowNormY * textProj - nx * textOffset;
     const textEl = createSvgElement('text', { x: textDrawX, y: textDrawY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
-    textEl.textContent = textContent;
+    textEl.textContent = textContent; // Use determined textContent
     group.appendChild(textEl);
 
   } else if (type === 'circle' && geometry?.center && geometry.diameter != null && unscaledTextPos) {
     const [uscx, uscy] = geometry.center; // Unscaled center
     const cx = uscx * scale;
     const cy = uscy * scale;
-    const diameter = geometry.diameter; // Actual model diameter
-    const radius = (geometry.radius || diameter / 2) * scale; // Scaled radius for drawing
-    const textContent = `⌀${parseFloat(diameter.toFixed(2)).toString()}`;
+    // const diameter = geometry.diameter; // Actual model diameter - No longer needed here
+    const radius = (geometry.radius || geometry.diameter / 2) * scale; // Scaled radius for drawing
+    // Use textContent determined above (could be override or calculated)
     const textPos = scaleCoord([unscaledTextPos.x, unscaledTextPos.y]); // Scaled text position
 
     // Calculate leader line based on scaled positions and fixed offset
@@ -199,10 +214,11 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1) => {
 
     group.appendChild(createSvgElement('line', { x1: leaderStart[0], y1: leaderStart[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
     const textEl = createSvgElement('text', { x: textPos[0], y: textPos[1], 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
-    textEl.textContent = textContent;
+    textEl.textContent = textContent; // Use determined textContent
     group.appendChild(textEl);
   }
-  return group;
+  // Only return group if textContent was successfully determined
+  return textContent !== '?' ? group : null;
 };
 
 

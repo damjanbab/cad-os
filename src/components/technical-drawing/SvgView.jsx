@@ -24,6 +24,7 @@ export default function SvgView({
   // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
   // Removed onMeasurementDragStart
   // zoomLevel, // zoomLevel is not needed here anymore
+  onUpdateOverrideValue, // Add prop for override update handler
 }) {
   const { id: viewId, viewType, svgData } = viewInstanceData; // Use renamed prop
   const innerSvgRef = useRef(null); // Create ref for the inner SVG
@@ -99,7 +100,7 @@ export default function SvgView({
               key={measurement.pathId}
               measurementData={measurement}
               innerSvgRef={innerSvgRef} // Pass the ref down
-              // onUpdatePosition={onMeasurementUpdate} // REMOVED - Update is handled via hook callback
+              onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
               // Removed onDragStart
             />
           ))}

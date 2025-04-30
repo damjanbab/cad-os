@@ -131,7 +131,8 @@ export default function TechnicalDrawingCanvas({
         ]
       },
       // Add the original snap point types if needed later
-      // snapTypes: [point1.type, point2.type]
+      // snapTypes: [point1.type, point2.type],
+      overrideValue: null, // Add overrideValue field
     };
 
     console.log(`--- Creating Snap Measurement ---`);
@@ -327,6 +328,7 @@ export default function TechnicalDrawingCanvas({
           textPosition: initialTextPosition,
           viewInstanceId: viewInstanceId, // Store the ID of the specific view instance
           geometry: scaledGeometry, // Store the SCALED geometry
+          overrideValue: null, // Add overrideValue field
         };
         console.log(`--- Added Measurement ---`);
         console.log(`  Path ID: ${uniquePathId}`);
@@ -340,6 +342,24 @@ export default function TechnicalDrawingCanvas({
       return newMeasurements;
     });
   }, [interactionMode, setActiveMeasurements, snapPoints, createMeasurementFromSnapPoints]); // Add snapPoints and createMeasurement function to dependencies
+
+  // --- Handler to update the override value for a measurement ---
+  const handleUpdateOverrideValue = useCallback((measurementId, newValue) => {
+    setActiveMeasurements(prev => {
+      if (!prev[measurementId]) {
+        console.warn(`[Canvas] Attempted to update override for non-existent measurement ID: ${measurementId}`);
+        return prev;
+      }
+      console.log(`[Canvas] Updating override value for ${measurementId} to: "${newValue}"`);
+      return {
+        ...prev,
+        [measurementId]: {
+          ...prev[measurementId],
+          overrideValue: newValue, // Update the override value
+        }
+      };
+    });
+  }, [setActiveMeasurements]); // Dependency on the state setter
 
   useEffect(() => {
     const updateSize = () => {
@@ -463,7 +483,7 @@ export default function TechnicalDrawingCanvas({
               onPathClick={handlePathClick} // Pass down path click handler
               // Pass down measurement-related props
               measurements={Object.values(activeMeasurements)} // Pass all active measurements
-              // onMeasurementUpdate={handleMeasurementUpdate} // REMOVED - Update is handled via hook callback
+              onUpdateOverrideValue={handleUpdateOverrideValue} // Pass down the override update handler
               // Removed onMeasurementDragStart
               zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay rendering
               snapPoints={snapPoints} // Pass down the array of snap points

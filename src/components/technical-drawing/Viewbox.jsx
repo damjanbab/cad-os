@@ -24,6 +24,7 @@ export default function Viewbox({
   zoomLevel,
   snapPoints, // Renamed prop
   onRemove, // Add prop for remove handler
+  onUpdateOverrideValue, // Add prop for override update handler
 }) {
   const { id: viewboxId, layout, titleBlock, items } = viewboxData; // Rename id to viewboxId for clarity
   const [gridRows, gridCols] = parseLayout(layout);
@@ -182,6 +183,7 @@ export default function Viewbox({
                   // Removed onMeasurementDragStart
                   zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay
                   snapPoints={snapPoints} // Pass snapPoints array down to SvgView
+                  onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
                 />
               ) : (
                 // If no item, display empty cell placeholder
