@@ -12,6 +12,37 @@ import cadWorker from "../worker.js?worker"; // Original worker for 3D Mesh
 import TechDrawWorker from "../technicalDrawing.worker.js?worker"; // New worker for Tech Drawings
 import { modelRegistry, createDefaultParams } from "../models";
 
+// --- Default PDF Export Settings (Derived from useTechnicalDrawingPdfExport.js constants) ---
+const DEFAULT_EXPORT_SETTINGS = {
+  paperSize: 'a4',
+  margin: 10, // Simplified margin
+  viewGap: 20,
+  minMargin: 25,
+  visibleStrokeColor: '#000000',
+  hiddenStrokeColor: '#777777',
+  visibleStrokeWidth: 0.5,
+  hiddenStrokeWidth: 0.35,
+  hiddenDashLength: 2,
+  hiddenDashGap: 1,
+  borderColor: '#000000',
+  borderLineWidth: 0.2,
+  measurementStrokeColor: '#222222',
+  measurementFillColor: '#222222',
+  measurementFontFamily: 'Arial, sans-serif',
+  measurementStrokeWidth: 0.08,
+  measurementFontSize: 3.5,
+  measurementArrowSize: 1.2,
+  measurementTextOffset: 1.2,
+  measurementExtensionGap: 0.8,
+  measurementExtensionOverhang: 1.2,
+  measurementInitialOffset: 10,
+  measurementStackingOffset: 7,
+  offsetX: 0,
+  offsetY: 0,
+};
+// --- End Default Settings ---
+
+
 // Create proxies for both workers
 const cad = wrap(new cadWorker());
 const techDrawWorker = wrap(new TechDrawWorker());
@@ -145,7 +176,8 @@ const requestHighDetailMesh = useCallback(async () => {
         drawnBy: 'CAD-OS',       // Corrected default drawer
         date: new Date().toLocaleDateString() // Current date
       },
-      items: [] // Array to hold views/elements
+      items: [], // Array to hold views/elements
+      exportSettings: JSON.parse(JSON.stringify(DEFAULT_EXPORT_SETTINGS)) // Add default export settings
     };
     console.log("[DEBUG] handleAddViewbox - Before setViewboxes. Current viewboxes:", viewboxes);
     setViewboxes(prev => {
@@ -191,6 +223,18 @@ const requestHighDetailMesh = useCallback(async () => {
     );
     console.log(`[INFO] Updated title block for Viewbox ${viewboxId}: Field=${fieldName}, Value=${value}`);
   }, []); // No dependencies needed as setViewboxes handles closure
+
+  // Handler for updating export settings fields
+  const handleViewboxSettingsChange = useCallback((viewboxId, settingKey, value) => {
+    setViewboxes(prevViewboxes =>
+      prevViewboxes.map(vb =>
+        vb.id === viewboxId
+          ? { ...vb, exportSettings: { ...vb.exportSettings, [settingKey]: value } }
+          : vb
+      )
+    );
+    // console.log(`[INFO] Updated export settings for Viewbox ${viewboxId}: Key=${settingKey}, Value=${value}`); // Optional detailed log
+  }, []); // No dependencies needed
 
   // Handler to remove a viewbox
   const handleRemoveViewbox = useCallback((viewboxIdToRemove) => {
@@ -769,6 +813,7 @@ return (
                 selectedTarget={selectedTarget} // Pass selection state
                 onCellSelection={handleCellSelection} // Pass cell selection handler
                 onTitleBlockChange={handleTitleBlockChange} // Pass title block update handler
+                onViewboxSettingsChange={handleViewboxSettingsChange} // Pass settings update handler
                 onRemoveViewbox={handleRemoveViewbox} // Pass remove handler
                 onSetupStandardViews={handleSetupStandardViews} // Pass the new handler
                 // Pass functions to update viewboxes later

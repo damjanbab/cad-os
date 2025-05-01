@@ -31,36 +31,36 @@ const MARGIN_OTHER = 10;
 const VIEW_TITLE_HEIGHT = 5; // Not currently used for viewbox titles, but kept for potential use
 const MAIN_TITLE_FONT_SIZE = 4; // Not currently used
 const VIEW_TITLE_FONT_SIZE = 3; // Not currently used
-const VIEW_GAP = 20; // Gap between grid cells for PDF (Changed from 5)
+// const VIEW_GAP = 20; // Gap between grid cells for PDF (Changed from 5) -> Now per-viewbox setting
 const PDF_SCALE = 1; // Default scale factor (can be overridden)
 
-// --- PDF Styling Constants (mm unless specified) ---
-const PDF_VISIBLE_STROKE_COLOR = '#000000';
-const PDF_HIDDEN_STROKE_COLOR = '#777777';
-const PDF_MEASUREMENT_STROKE_COLOR = '#222222';
-const PDF_MEASUREMENT_FILL_COLOR = '#222222';
-const PDF_MEASUREMENT_FONT_FAMILY = 'Arial, sans-serif';
-const PDF_TITLE_BLOCK_FONT_FAMILY = 'helvetica';
-const PDF_TITLE_BLOCK_FONT_SIZE_LABEL = 11; // pt
-const PDF_TITLE_BLOCK_FONT_SIZE_VALUE = 10; // pt
-const PDF_TITLE_BLOCK_LINE_WEIGHT = 0.15; // mm
-const PDF_BORDER_LINE_WEIGHT = 0.2; // mm
+// --- PDF Styling Constants (mm unless specified) - These become DEFAULTS ---
+const DEFAULT_PDF_VISIBLE_STROKE_COLOR = '#000000';
+const DEFAULT_PDF_HIDDEN_STROKE_COLOR = '#777777';
+const DEFAULT_PDF_MEASUREMENT_STROKE_COLOR = '#222222';
+const DEFAULT_PDF_MEASUREMENT_FILL_COLOR = '#222222';
+const DEFAULT_PDF_MEASUREMENT_FONT_FAMILY = 'Arial, sans-serif';
+const DEFAULT_PDF_TITLE_BLOCK_FONT_FAMILY = 'helvetica';
+const DEFAULT_PDF_TITLE_BLOCK_FONT_SIZE_LABEL = 11; // pt
+const DEFAULT_PDF_TITLE_BLOCK_FONT_SIZE_VALUE = 10; // pt
+const DEFAULT_PDF_TITLE_BLOCK_LINE_WEIGHT = 0.15; // mm
+const DEFAULT_PDF_BORDER_LINE_WEIGHT = 0.2; // mm
 
-// Base values (will be scaled)
-const PDF_BASE_VISIBLE_STROKE_WIDTH = 0.5; // mm
-const PDF_BASE_HIDDEN_STROKE_WIDTH = 0.35;  // mm
-const PDF_BASE_MEASUREMENT_STROKE_WIDTH = 0.08; // mm
-const PDF_BASE_MEASUREMENT_FONT_SIZE = 3.5; // mm
-const PDF_BASE_MEASUREMENT_ARROW_SIZE = 1.2; // mm
-const PDF_BASE_MEASUREMENT_TEXT_OFFSET = 1.2; // mm
-const PDF_BASE_MEASUREMENT_EXTENSION_GAP = 0.8; // mm
-const PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG = 1.2; // mm
-const PDF_MEASUREMENT_INITIAL_OFFSET = 10; // mm - Initial offset from geometry edge (beyond gap)
-const PDF_MEASUREMENT_STACKING_OFFSET = 7; // mm - Offset between stacked measurements
-const PDF_HIDDEN_DASH_LENGTH = 2; // mm (base)
-const PDF_HIDDEN_DASH_GAP = 1; // mm (base)
-const MIN_MARGIN = 25; // Minimum margin from printable area edges (mm)
-const FIXED_GAP = 20; // Fixed visual gap between views on the PDF (mm)
+// Base values (will be scaled) - These become DEFAULTS
+const DEFAULT_PDF_BASE_VISIBLE_STROKE_WIDTH = 0.5; // mm
+const DEFAULT_PDF_BASE_HIDDEN_STROKE_WIDTH = 0.35;  // mm
+const DEFAULT_PDF_BASE_MEASUREMENT_STROKE_WIDTH = 0.08; // mm
+const DEFAULT_PDF_BASE_MEASUREMENT_FONT_SIZE = 3.5; // mm
+const DEFAULT_PDF_BASE_MEASUREMENT_ARROW_SIZE = 1.2; // mm
+const DEFAULT_PDF_BASE_MEASUREMENT_TEXT_OFFSET = 1.2; // mm
+const DEFAULT_PDF_BASE_MEASUREMENT_EXTENSION_GAP = 0.8; // mm
+const DEFAULT_PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG = 1.2; // mm
+const DEFAULT_PDF_MEASUREMENT_INITIAL_OFFSET = 10; // mm - Initial offset from geometry edge (beyond gap)
+const DEFAULT_PDF_MEASUREMENT_STACKING_OFFSET = 7; // mm - Offset between stacked measurements
+const DEFAULT_PDF_HIDDEN_DASH_LENGTH = 2; // mm (base)
+const DEFAULT_PDF_HIDDEN_DASH_GAP = 1; // mm (base)
+const DEFAULT_MIN_MARGIN = 25; // Minimum margin from printable area edges (mm)
+const DEFAULT_FIXED_GAP = 20; // Fixed visual gap between views on the PDF (mm)
 
 // --- Helper Function to Determine Optimal Page Layout ---
 const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAULT_PAPER_SIZE) => {
@@ -89,27 +89,27 @@ const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAU
   }
 };
 
-// Helper function to scale coordinates
 const scaleCoord = (coord, scale) => [coord[0] * scale, coord[1] * scale];
 
 // --- Helper Function for Measurement SVG Rendering (for PDF) ---
 // Note: geometry coordinates (endpoints, center) are UNscaled.
 // The 'scale' parameter (viewScale) is applied internally here.
 // targetDimensionLinePosition is the calculated absolute position (in mm) for the dimension line.
-const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDimensionLinePosition = null) => {
+// Added 'settings' parameter to get styling values
+const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDimensionLinePosition = null, settings = {}) => {
   const { pathId, type } = measurementData; // Removed unscaledTextPos
   const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
-  // Style values are now fixed mm values for PDF, not scaled inversely
-  const strokeWidth = PDF_BASE_MEASUREMENT_STROKE_WIDTH; // Fixed mm
-  const fontSize = PDF_BASE_MEASUREMENT_FONT_SIZE; // Fixed mm
-  const arrowSize = PDF_BASE_MEASUREMENT_ARROW_SIZE; // Fixed mm
-  const textOffset = PDF_BASE_MEASUREMENT_TEXT_OFFSET; // Fixed mm
-  const extensionGap = PDF_BASE_MEASUREMENT_EXTENSION_GAP; // Fixed mm
-  const extensionOverhang = PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG; // Fixed mm
-  const strokeColor = PDF_MEASUREMENT_STROKE_COLOR; // Fixed color
-  const fillColor = PDF_MEASUREMENT_FILL_COLOR; // Fixed color
-  const fontFamily = PDF_MEASUREMENT_FONT_FAMILY; // Fixed font
+  // Get style values from settings, falling back to defaults
+  const strokeWidth = settings.measurementStrokeWidth ?? DEFAULT_PDF_BASE_MEASUREMENT_STROKE_WIDTH;
+  const fontSize = settings.measurementFontSize ?? DEFAULT_PDF_BASE_MEASUREMENT_FONT_SIZE;
+  const arrowSize = settings.measurementArrowSize ?? DEFAULT_PDF_BASE_MEASUREMENT_ARROW_SIZE;
+  const textOffset = settings.measurementTextOffset ?? DEFAULT_PDF_BASE_MEASUREMENT_TEXT_OFFSET;
+  const extensionGap = settings.measurementExtensionGap ?? DEFAULT_PDF_BASE_MEASUREMENT_EXTENSION_GAP;
+  const extensionOverhang = settings.measurementExtensionOverhang ?? DEFAULT_PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG;
+  const strokeColor = settings.measurementStrokeColor ?? DEFAULT_PDF_MEASUREMENT_STROKE_COLOR;
+  const fillColor = settings.measurementFillColor ?? DEFAULT_PDF_MEASUREMENT_FILL_COLOR;
+  const fontFamily = settings.measurementFontFamily ?? DEFAULT_PDF_MEASUREMENT_FONT_FAMILY;
   const createSvgElement = (tag, attributes) => {
     const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
     for (const key in attributes) { el.setAttribute(key, attributes[key]); }
@@ -284,8 +284,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
   // --- PDF Export Logic ---
   const exportPdf = useCallback(async () => {
     console.log(`${LOG_PREFIX} Starting PDF Export...`);
-    console.log(`${LOG_PREFIX} Input Viewboxes:`, viewboxes);
-    console.log(`${LOG_PREFIX} Input Measurements:`, activeMeasurements);
+    // console.log(`${LOG_PREFIX} Input Viewboxes:`, viewboxes); // Log might be too verbose now
+    // console.log(`${LOG_PREFIX} Input Measurements:`, activeMeasurements);
 
     if (!viewboxes || viewboxes.length === 0) {
       console.error(`${LOG_PREFIX} No viewboxes available for PDF export.`);
@@ -300,7 +300,9 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
     try {
       // --- Loop through each Viewbox ---
       for (const [index, viewbox] of viewboxes.entries()) {
-        console.log(`${LOG_PREFIX} Processing Viewbox ${index + 1}/${viewboxes.length}: ID=${viewbox.id}, Layout=${viewbox.layout}`);
+        // Get settings for this viewbox, providing empty object as fallback
+        const settings = viewbox.exportSettings || {};
+        console.log(`${LOG_PREFIX} Processing Viewbox ${index + 1}/${viewboxes.length}: ID=${viewbox.id}, Layout=${viewbox.layout}, Settings:`, settings);
 
         const validItems = viewbox.items.filter(item => item && item.svgData && item.svgData.viewBox);
         if (validItems.length === 0) {
@@ -351,15 +353,18 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
         }
 
         // --- 2. Determine Page Layout ---
-        // Use a rough estimate for page layout (views + estimated gaps) - actual fitting happens later
-        const estimatedGapWidth = (gridCols - 1) * FIXED_GAP;
-        const estimatedGapHeight = (gridRows - 1) * FIXED_GAP;
+        // Use settings for paper size and gap
+        const paperSizeKey = settings.paperSize || DEFAULT_PAPER_SIZE;
+        const fixedGap = settings.viewGap ?? DEFAULT_FIXED_GAP;
+        const estimatedGapWidth = (gridCols - 1) * fixedGap;
+        const estimatedGapHeight = (gridRows - 1) * fixedGap;
         const estimatedTotalWidth = totalUnscaledViewsWidth + estimatedGapWidth;
         const estimatedTotalHeight = totalUnscaledViewsHeight + estimatedGapHeight;
-        const pageLayout = getStandardPageLayout(estimatedTotalWidth, estimatedTotalHeight);
+        // Pass paperSizeKey to layout function
+        const pageLayout = getStandardPageLayout(estimatedTotalWidth, estimatedTotalHeight, paperSizeKey);
         const printableDimensions = { width: pageLayout.printableWidth, height: pageLayout.printableHeight };
         const printableAreaPos = [pageLayout.printableX, pageLayout.printableY];
-        console.log(`${LOG_PREFIX}   Page Layout: size=${DEFAULT_PAPER_SIZE}, orientation=${pageLayout.orientation}, W=${pageLayout.width}mm, H=${pageLayout.height}mm`);
+        console.log(`${LOG_PREFIX}   Page Layout: size=${paperSizeKey}, orientation=${pageLayout.orientation}, W=${pageLayout.width}mm, H=${pageLayout.height}mm`);
         console.log(`${LOG_PREFIX}   Printable Area: X=${printableAreaPos[0].toFixed(2)}, Y=${printableAreaPos[1].toFixed(2)}, W=${printableDimensions.width.toFixed(2)}, H=${printableDimensions.height.toFixed(2)}`);
 
         // --- 3. Calculate Available Space, View Scale, and Final Layout ---
@@ -370,36 +375,41 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
         let finalTotalLayoutWidth, finalTotalLayoutHeight;
         let originX, originY; // Top-left corner of the entire layout block
 
-        const totalFixedGapWidth = Math.max(0, gridCols - 1) * FIXED_GAP;
-        const totalFixedGapHeight = Math.max(0, gridRows - 1) * FIXED_GAP;
-        console.log(`${LOG_PREFIX}   Total Fixed Gaps: W=${totalFixedGapWidth.toFixed(2)}, H=${totalFixedGapHeight.toFixed(2)}`);
+        // Use settings for gap and minMargin
+        const currentFixedGap = settings.viewGap ?? DEFAULT_FIXED_GAP;
+        const currentMinMargin = settings.minMargin ?? DEFAULT_MIN_MARGIN;
+        const totalFixedGapWidth = Math.max(0, gridCols - 1) * currentFixedGap;
+        const totalFixedGapHeight = Math.max(0, gridRows - 1) * currentFixedGap;
+        console.log(`${LOG_PREFIX}   Total Fixed Gaps (using ${currentFixedGap}mm): W=${totalFixedGapWidth.toFixed(2)}, H=${totalFixedGapHeight.toFixed(2)}`);
 
         if (gridRows === 1) {
           console.log(`${LOG_PREFIX}   Calculating layout for single row (gridRows === 1)...`);
-          const titleBlockLayout = calculateTitleBlockLayout( // Need actual title block position
+          // Pass paperSizeKey to title block layout
+          const titleBlockLayout = calculateTitleBlockLayout(
             pageLayout.width, pageLayout.height,
             pageLayout.marginLeft, pageLayout.marginTop, pageLayout.marginRight, pageLayout.marginBottom,
-            pageLayout.orientation, PAPER_SIZES, DEFAULT_PAPER_SIZE
+            pageLayout.orientation, PAPER_SIZES, paperSizeKey
           );
 
           if (titleBlockLayout) {
-            availableWidth = printableDimensions.width - MIN_MARGIN * 2;
-            // Height available between top margin and margin above title block
-            availableHeight = titleBlockLayout.outerBox.y - printableAreaPos[1] - MIN_MARGIN * 2;
-            console.log(`${LOG_PREFIX}     Available Space (1 row): W=${availableWidth.toFixed(2)}, H=${availableHeight.toFixed(2)} (considering ${MIN_MARGIN}mm margins and title block at Y=${titleBlockLayout.outerBox.y.toFixed(2)})`);
+            // Use currentMinMargin
+            availableWidth = printableDimensions.width - currentMinMargin * 2;
+            availableHeight = titleBlockLayout.outerBox.y - printableAreaPos[1] - currentMinMargin * 2;
+            console.log(`${LOG_PREFIX}     Available Space (1 row): W=${availableWidth.toFixed(2)}, H=${availableHeight.toFixed(2)} (considering ${currentMinMargin}mm margins and title block at Y=${titleBlockLayout.outerBox.y.toFixed(2)})`);
           } else {
             console.warn(`${LOG_PREFIX}     Could not calculate title block layout for 1 row. Using full printable height minus margins.`);
-            availableWidth = printableDimensions.width - MIN_MARGIN * 2;
-            availableHeight = printableDimensions.height - MIN_MARGIN * 2;
+            availableWidth = printableDimensions.width - currentMinMargin * 2;
+            availableHeight = printableDimensions.height - currentMinMargin * 2;
           }
         } else {
           console.log(`${LOG_PREFIX}   Calculating general layout (gridRows !== 1)...`);
-          availableWidth = printableDimensions.width - MIN_MARGIN * 2;
-          availableHeight = printableDimensions.height - MIN_MARGIN * 2;
-          console.log(`${LOG_PREFIX}     Available Space (General): W=${availableWidth.toFixed(2)}, H=${availableHeight.toFixed(2)} (considering ${MIN_MARGIN}mm margins)`);
+          // Use currentMinMargin
+          availableWidth = printableDimensions.width - currentMinMargin * 2;
+          availableHeight = printableDimensions.height - currentMinMargin * 2;
+          console.log(`${LOG_PREFIX}     Available Space (General): W=${availableWidth.toFixed(2)}, H=${availableHeight.toFixed(2)} (considering ${currentMinMargin}mm margins)`);
         }
 
-        // Calculate space purely for views
+        // Calculate space purely for views (using totalFixedGapWidth/Height calculated with currentFixedGap)
         spaceForViewsWidth = Math.max(0, availableWidth - totalFixedGapWidth);
         spaceForViewsHeight = Math.max(0, availableHeight - totalFixedGapHeight);
         console.log(`${LOG_PREFIX}   Space For Scaled Views: W=${spaceForViewsWidth.toFixed(2)}, H=${spaceForViewsHeight.toFixed(2)}`);
@@ -429,13 +439,16 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
         console.log(`${LOG_PREFIX}   Final Total Layout Size (Views + Gaps): W=${finalTotalLayoutWidth.toFixed(2)}, H=${finalTotalLayoutHeight.toFixed(2)}`);
 
         // Calculate translation to center the final layout block within the available space
-        const offsetX = (availableWidth - finalTotalLayoutWidth) / 2;
-        const offsetY = (availableHeight - finalTotalLayoutHeight) / 2;
-        originX = printableAreaPos[0] + MIN_MARGIN + offsetX;
-        originY = printableAreaPos[1] + MIN_MARGIN + offsetY; // This origin is relative to the available space top-left
+        const centeringOffsetX = (availableWidth - finalTotalLayoutWidth) / 2;
+        const centeringOffsetY = (availableHeight - finalTotalLayoutHeight) / 2;
+        // Apply centering offset AND user-defined offset from settings
+        const userOffsetX = settings.offsetX ?? 0;
+        const userOffsetY = settings.offsetY ?? 0;
+        originX = printableAreaPos[0] + currentMinMargin + centeringOffsetX + userOffsetX;
+        originY = printableAreaPos[1] + currentMinMargin + centeringOffsetY + userOffsetY; // This origin is relative to the available space top-left
 
         // Adjust originY if it was calculated relative to title block (1-row case)
-        // Note: The availableHeight calculation for gridRows=1 already accounts for the title block position relative to printableAreaPos[1] and MIN_MARGINs.
+        // Note: The availableHeight calculation for gridRows=1 already accounts for the title block position relative to printableAreaPos[1] and currentMinMargins.
         // So, the originY calculation using that availableHeight and its corresponding offsetY should place it correctly.
 
         console.log(`${LOG_PREFIX}   Final Layout Origin (Top-Left): X=${originX.toFixed(2)}, Y=${originY.toFixed(2)}`);
@@ -443,10 +456,12 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
 
         // --- 4. Initialize PDF or Add Page ---
         if (isFirstPage) {
-          pdf = new jsPDF({ orientation: pageLayout.orientation, unit: 'mm', format: DEFAULT_PAPER_SIZE });
+          // Use paperSizeKey from settings
+          pdf = new jsPDF({ orientation: pageLayout.orientation, unit: 'mm', format: paperSizeKey });
           isFirstPage = false;
         } else {
-          pdf.addPage(DEFAULT_PAPER_SIZE, pageLayout.orientation);
+          // Use paperSizeKey from settings
+          pdf.addPage(paperSizeKey, pageLayout.orientation);
         }
         const currentPageNum = pdf.internal.getNumberOfPages();
         pdf.setPage(currentPageNum);
@@ -462,8 +477,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
 
         // --- 6. Render Items with Manual Positioning and Internal Scaling ---
         console.log(`${LOG_PREFIX}   Starting item rendering loop...`);
-        let currentX = originX;
-        let currentY = originY;
+        let currentX = originX; // Already includes user offset
+        let currentY = originY; // Already includes user offset
         const scaledColWidths = colWidths.map(w => w * viewScale);
         const scaledRowHeights = rowHeights.map(h => h * viewScale);
 
@@ -485,11 +500,11 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
               const alignOffsetX = (cellWidth - itemScaledWidth) / 2;
               const alignOffsetY = (cellHeight - itemScaledHeight) / 2;
 
-              // Item's top-left position on the page
+              // Item's top-left position on the page (currentX/Y already include offsets)
               const itemPosX = currentX + alignOffsetX;
               const itemPosY = currentY + alignOffsetY;
 
-              console.log(`${LOG_PREFIX}     Rendering Item ${item.id} in Cell[${rowIndex},${colIndex}] at page pos [${itemPosX.toFixed(2)}, ${itemPosY.toFixed(2)}]`);
+              console.log(`${LOG_PREFIX}     Rendering Item ${item.id} in Cell[${rowIndex},${colIndex}] at page pos [${itemPosX.toFixed(2)}, ${itemPosY.toFixed(2)}] (Origin was [${originX.toFixed(2)}, ${originY.toFixed(2)}])`);
 
               // Create item group: Translate item's internal origin (itemVB.x, itemVB.y) *after scaling* to its calculated page position (itemPosX, itemPosY)
               const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -527,16 +542,18 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                     return; // Skip this path if data is invalid
                 }
 
-
-                // Use BASE stroke widths and vector-effect for constant width
-                const effectiveVisibleStrokeWidth = PDF_BASE_VISIBLE_STROKE_WIDTH;
-                const effectiveHiddenStrokeWidth = PDF_BASE_HIDDEN_STROKE_WIDTH;
-                const hiddenDashArray = `${PDF_HIDDEN_DASH_LENGTH},${PDF_HIDDEN_DASH_GAP}`;
+                // Use stroke widths, colors, and dash settings from viewbox settings
+                const visibleStrokeWidth = settings.visibleStrokeWidth ?? DEFAULT_PDF_BASE_VISIBLE_STROKE_WIDTH;
+                const hiddenStrokeWidth = settings.hiddenStrokeWidth ?? DEFAULT_PDF_BASE_HIDDEN_STROKE_WIDTH;
+                const visibleColor = settings.visibleStrokeColor ?? DEFAULT_PDF_VISIBLE_STROKE_COLOR;
+                const hiddenColor = settings.hiddenStrokeColor ?? DEFAULT_PDF_HIDDEN_STROKE_COLOR;
+                const dashLength = settings.hiddenDashLength ?? DEFAULT_PDF_HIDDEN_DASH_LENGTH;
+                const dashGap = settings.hiddenDashGap ?? DEFAULT_PDF_HIDDEN_DASH_GAP;
+                const hiddenDashArray = `${dashLength},${dashGap}`;
 
                 const isHidden = path.type === 'hidden' || path.id?.includes('_hidden');
-                pathEl.setAttribute('stroke', isHidden ? PDF_HIDDEN_STROKE_COLOR : PDF_VISIBLE_STROKE_COLOR);
-                // Set stroke width to BASE value
-                pathEl.setAttribute('stroke-width', isHidden ? effectiveHiddenStrokeWidth : effectiveVisibleStrokeWidth);
+                pathEl.setAttribute('stroke', isHidden ? hiddenColor : visibleColor);
+                pathEl.setAttribute('stroke-width', isHidden ? hiddenStrokeWidth : visibleStrokeWidth);
                 pathEl.setAttribute('stroke-linecap', 'round'); // Keep round style
                 pathEl.setAttribute('stroke-linejoin', 'round'); // Keep round style
                 if (isHidden) {
@@ -573,8 +590,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                   maxX: bbox.maxX * viewScale,
                   maxY: bbox.maxY * viewScale,
                 };
-                console.log(`${LOG_PREFIX}         Item BBox (unscaled):`, bbox);
-                console.log(`${LOG_PREFIX}         Item BBox (scaled, mm):`, scaledBBox);
+                // console.log(`${LOG_PREFIX}         Item BBox (unscaled):`, bbox); // Less verbose logging
+                // console.log(`${LOG_PREFIX}         Item BBox (scaled, mm):`, scaledBBox);
 
                 // Group measurements by side and orientation
                 const groups = {
@@ -624,36 +641,41 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                 // Calculate target positions and render
                 const measurementTargetPositions = {}; // Store { [pathId]: { x, y } }
 
+                // Use measurement offset settings
+                const measExtGap = settings.measurementExtensionGap ?? DEFAULT_PDF_BASE_MEASUREMENT_EXTENSION_GAP;
+                const measInitialOffset = settings.measurementInitialOffset ?? DEFAULT_PDF_MEASUREMENT_INITIAL_OFFSET;
+                const measStackingOffset = settings.measurementStackingOffset ?? DEFAULT_PDF_MEASUREMENT_STACKING_OFFSET;
+
                 // Horizontal Top (Offset upwards from maxY)
-                let currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + PDF_MEASUREMENT_INITIAL_OFFSET; // Use constant
+                let currentOffset = measExtGap + measInitialOffset;
                 groups.horizontalTop.forEach(m => {
                   const targetY = scaledBBox.maxY + currentOffset;
                   measurementTargetPositions[m.pathId] = { x: null, y: targetY };
-                  currentOffset += PDF_MEASUREMENT_STACKING_OFFSET; // Use constant
+                  currentOffset += measStackingOffset;
                 });
 
                 // Horizontal Bottom (Offset downwards from minY)
-                currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + PDF_MEASUREMENT_INITIAL_OFFSET; // Use constant
+                currentOffset = measExtGap + measInitialOffset;
                 groups.horizontalBottom.forEach(m => {
                   const targetY = scaledBBox.minY - currentOffset;
                   measurementTargetPositions[m.pathId] = { x: null, y: targetY };
-                  currentOffset += PDF_MEASUREMENT_STACKING_OFFSET; // Use constant
+                  currentOffset += measStackingOffset;
                 });
 
                 // Vertical Left (Offset leftwards from minX)
-                currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + PDF_MEASUREMENT_INITIAL_OFFSET; // Use constant
+                currentOffset = measExtGap + measInitialOffset;
                 groups.verticalLeft.forEach(m => {
                   const targetX = scaledBBox.minX - currentOffset;
                   measurementTargetPositions[m.pathId] = { x: targetX, y: null };
-                  currentOffset += PDF_MEASUREMENT_STACKING_OFFSET; // Use constant
+                  currentOffset += measStackingOffset;
                 });
 
                 // Vertical Right (Offset rightwards from maxX)
-                currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + PDF_MEASUREMENT_INITIAL_OFFSET; // Use constant
+                currentOffset = measExtGap + measInitialOffset;
                 groups.verticalRight.forEach(m => {
                   const targetX = scaledBBox.maxX + currentOffset;
                   measurementTargetPositions[m.pathId] = { x: targetX, y: null };
-                  currentOffset += PDF_MEASUREMENT_STACKING_OFFSET; // Use constant
+                  currentOffset += measStackingOffset;
                 });
 
                 // Render all measurements for this item using calculated positions
@@ -662,8 +684,9 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                   const targetPosition = measurementTargetPositions[measurement.pathId] || null; // Get calculated position (null for circles)
                   // Circles don't need a target position from the layout logic
                   if (measurement.type === 'circle' || targetPosition) {
-                     console.log(`${LOG_PREFIX}           Rendering ${measurement.pathId} (Type: ${measurement.type}) Target:`, targetPosition);
-                     const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale, targetPosition); // Pass target position
+                     // console.log(`${LOG_PREFIX}           Rendering ${measurement.pathId} (Type: ${measurement.type}) Target:`, targetPosition); // Less verbose
+                     // Pass settings to measurement renderer
+                     const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale, targetPosition, settings);
                      if (measurementSvgGroup) {
                        itemGroup.appendChild(measurementSvgGroup); // Append measurement group to the item's group
                      } else {
@@ -680,38 +703,39 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
               }
             } // End if(storedItemData)
 
-            // Advance currentX for the next item in the row
-            currentX += scaledColWidths[colIndex] + (colIndex < gridCols - 1 ? FIXED_GAP : 0);
+            // Advance currentX for the next item in the row (use currentFixedGap)
+            currentX += scaledColWidths[colIndex] + (colIndex < gridCols - 1 ? currentFixedGap : 0);
 
           } // End loop columns
-          // Advance currentY for the next row
-          currentY += scaledRowHeights[rowIndex] + (rowIndex < gridRows - 1 ? FIXED_GAP : 0);
+          // Advance currentY for the next row (use currentFixedGap)
+          currentY += scaledRowHeights[rowIndex] + (rowIndex < gridRows - 1 ? currentFixedGap : 0);
         } // End loop rows
 
 
-        // --- 7. Add Border around the printable area --- (This section was correct)
-        // --- 8. Add Border around the printable area --- (Keep this)
+        // --- 7. Add Border around the printable area ---
+        // --- 8. Add Border around the printable area --- (Use settings for color/width)
         const borderRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         borderRect.setAttribute('x', printableAreaPos[0]);
         borderRect.setAttribute('y', printableAreaPos[1]);
         borderRect.setAttribute('width', printableDimensions.width);
         borderRect.setAttribute('height', printableDimensions.height);
         borderRect.setAttribute('fill', 'none');
-        borderRect.setAttribute('stroke', PDF_VISIBLE_STROKE_COLOR); // Use constant
-        borderRect.setAttribute('stroke-width', PDF_BORDER_LINE_WEIGHT); // Use constant
+        borderRect.setAttribute('stroke', settings.borderColor ?? DEFAULT_PDF_VISIBLE_STROKE_COLOR); // Use setting or default
+        borderRect.setAttribute('stroke-width', settings.borderLineWidth ?? DEFAULT_PDF_BORDER_LINE_WEIGHT); // Use setting or default
         svgPageGroup.appendChild(borderRect); // Add border to the main page group
 
-        // --- 9. Add SVG element to the current PDF page --- (Keep this)
+        // --- 9. Add SVG element to the current PDF page ---
         console.log(`${LOG_PREFIX}     Adding SVG element for page ${currentPageNum} (Viewbox ${viewbox.id}) to PDF...`);
         await pdf.svg(tempSvg, { x: 0, y: 0, width: pageLayout.width, height: pageLayout.height });
         console.log(`${LOG_PREFIX}     Finished adding SVG for page ${currentPageNum}`);
 
         // --- 10. Draw Title Block --- (Update scale formatting)
         console.log(`${LOG_PREFIX}       Calculating and drawing title block for viewbox ${viewbox.id}...`);
+        // Pass paperSizeKey to title block layout calculation
         const titleBlockLayout = calculateTitleBlockLayout(
             pageLayout.width, pageLayout.height,
             pageLayout.marginLeft, pageLayout.marginTop, pageLayout.marginRight, pageLayout.marginBottom,
-            pageLayout.orientation, PAPER_SIZES, DEFAULT_PAPER_SIZE
+            pageLayout.orientation, PAPER_SIZES, paperSizeKey
         );
 
         // Calculate the true scale ratio: Drawing Size (mm) / Real Size (mm)
@@ -744,7 +768,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
             ...viewbox.titleBlock, // Existing data
             scale: scaleString // Use the correctly calculated and formatted scale string
         };
-        drawTitleBlock(pdf, titleBlockLayout, titleBlockData);
+        // Pass settings to title block drawing function (for potential future use, e.g., font overrides)
+        drawTitleBlock(pdf, titleBlockLayout, titleBlockData, settings);
 
       } // End for...of viewboxes loop
 
@@ -770,10 +795,12 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
 
 
 // --- Helper Function to Calculate Title Block Geometry ---
-function calculateTitleBlockLayout(pageWidth, pageHeight, marginLeft, marginTop, marginRight, marginBottom, orientation, paperSizes, paperSizeKey = DEFAULT_PAPER_SIZE) {
-  // (Keep existing function)
+// Added paperSizeKey parameter
+function calculateTitleBlockLayout(pageWidth, pageHeight, marginLeft, marginTop, marginRight, marginBottom, orientation, paperSizes, paperSizeKey) {
   const logPrefixTB = `${LOG_PREFIX} TitleBlockLayout`;
-  const currentPaper = paperSizes[paperSizeKey] || paperSizes.a4;
+  // Use provided paperSizeKey or default
+  const effectivePaperSizeKey = paperSizeKey || DEFAULT_PAPER_SIZE;
+  const currentPaper = paperSizes[effectivePaperSizeKey] || paperSizes.a4;
   const portraitWidth = Math.min(currentPaper.width, currentPaper.height);
   const portraitHeight = Math.max(currentPaper.width, currentPaper.height);
   const pMarginLeft = MARGIN_LEFT_PORTRAIT;
@@ -811,18 +838,26 @@ function calculateTitleBlockLayout(pageWidth, pageHeight, marginLeft, marginTop,
 
 
 // --- Helper Function to Draw Title Block using jsPDF ---
-function drawTitleBlock(pdf, titleBlockLayout, data = {}) {
-    // (Keep existing function)
+// Added settings parameter
+function drawTitleBlock(pdf, titleBlockLayout, data = {}, settings = {}) {
     if (!pdf || !titleBlockLayout) { console.warn(`${LOG_PREFIX} DrawTitleBlock: Missing pdf instance or layout data.`); return; }
-    const logPrefixTB = `${LOG_PREFIX} DrawTitleBlock`; console.log(`${logPrefixTB} Drawing title block... Data:`, data);
+    const logPrefixTB = `${LOG_PREFIX} DrawTitleBlock`; console.log(`${logPrefixTB} Drawing title block... Data:`, data, "Settings:", settings);
     const { outerBox, cells } = titleBlockLayout; // Font size handled below
+
+    // Get styles from settings or defaults
+    const titleBlockLineWeight = settings.titleBlockLineWeight ?? DEFAULT_PDF_TITLE_BLOCK_LINE_WEIGHT; // Example if added later
+    const titleBlockFontFamily = settings.titleBlockFontFamily ?? DEFAULT_PDF_TITLE_BLOCK_FONT_FAMILY;
+    const titleBlockFontSizeLabel = settings.titleBlockFontSizeLabel ?? DEFAULT_PDF_TITLE_BLOCK_FONT_SIZE_LABEL;
+    const titleBlockFontSizeValue = settings.titleBlockFontSizeValue ?? DEFAULT_PDF_TITLE_BLOCK_FONT_SIZE_VALUE;
+
     const cellData = [
         [ { label: "Project:", value: data.project || "CAD-OS Demo" }, { label: "Part Name:", value: data.partName || "N/A" } ],
         [ { label: "Scale:", value: data.scale || "NTS" },        { label: "Material:", value: data.material || "Steel" } ], // Default scale NTS
         [ { label: "Drawn By:", value: data.drawnBy || "CAD-OS" },  { label: "Date:", value: data.date || new Date().toLocaleDateString() } ] // Changed default Drawn By
     ];
     pdf.saveGraphicsState();
-    pdf.setLineWidth(PDF_TITLE_BLOCK_LINE_WEIGHT); // Use constant
+    // Use line weight from settings/default (if added to settings later)
+    pdf.setLineWidth(DEFAULT_PDF_TITLE_BLOCK_LINE_WEIGHT); // Using default for now
     pdf.setDrawColor(0);
     pdf.setTextColor(0);
 
@@ -849,17 +884,18 @@ function drawTitleBlock(pdf, titleBlockLayout, data = {}) {
                 const labelText = content.label || '';
                 const valueText = content.value || '';
                 // Adjust Y position slightly for better vertical centering within the cell height
-                const labelY = cell.textY - (PDF_TITLE_BLOCK_FONT_SIZE_LABEL * 0.1); // Adjust baseline slightly up
-                const valueY = cell.textY + (PDF_TITLE_BLOCK_FONT_SIZE_VALUE * 0.2); // Adjust baseline slightly down
+                // Use font sizes from settings/defaults
+                const labelY = cell.textY - (titleBlockFontSizeLabel * 0.1); // Adjust baseline slightly up
+                const valueY = cell.textY + (titleBlockFontSizeValue * 0.2); // Adjust baseline slightly down
 
                 // Draw Label
-                pdf.setFont(PDF_TITLE_BLOCK_FONT_FAMILY, 'bold');
-                pdf.setFontSize(PDF_TITLE_BLOCK_FONT_SIZE_LABEL); // Use constant (pt)
+                pdf.setFont(titleBlockFontFamily, 'bold');
+                pdf.setFontSize(titleBlockFontSizeLabel); // Use setting/default (pt)
                 pdf.text(labelText, cell.textX, labelY, { align: 'left', baseline: 'middle', maxWidth: cell.maxWidth });
 
                 // Draw Value
-                pdf.setFont(PDF_TITLE_BLOCK_FONT_FAMILY, 'normal');
-                pdf.setFontSize(PDF_TITLE_BLOCK_FONT_SIZE_VALUE); // Use constant (pt)
+                pdf.setFont(titleBlockFontFamily, 'normal');
+                pdf.setFontSize(titleBlockFontSizeValue); // Use setting/default (pt)
                 pdf.text(valueText, cell.textX, valueY, { align: 'left', baseline: 'middle', maxWidth: cell.maxWidth });
             } else {
                 console.warn(`${logPrefixTB} Missing data for cell [${r}][${c}]`);

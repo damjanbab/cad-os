@@ -32,6 +32,8 @@ export default function TechnicalDrawingCanvas({
   onCellSelection,
   // Title block editing prop
   onTitleBlockChange,
+  // Settings update prop
+  onViewboxSettingsChange,
   // Viewbox removal prop
   onRemoveViewbox,
   // Standard views setup prop
@@ -673,6 +675,9 @@ export default function TechnicalDrawingCanvas({
               zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay rendering
               snapPoints={snapPoints} // Pass down the array of snap points
               onRemove={onRemoveViewbox} // Pass down the remove handler
+              // Pass down export settings and handler
+              exportSettings={vb.exportSettings}
+              onSettingsChange={onViewboxSettingsChange}
             />
           ))
         )}

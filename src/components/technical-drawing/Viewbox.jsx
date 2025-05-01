@@ -25,6 +25,9 @@ function ViewboxComponent({
   snapPoints, // Renamed prop
   onRemove, // Add prop for remove handler
   onUpdateOverrideValue, // Add prop for override update handler
+  // Export settings props
+  exportSettings,
+  onSettingsChange,
 }) {
   const { id: viewboxId, layout, titleBlock, items } = viewboxData; // Rename id to viewboxId for clarity
   const [gridRows, gridCols] = parseLayout(layout);
@@ -39,21 +42,61 @@ function ViewboxComponent({
     }
   };
 
-  // Basic styling for the viewbox container
-  const viewboxStyle = {
+  // --- New Styles for Layout with Settings Panel ---
+  const mainViewboxStyle = {
+    display: 'flex', // Use flexbox to arrange content and settings side-by-side
     border: '1px solid #ccc',
     backgroundColor: 'white',
     padding: '10px',
-    marginBottom: '20px', // Add some space between viewboxes
-    minWidth: '300px', // Ensure a minimum size
-    minHeight: '200px',
-    position: 'relative', // For potential absolute positioning of items inside later
+    marginBottom: '20px',
+    position: 'relative', // Keep for remove button
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    display: 'flex',
-    flexDirection: 'column',
+    minHeight: '250px', // Ensure minimum height for content + settings
   };
 
-  // Placeholder for title block rendering
+  const contentAreaStyle = {
+    flexGrow: 1, // Allow content area to take available space
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: '300px', // Minimum width for the drawing area
+    minHeight: '200px', // Minimum height for drawing area
+  };
+
+  const settingsFormStyle = {
+    width: '280px', // Slightly wider width for the settings panel
+    marginLeft: '15px', // Space between content and settings
+    paddingLeft: '15px',
+    borderLeft: '1px solid #eee',
+    overflowY: 'auto', // Allow scrolling if settings exceed height
+    fontSize: '11px',
+    maxHeight: '400px', // Limit height and allow scroll
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px', // Add gap between setting rows
+  };
+
+  const settingRowStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between', // Align label left, input right
+  };
+
+  const settingLabelStyle = {
+    marginRight: '10px',
+    whiteSpace: 'nowrap', // Prevent label wrapping
+  };
+
+  const settingInputStyle = {
+    width: '100px', // Fixed width for most inputs
+    fontSize: '11px',
+    padding: '2px 4px',
+    border: '1px solid #ccc',
+    borderRadius: '3px',
+  };
+  // --- End New Styles ---
+
+
+  // Placeholder for title block rendering (keep existing style)
   const titleBlockStyle = {
     borderTop: '1px solid #eee',
     marginTop: 'auto', // Push title block to the bottom
@@ -118,10 +161,33 @@ function ViewboxComponent({
   // State for hover effect on remove button
   const [isHoveringRemove, setIsHoveringRemove] = React.useState(false);
 
+  // Helper function for handling number input changes
+  const handleNumberChange = (key, value) => {
+    const num = parseFloat(value);
+    if (!isNaN(num)) {
+      onSettingsChange(viewboxId, key, num);
+    } else if (value === '') {
+      // Allow clearing the input, maybe default to 0 or handle upstream
+      onSettingsChange(viewboxId, key, 0); // Default to 0 if cleared
+    }
+  };
+
+  // Helper function for handling color input changes
+  const handleColorChange = (key, value) => {
+    onSettingsChange(viewboxId, key, value);
+  };
+
+  // Helper function for handling text/select input changes
+  const handleTextChange = (key, value) => {
+    onSettingsChange(viewboxId, key, value);
+  };
+
+
   return (
-    <div style={viewboxStyle} data-viewbox-id={viewboxId}>
-      {/* Remove Button */}
-      {onRemove && ( // Only render if onRemove handler is provided
+    // Use the new main style with flex display
+    <div style={mainViewboxStyle} data-viewbox-id={viewboxId}>
+      {/* Remove Button (stays positioned relative to mainViewboxStyle) */}
+      {onRemove && (
         <button
           style={{
             ...removeButtonStyle,
@@ -139,9 +205,11 @@ function ViewboxComponent({
         </button>
       )}
 
-      {/* Grid Layout Area */}
-      <div style={gridContainerStyle}>
-        {/* Render grid cells, placing items if they exist */}
+      {/* Content Area (Grid + Title Block) */}
+      <div style={contentAreaStyle}>
+        {/* Grid Layout Area */}
+        <div style={gridContainerStyle}>
+          {/* Render grid cells, placing items if they exist */}
         {Array.from({ length: gridRows * gridCols }).map((_, cellIndex) => { // Use cellIndex
           const item = items && items[cellIndex]; // Get item for this cell index
 
@@ -265,7 +333,302 @@ function ViewboxComponent({
              />
           </span>
         </div>
-      </div>
+      </div> {/* End of the first (correct) Title Block div */}
+    </div> {/* End of contentAreaStyle div */}
+
+      {/* Settings Form Area - Should be sibling to contentAreaStyle */}
+      {exportSettings && onSettingsChange && ( // Conditionally render if props are available
+        <div style={settingsFormStyle}>
+          <h4 style={{ marginTop: 0, marginBottom: '10px', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>Export Settings</h4>
+
+          {/* --- Page Setup --- */}
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`paperSize-${viewboxId}`}>Paper Size:</label>
+            <select
+              id={`paperSize-${viewboxId}`}
+              style={settingInputStyle}
+              value={exportSettings.paperSize || 'a4'}
+              onChange={(e) => handleTextChange('paperSize', e.target.value)}
+            >
+              <option value="a4">A4</option>
+              <option value="letter">Letter</option>
+            </select>
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`margin-${viewboxId}`}>Margin (mm):</label>
+            <input
+              id={`margin-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.5"
+              min="0"
+              value={exportSettings.margin ?? 10}
+              onChange={(e) => handleNumberChange('margin', e.target.value)}
+            />
+          </div>
+
+          {/* --- Layout & Scaling --- */}
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`viewGap-${viewboxId}`}>View Gap (mm):</label>
+            <input
+              id={`viewGap-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.5"
+              min="0"
+              value={exportSettings.viewGap ?? 20}
+              onChange={(e) => handleNumberChange('viewGap', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`minMargin-${viewboxId}`}>Min Edge Margin (mm):</label>
+            <input
+              id={`minMargin-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.5"
+              min="0"
+              value={exportSettings.minMargin ?? 25}
+              onChange={(e) => handleNumberChange('minMargin', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`offsetX-${viewboxId}`}>Offset X (mm):</label>
+            <input
+              id={`offsetX-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.1"
+              value={exportSettings.offsetX ?? 0}
+              onChange={(e) => handleNumberChange('offsetX', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`offsetY-${viewboxId}`}>Offset Y (mm):</label>
+            <input
+              id={`offsetY-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.1"
+              value={exportSettings.offsetY ?? 0}
+              onChange={(e) => handleNumberChange('offsetY', e.target.value)}
+            />
+          </div>
+
+          {/* --- Styling --- */}
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`visibleStrokeColor-${viewboxId}`}>Visible Line Color:</label>
+            <input
+              id={`visibleStrokeColor-${viewboxId}`}
+              style={{ ...settingInputStyle, padding: '0 2px', height: '20px' }} // Adjust style for color input
+              type="color"
+              value={exportSettings.visibleStrokeColor || '#000000'}
+              onChange={(e) => handleColorChange('visibleStrokeColor', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`visibleStrokeWidth-${viewboxId}`}>Visible Line Width (mm):</label>
+            <input
+              id={`visibleStrokeWidth-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.05"
+              min="0"
+              value={exportSettings.visibleStrokeWidth ?? 0.5}
+              onChange={(e) => handleNumberChange('visibleStrokeWidth', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`hiddenStrokeColor-${viewboxId}`}>Hidden Line Color:</label>
+            <input
+              id={`hiddenStrokeColor-${viewboxId}`}
+              style={{ ...settingInputStyle, padding: '0 2px', height: '20px' }}
+              type="color"
+              value={exportSettings.hiddenStrokeColor || '#777777'}
+              onChange={(e) => handleColorChange('hiddenStrokeColor', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`hiddenStrokeWidth-${viewboxId}`}>Hidden Line Width (mm):</label>
+            <input
+              id={`hiddenStrokeWidth-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.05"
+              min="0"
+              value={exportSettings.hiddenStrokeWidth ?? 0.35}
+              onChange={(e) => handleNumberChange('hiddenStrokeWidth', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`hiddenDashLength-${viewboxId}`}>Hidden Dash Length (mm):</label>
+            <input
+              id={`hiddenDashLength-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.1"
+              min="0"
+              value={exportSettings.hiddenDashLength ?? 2}
+              onChange={(e) => handleNumberChange('hiddenDashLength', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`hiddenDashGap-${viewboxId}`}>Hidden Dash Gap (mm):</label>
+            <input
+              id={`hiddenDashGap-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.1"
+              min="0"
+              value={exportSettings.hiddenDashGap ?? 1}
+              onChange={(e) => handleNumberChange('hiddenDashGap', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`borderColor-${viewboxId}`}>Border Color:</label>
+            <input
+              id={`borderColor-${viewboxId}`}
+              style={{ ...settingInputStyle, padding: '0 2px', height: '20px' }}
+              type="color"
+              value={exportSettings.borderColor || '#000000'}
+              onChange={(e) => handleColorChange('borderColor', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`borderLineWidth-${viewboxId}`}>Border Width (mm):</label>
+            <input
+              id={`borderLineWidth-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.05"
+              min="0"
+              value={exportSettings.borderLineWidth ?? 0.2}
+              onChange={(e) => handleNumberChange('borderLineWidth', e.target.value)}
+            />
+          </div>
+
+          {/* --- Measurement Styling --- */}
+          <h5 style={{ marginTop: '10px', marginBottom: '5px', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>Measurements</h5>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementStrokeColor-${viewboxId}`}>Meas. Line Color:</label>
+            <input
+              id={`measurementStrokeColor-${viewboxId}`}
+              style={{ ...settingInputStyle, padding: '0 2px', height: '20px' }}
+              type="color"
+              value={exportSettings.measurementStrokeColor || '#222222'}
+              onChange={(e) => handleColorChange('measurementStrokeColor', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementFillColor-${viewboxId}`}>Meas. Text/Arrow Color:</label>
+            <input
+              id={`measurementFillColor-${viewboxId}`}
+              style={{ ...settingInputStyle, padding: '0 2px', height: '20px' }}
+              type="color"
+              value={exportSettings.measurementFillColor || '#222222'}
+              onChange={(e) => handleColorChange('measurementFillColor', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementStrokeWidth-${viewboxId}`}>Meas. Line Width (mm):</label>
+            <input
+              id={`measurementStrokeWidth-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.01"
+              min="0"
+              value={exportSettings.measurementStrokeWidth ?? 0.08}
+              onChange={(e) => handleNumberChange('measurementStrokeWidth', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementFontSize-${viewboxId}`}>Meas. Font Size (mm):</label>
+            <input
+              id={`measurementFontSize-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.1"
+              min="0"
+              value={exportSettings.measurementFontSize ?? 3.5}
+              onChange={(e) => handleNumberChange('measurementFontSize', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementArrowSize-${viewboxId}`}>Meas. Arrow Size (mm):</label>
+            <input
+              id={`measurementArrowSize-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.1"
+              min="0"
+              value={exportSettings.measurementArrowSize ?? 1.2}
+              onChange={(e) => handleNumberChange('measurementArrowSize', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementTextOffset-${viewboxId}`}>Meas. Text Offset (mm):</label>
+            <input
+              id={`measurementTextOffset-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.1"
+              min="0"
+              value={exportSettings.measurementTextOffset ?? 1.2}
+              onChange={(e) => handleNumberChange('measurementTextOffset', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementExtensionGap-${viewboxId}`}>Meas. Ext. Gap (mm):</label>
+            <input
+              id={`measurementExtensionGap-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.1"
+              min="0"
+              value={exportSettings.measurementExtensionGap ?? 0.8}
+              onChange={(e) => handleNumberChange('measurementExtensionGap', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementExtensionOverhang-${viewboxId}`}>Meas. Ext. Overhang (mm):</label>
+            <input
+              id={`measurementExtensionOverhang-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.1"
+              min="0"
+              value={exportSettings.measurementExtensionOverhang ?? 1.2}
+              onChange={(e) => handleNumberChange('measurementExtensionOverhang', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementInitialOffset-${viewboxId}`}>Meas. Initial Offset (mm):</label>
+            <input
+              id={`measurementInitialOffset-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.5"
+              min="0"
+              value={exportSettings.measurementInitialOffset ?? 10}
+              onChange={(e) => handleNumberChange('measurementInitialOffset', e.target.value)}
+            />
+          </div>
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`measurementStackingOffset-${viewboxId}`}>Meas. Stacking Offset (mm):</label>
+            <input
+              id={`measurementStackingOffset-${viewboxId}`}
+              style={settingInputStyle}
+              type="number"
+              step="0.5"
+              min="0"
+              value={exportSettings.measurementStackingOffset ?? 7}
+              onChange={(e) => handleNumberChange('measurementStackingOffset', e.target.value)}
+            />
+          </div>
+          {/* Measurement Font Family could be added if needed */}
+
+        </div>
+      )}
     </div>
   );
 } // End of function ViewboxComponent
