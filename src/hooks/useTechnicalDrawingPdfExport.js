@@ -55,6 +55,8 @@ const PDF_BASE_MEASUREMENT_ARROW_SIZE = 1.2; // mm
 const PDF_BASE_MEASUREMENT_TEXT_OFFSET = 1.2; // mm
 const PDF_BASE_MEASUREMENT_EXTENSION_GAP = 0.8; // mm
 const PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG = 1.2; // mm
+const PDF_MEASUREMENT_INITIAL_OFFSET = 10; // mm - Initial offset from geometry edge (beyond gap)
+const PDF_MEASUREMENT_STACKING_OFFSET = 7; // mm - Offset between stacked measurements
 const PDF_HIDDEN_DASH_LENGTH = 2; // mm (base)
 const PDF_HIDDEN_DASH_GAP = 1; // mm (base)
 const MIN_MARGIN = 25; // Minimum margin from printable area edges (mm)
@@ -623,35 +625,35 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                 const measurementTargetPositions = {}; // Store { [pathId]: { x, y } }
 
                 // Horizontal Top (Offset upwards from maxY)
-                let currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + 10; // Start 10mm beyond geometry + gap
+                let currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + PDF_MEASUREMENT_INITIAL_OFFSET; // Use constant
                 groups.horizontalTop.forEach(m => {
                   const targetY = scaledBBox.maxY + currentOffset;
                   measurementTargetPositions[m.pathId] = { x: null, y: targetY };
-                  currentOffset += 7; // Stack by 7mm
+                  currentOffset += PDF_MEASUREMENT_STACKING_OFFSET; // Use constant
                 });
 
                 // Horizontal Bottom (Offset downwards from minY)
-                currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + 10;
+                currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + PDF_MEASUREMENT_INITIAL_OFFSET; // Use constant
                 groups.horizontalBottom.forEach(m => {
                   const targetY = scaledBBox.minY - currentOffset;
                   measurementTargetPositions[m.pathId] = { x: null, y: targetY };
-                  currentOffset += 7;
+                  currentOffset += PDF_MEASUREMENT_STACKING_OFFSET; // Use constant
                 });
 
                 // Vertical Left (Offset leftwards from minX)
-                currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + 10;
+                currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + PDF_MEASUREMENT_INITIAL_OFFSET; // Use constant
                 groups.verticalLeft.forEach(m => {
                   const targetX = scaledBBox.minX - currentOffset;
                   measurementTargetPositions[m.pathId] = { x: targetX, y: null };
-                  currentOffset += 7;
+                  currentOffset += PDF_MEASUREMENT_STACKING_OFFSET; // Use constant
                 });
 
                 // Vertical Right (Offset rightwards from maxX)
-                currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + 10;
+                currentOffset = PDF_BASE_MEASUREMENT_EXTENSION_GAP + PDF_MEASUREMENT_INITIAL_OFFSET; // Use constant
                 groups.verticalRight.forEach(m => {
                   const targetX = scaledBBox.maxX + currentOffset;
                   measurementTargetPositions[m.pathId] = { x: targetX, y: null };
-                  currentOffset += 7;
+                  currentOffset += PDF_MEASUREMENT_STACKING_OFFSET; // Use constant
                 });
 
                 // Render all measurements for this item using calculated positions
