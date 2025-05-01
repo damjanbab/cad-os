@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react'; // Import memo
 import SvgView from './SvgView.jsx'; // Import the new SvgView component
 
 // Parses layout string "rowsxcols" into [rows, cols]
@@ -10,15 +10,15 @@ const parseLayout = (layoutString) => {
   return [isNaN(rows) ? 1 : rows, isNaN(cols) ? 1 : cols];
 };
 
-// Basic placeholder for a Viewbox
-export default function Viewbox({
+// Basic placeholder for a Viewbox - Defined as function for memoization
+function ViewboxComponent({
   viewboxData,
   selectedTarget,
   onCellSelection,
   onTitleBlockChange, // Add prop for handling title block updates
   onPathClick, // Add prop for path click handler
   // Receive measurement props
-  measurements,
+  measurementsByViewInstanceId, // Renamed prop: object keyed by view instance ID
   // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
   // Removed onMeasurementDragStart
   zoomLevel,
@@ -177,8 +177,8 @@ export default function Viewbox({
                 <SvgView
                   viewInstanceData={item} // Pass renamed prop
                   onPathClick={onPathClick}
-                  // Filter measurements based on the specific view instance ID
-                  measurements={measurements.filter(m => m.viewInstanceId === item.id)}
+                  // Get the correct measurements for this specific view instance
+                  measurements={measurementsByViewInstanceId[item.id] || []}
                   // onMeasurementUpdate={onMeasurementUpdate} // REMOVED - Update is handled via hook callback
                   // Removed onMeasurementDragStart
                   zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay
@@ -268,4 +268,6 @@ export default function Viewbox({
       </div>
     </div>
   );
-}
+} // End of function ViewboxComponent
+
+export default memo(ViewboxComponent); // Export the memoized component

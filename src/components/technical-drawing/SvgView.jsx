@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'; // Import useRef
+import React, { useRef, memo } from 'react'; // Import useRef, memo
 
 import PathElement from './PathElement.jsx'; // Reuse PathElement for rendering
 import MeasurementDisplay from './MeasurementDisplay.jsx'; // Import MeasurementDisplay
@@ -13,8 +13,8 @@ const UI_SNAP_POINT_STROKE_COLOR = '#ff00ff'; // Magenta
 const UI_SNAP_POINT_STROKE_WIDTH = 2;
 const UI_SNAP_POINT_RADIUS = 4;
 
-// Component to render the SVG content of a single view, including measurements
-export default function SvgView({
+// Component to render the SVG content of a single view, including measurements - Memoized
+function SvgViewComponent({
   viewInstanceData, // Renamed from viewItemData
   onPathClick,
   // Receive measurement props
@@ -121,4 +121,6 @@ export default function SvgView({
       </svg>
     </div>
   );
-}
+} // End of function SvgViewComponent
+
+export default memo(SvgViewComponent); // Export the memoized component

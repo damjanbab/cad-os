@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'; // Import useMemo
 // import ProjectionView from './ProjectionView.jsx'; // No longer needed directly here
 // import PartView from './PartView.jsx'; // No longer needed directly here
 
@@ -547,6 +547,35 @@ export default function TechnicalDrawingCanvas({
   // Check if viewboxes array is empty or null
   const hasViewboxes = viewboxes && viewboxes.length > 0;
 
+  // --- Memoize Measurements per View Instance ID ---
+  const measurementsByViewInstanceId = useMemo(() => {
+    const grouped = {};
+    const allMeasurements = Object.values(activeMeasurements);
+
+    // Initialize with empty arrays for all known view instance IDs to ensure stable references
+    viewboxes.forEach(vb => {
+      vb.items.forEach(item => {
+        if (item) { // Check if item exists (cell might be empty)
+          grouped[item.id] = [];
+        }
+      });
+    });
+
+    // Populate with actual measurements
+    allMeasurements.forEach(m => {
+      if (m.viewInstanceId && grouped.hasOwnProperty(m.viewInstanceId)) { // Check if key exists
+        grouped[m.viewInstanceId].push(m);
+      } else {
+        // This might happen if a measurement's viewInstanceId doesn't match a current view instance
+        // Could be due to viewbox removal or other state inconsistencies. Log it.
+        // console.warn(`[Canvas] Measurement ${m.pathId} has viewInstanceId ${m.viewInstanceId} which doesn't match any current view instance ID.`);
+      }
+    });
+    console.log("[Canvas] Recalculated memoized measurementsByViewInstanceId:", grouped); // Debug log
+    return grouped;
+  }, [activeMeasurements, viewboxes]); // Dependencies: measurements state and viewboxes array structure (items)
+
+
   return (
     <div
       ref={containerRef}
@@ -635,7 +664,7 @@ export default function TechnicalDrawingCanvas({
               onTitleBlockChange={onTitleBlockChange} // Pass down title block handler
               onPathClick={handlePathClick} // Pass down path click handler
               // Pass down measurement-related props
-              measurements={Object.values(activeMeasurements)} // Pass all active measurements
+              measurementsByViewInstanceId={measurementsByViewInstanceId} // Pass the grouped measurements object
               onUpdateOverrideValue={handleUpdateOverrideValue} // Pass down the override update handler
               // Removed onMeasurementDragStart
               zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay rendering

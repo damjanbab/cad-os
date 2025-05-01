@@ -1,10 +1,10 @@
-import React, { useCallback } from 'react'; // Import useCallback here
+import React, { useCallback, memo } from 'react'; // Import useCallback and memo here
 
 /**
- * Renders a single SVG path
+ * Renders a single SVG path - Memoized
  */
 // Add viewInstanceId to props
-export default function PathElement({ path, stroke, strokeWidth, strokeDasharray, onPathClick, viewInstanceId, partName, partIndex }) {
+const PathElementComponent = ({ path, stroke, strokeWidth, strokeDasharray, onPathClick, viewInstanceId, partName, partIndex }) => {
   if (!path) return null;
 
   // Internal handler to call prop and stop propagation
@@ -64,4 +64,6 @@ export default function PathElement({ path, stroke, strokeWidth, strokeDasharray
       />
     </g>
   );
-}
+};
+
+export default memo(PathElementComponent); // Export the memoized component
