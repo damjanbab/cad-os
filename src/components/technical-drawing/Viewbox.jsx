@@ -28,6 +28,8 @@ function ViewboxComponent({
   // Export settings props
   exportSettings,
   onSettingsChange,
+  // Add delete handler prop
+  onDeleteMeasurement,
 }) {
   const { id: viewboxId, layout, titleBlock, items } = viewboxData; // Rename id to viewboxId for clarity
   const [gridRows, gridCols] = parseLayout(layout);
@@ -252,6 +254,7 @@ function ViewboxComponent({
                   zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay
                   snapPoints={snapPoints} // Pass snapPoints array down to SvgView
                   onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
+                  onDeleteMeasurement={onDeleteMeasurement} // Pass delete handler down
                 />
               ) : (
                 // If no item, display empty cell placeholder

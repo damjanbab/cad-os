@@ -25,6 +25,7 @@ function SvgViewComponent({
   // Removed onMeasurementDragStart
   // zoomLevel, // zoomLevel is not needed here anymore
   onUpdateOverrideValue, // Add prop for override update handler
+  onDeleteMeasurement, // Add prop for delete handler
 }) {
   const { id: viewId, viewType, svgData } = viewInstanceData; // Use renamed prop
   const innerSvgRef = useRef(null); // Create ref for the inner SVG
@@ -101,6 +102,7 @@ function SvgViewComponent({
               measurementData={measurement}
               innerSvgRef={innerSvgRef} // Pass the ref down
               onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
+              onDeleteMeasurement={onDeleteMeasurement} // Pass delete handler down
               // Removed onDragStart
             />
           ))}

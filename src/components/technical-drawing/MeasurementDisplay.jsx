@@ -8,6 +8,7 @@ export default function MeasurementDisplay({
   innerSvgRef, // Receive ref to the parent SVG element
   onUpdatePosition, // Receive update handler (for dragging text)
   onUpdateOverrideValue, // Receive override update handler
+  onDeleteMeasurement, // Receive delete handler
 }) {
   const { pathId, type, geometry, textPosition, overrideValue } = measurementData; // Added overrideValue
   const [isEditing, setIsEditing] = useState(false);
@@ -292,6 +293,31 @@ export default function MeasurementDisplay({
             </div>
           </foreignObject>
         )}
+
+        {/* Delete Button (X) - Line */}
+        {onDeleteMeasurement && !isEditing && (
+          <text
+            // Position relative to the text, considering rotation
+            x={textX + (textContent.length * fontSize * 0.3) + 2} // Position to the right of the text/background
+            y={textY} // Align vertically with text center
+            fontSize={fontSize * 1.1} // Slightly larger 'X'
+            fill="red"
+            stroke="none"
+            textAnchor="start"
+            dominantBaseline="middle"
+            fontFamily="Arial, sans-serif"
+            style={{ cursor: 'pointer', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent triggering double-click or drag
+              console.log(`[MeasurementDisplay ${pathId}] Delete clicked.`);
+              onDeleteMeasurement(pathId);
+            }}
+            // Apply the same rotation as the text group
+            transform={`rotate(${textRotation} ${textX} ${textY})`}
+          >
+            X
+          </text>
+        )}
       </g>
     );
 
@@ -510,6 +536,30 @@ export default function MeasurementDisplay({
               </div>
             </foreignObject>
           )}
+
+          {/* Delete Button (X) - Small Circle */}
+          {onDeleteMeasurement && !isEditing && (
+            <text
+              // Position relative to the adjusted text position
+              x={adjustedTextPosition.x + (textContent.length * fontSize * 0.3) + 2}
+              y={adjustedTextPosition.y} // Align vertically
+              fontSize={fontSize * 1.1}
+              fill="red"
+              stroke="none"
+              textAnchor="start"
+              dominantBaseline="middle"
+              fontFamily="Arial, sans-serif"
+              style={{ cursor: 'pointer', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                console.log(`[MeasurementDisplay ${pathId}] Delete clicked.`);
+                onDeleteMeasurement(pathId);
+              }}
+              // No rotation needed here as text is not rotated relative to its group
+            >
+              X
+            </text>
+          )}
         </g>
       );
     } else {
@@ -634,6 +684,30 @@ export default function MeasurementDisplay({
                 />
               </div>
             </foreignObject>
+          )}
+
+          {/* Delete Button (X) - Large Circle */}
+          {onDeleteMeasurement && !isEditing && (
+            <text
+              // Position relative to the text position
+              x={textPosition.x + (textContent.length * fontSize * 0.3) + 2}
+              y={textPosition.y} // Align vertically
+              fontSize={fontSize * 1.1}
+              fill="red"
+              stroke="none"
+              textAnchor="start"
+              dominantBaseline="middle"
+              fontFamily="Arial, sans-serif"
+              style={{ cursor: 'pointer', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                console.log(`[MeasurementDisplay ${pathId}] Delete clicked.`);
+                onDeleteMeasurement(pathId);
+              }}
+              // No rotation needed here as text is not rotated relative to its group
+            >
+              X
+            </text>
           )}
         </g>
       );

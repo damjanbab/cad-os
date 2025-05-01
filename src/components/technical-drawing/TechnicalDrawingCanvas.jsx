@@ -517,6 +517,35 @@ export default function TechnicalDrawingCanvas({
     });
   }, [setActiveMeasurements]); // Dependency on the state setter
 
+  // --- Handler to delete a measurement ---
+  const handleDeleteMeasurement = useCallback((measurementId) => {
+    setActiveMeasurements(prev => {
+      const newMeasurements = { ...prev };
+      if (newMeasurements[measurementId]) {
+        console.log(`[Canvas] Deleting measurement: ${measurementId}`);
+        delete newMeasurements[measurementId];
+      } else {
+        console.warn(`[Canvas] Attempted to delete non-existent measurement ID: ${measurementId}`);
+      }
+      return newMeasurements;
+    });
+  }, [setActiveMeasurements]); // Dependency on the state setter
+
+  // --- Effect for Escape key to cancel snap ---
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && interactionMode === 'snap' && snapPoints.length > 0) {
+        console.log("[Canvas] Escape pressed in snap mode. Clearing snap points.");
+        setSnapPoints([]);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [interactionMode, snapPoints, setSnapPoints]); // Dependencies: mode, points array, setter
+
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
@@ -682,6 +711,8 @@ export default function TechnicalDrawingCanvas({
               // Pass down export settings and handler
               exportSettings={vb.exportSettings}
               onSettingsChange={onViewboxSettingsChange}
+              // Pass down delete handler
+              onDeleteMeasurement={handleDeleteMeasurement}
             />
           ))
         )}
