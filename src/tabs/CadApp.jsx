@@ -270,6 +270,7 @@ const requestHighDetailMesh = useCallback(async () => {
               svgData: {
                 paths: result.paths,
                 viewBox: result.viewBox,
+                geometryBoundingBox: result.geometryBoundingBox, // Add bounding box here
               },
             };
           } else {
@@ -405,6 +406,7 @@ const requestHighDetailMesh = useCallback(async () => {
         svgData: {
           paths: projectionResult.paths,
           viewBox: projectionResult.viewBox,
+          geometryBoundingBox: projectionResult.geometryBoundingBox, // Add bounding box here
         },
       };
 

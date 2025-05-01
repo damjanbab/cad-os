@@ -135,6 +135,7 @@ export default function TechnicalDrawingCanvas({
       // Add the original snap point types if needed later
       // snapTypes: [point1.type, point2.type],
       overrideValue: null, // Add overrideValue field
+      creationTimestamp: Date.now(), // Add timestamp
     };
 
     console.log(`--- Creating Snap Measurement ---`);
@@ -230,6 +231,7 @@ export default function TechnicalDrawingCanvas({
         isHorizontalDistance: isVerticalLine, // True if measuring horizontal distance to vertical line
       },
       overrideValue: null, // Add overrideValue field
+      creationTimestamp: Date.now(), // Add timestamp
     };
 
     console.log(`--- Creating Point-to-Line Measurement ---`);
@@ -478,6 +480,7 @@ export default function TechnicalDrawingCanvas({
           viewInstanceId: viewInstanceId, // Store the ID of the specific view instance
           geometry: scaledGeometry, // Store the SCALED geometry
           overrideValue: null, // Add overrideValue field
+          creationTimestamp: Date.now(), // Add timestamp
         };
         console.log(`--- Added Measurement ---`);
         console.log(`  Path ID: ${uniquePathId}`);

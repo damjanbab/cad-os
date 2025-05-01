@@ -385,7 +385,69 @@ function getEndpointForCurve(command, params, currentX, currentY) {
   }
   return [x, y];
 }
-// --- End Projection Generation Logic ---
+
+// --- Helper to Calculate Bounding Box from Normalized Paths ---
+function calculatePathsBoundingBox(paths) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let hasGeometry = false;
+
+  const updateBounds = (x, y) => {
+    if (typeof x === 'number' && typeof y === 'number' && !isNaN(x) && !isNaN(y)) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+        hasGeometry = true;
+    } else {
+        // console.warn("Skipping invalid coordinate in bounding box calculation:", x, y);
+    }
+  };
+
+  for (const path of paths) {
+    if (!path || !path.geometry) continue;
+
+    const geom = path.geometry;
+    switch (geom.type) {
+      case 'line':
+        if (geom.endpoints && geom.endpoints.length === 2) {
+          updateBounds(geom.endpoints[0][0], geom.endpoints[0][1]);
+          updateBounds(geom.endpoints[1][0], geom.endpoints[1][1]);
+        }
+        break;
+      case 'circle':
+        if (geom.center && typeof geom.radius === 'number') {
+          updateBounds(geom.center[0] - geom.radius, geom.center[1] - geom.radius);
+          updateBounds(geom.center[0] + geom.radius, geom.center[1] + geom.radius);
+        }
+        break;
+      case 'arc': // Approximate using endpoints
+      case 'curve': // Approximate using endpoints
+        if (geom.endpoints && geom.endpoints.length === 2) {
+          updateBounds(geom.endpoints[0][0], geom.endpoints[0][1]);
+          updateBounds(geom.endpoints[1][0], geom.endpoints[1][1]);
+        }
+        break;
+      // case 'unknown':
+      //   // Parsing path data 'd' is complex, skip for now or use viewBox as fallback later
+      //   break;
+    }
+  }
+
+  if (!hasGeometry) {
+    console.warn("[TECH_DRAW_WORKER] Could not determine bounding box from paths geometry.");
+    return null; // Indicate failure
+  }
+
+  // Add a small tolerance/padding if needed, or return exact bounds
+  const padding = 0; // Or a small value like TOLERANCE
+  return {
+    minX: minX - padding,
+    minY: minY - padding,
+    maxX: maxX + padding,
+    maxY: maxY + padding,
+  };
+}
+// --- End Helper ---
 
 
 // --- Main Exposed Function ---
@@ -515,9 +577,18 @@ const generateSingleProjection = async (modelName, params, viewType, includeHidd
   const combinedPaths = [...normalizedVisible, ...normalizedHidden];
 
   // 5. Determine combined viewBox using the projection result
-  // Use the viewBox from the projection object, applying margin if needed.
-  // Using toSVGViewBox(5) applies a 5% margin. Adjust as needed.
-  const viewBox = projection.visible.toSVGViewBox(5); // Get viewBox with margin
+  // 5. Determine combined viewBox string (as before)
+  const viewBoxString = projection.visible.toSVGViewBox(5); // Get viewBox string with margin
+
+  // 6. Calculate the actual geometry bounding box from the combined paths
+  const geometryBoundingBox = calculatePathsBoundingBox(combinedPaths);
+  if (!geometryBoundingBox) {
+      console.warn(`[TECH_DRAW_WORKER] Failed to calculate geometryBoundingBox for ${modelName} ${partName || 'Whole'} ${viewType}. PDF measurements might be incorrect.`);
+      // Optionally, could try parsing viewBoxString as a fallback, but it includes margins.
+  } else {
+       console.log(`[TECH_DRAW_WORKER] Calculated geometryBoundingBox:`, geometryBoundingBox);
+  }
+
 
   console.timeEnd(`[PERF_TD_SINGLE] Total ${modelName} ${partName || 'Whole'} ${viewType} projection`);
   console.log(`[TECH_DRAW_WORKER] Successfully generated single projection for ${modelName} ${partName || 'Whole'} ${viewType}.`);
@@ -525,7 +596,8 @@ const generateSingleProjection = async (modelName, params, viewType, includeHidd
   return {
     error: false,
     paths: combinedPaths,
-    viewBox: viewBox,
+    viewBox: viewBoxString, // The string representation including margin
+    geometryBoundingBox: geometryBoundingBox // The calculated tight bounding box
   };
 };
 // --- End New Function ---
