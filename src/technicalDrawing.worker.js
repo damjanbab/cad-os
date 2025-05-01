@@ -1,7 +1,8 @@
 // Dedicated worker for technical drawing generation
 import opencascade from "replicad-opencascadejs/src/replicad_single.js";
 import opencascadeWasm from "replicad-opencascadejs/src/replicad_single.wasm?url";
-import { setOC, drawProjection } from "replicad"; // Import drawProjection here
+// Import necessary replicad components
+import { setOC, drawProjection, ProjectionCamera } from "replicad"; // Remove Vector import if not needed elsewhere
 import { expose } from "comlink";
 
 // Import model creation and utilities needed for projections
@@ -33,6 +34,42 @@ const init = async () => {
   }
 };
 const started = init();
+
+// --- Helper function for Rodrigues' rotation formula (using arrays) ---
+function rotateVectorAroundAxis(vecArray, axisArray, angleDegrees) {
+  // Negate the angle to potentially correct the rotation direction convention
+  const angleRad = -angleDegrees * (Math.PI / 180);
+  const cosTheta = Math.cos(angleRad);
+  const sinTheta = Math.sin(angleRad);
+  const k = axisArray; // Axis of rotation
+  const v = vecArray; // Vector to rotate
+
+  // Normalize axis vector (important!)
+  const kLen = Math.sqrt(k[0]*k[0] + k[1]*k[1] + k[2]*k[2]);
+  if (kLen < 1e-9) { // Avoid division by zero
+      console.warn("Rotation axis has zero length.");
+      return v; // Return original vector if axis is zero
+  }
+  const kNorm = [k[0]/kLen, k[1]/kLen, k[2]/kLen];
+
+  // Rodrigues' rotation formula components
+  const kDotV = kNorm[0]*v[0] + kNorm[1]*v[1] + kNorm[2]*v[2];
+  const kCrossV = [
+    kNorm[1]*v[2] - kNorm[2]*v[1],
+    kNorm[2]*v[0] - kNorm[0]*v[2],
+    kNorm[0]*v[1] - kNorm[1]*v[0]
+  ];
+
+  const rotatedV = [
+    v[0]*cosTheta + kCrossV[0]*sinTheta + kNorm[0]*kDotV*(1 - cosTheta),
+    v[1]*cosTheta + kCrossV[1]*sinTheta + kNorm[1]*kDotV*(1 - cosTheta),
+    v[2]*cosTheta + kCrossV[2]*sinTheta + kNorm[2]*kDotV*(1 - cosTheta)
+  ];
+
+  return rotatedV;
+}
+// --- End Helper ---
+
 
 // --- Projection Generation Logic (Moved from technicalDrawingProcessor.js) ---
 // Includes: createOrthographicProjections, processProjectionsForRendering, createNormalizedViewBox,
@@ -516,8 +553,8 @@ async function generateProjections(modelName, params) {
 
 
 // --- New Function for Single Projection ---
-const generateSingleProjection = async (modelName, params, viewType, includeHiddenLines, partName = null) => { // Add partName parameter
-  console.log(`[TECH_DRAW_WORKER] Generating single projection: Model='${modelName}', Part='${partName || 'Whole'}', View='${viewType}', Hidden=${includeHiddenLines}`);
+const generateSingleProjection = async (modelName, params, viewType, rotationAngle, includeHiddenLines, partName = null) => { // Add rotationAngle parameter
+  console.log(`[TECH_DRAW_WORKER] Generating single projection: Model='${modelName}', Part='${partName || 'Whole'}', View='${viewType}', Angle=${rotationAngle}, Hidden=${includeHiddenLines}`);
   console.time(`[PERF_TD_SINGLE] Total ${modelName} ${partName || 'Whole'} ${viewType} projection`);
 
   // Ensure OpenCascade is ready
@@ -551,14 +588,66 @@ const generateSingleProjection = async (modelName, params, viewType, includeHidd
   }
 
 
-  // 3. Generate the specific projection using the existing drawProjection helper
+  // 3. Define standard camera parameters and potentially create a custom camera by calculating the rotated xDirection
+  let cameraConfig;
+  const lowerViewType = viewType.toLowerCase();
+
+  // Standard view definitions: position, direction, and default xDirection (camera's right)
+  const standardViews = {
+    front:    { pos: [0, -100, 0],  dir: [0, 1, 0],   xDir: [1, 0, 0] }, // Sit on -Y, look towards +Y, X is right
+    back:     { pos: [0, 100, 0],   dir: [0, -1, 0],  xDir: [-1, 0, 0] }, // Sit on +Y, look towards -Y, -X is right
+    top:      { pos: [0, 0, -100],  dir: [0, 0, 1],   xDir: [1, 0, 0] }, // Sit on -Z, look towards +Z, X is right
+    bottom:   { pos: [0, 0, 100],   dir: [0, 0, -1],  xDir: [1, 0, 0] }, // Sit on +Z, look towards -Z, X is right
+    left:     { pos: [-100, 0, 0],  dir: [1, 0, 0],   xDir: [0, 1, 0] }, // Sit on -X, look towards +X, Y is right
+    right:    { pos: [100, 0, 0],   dir: [-1, 0, 0],  xDir: [0, -1, 0] }, // Sit on +X, look towards -X, -Y is right
+    isometric: { pos: [100, 100, 100], dir: [-1, -1, -1], xDir: [1, -1, 0] }, // Approximate standard isometric X direction
+    // Add other standard planes if needed
+    xy:       { pos: [0, 0, -100],  dir: [0, 0, 1],   xDir: [1, 0, 0] }, // Same as Top
+    xz:       { pos: [0, -100, 0],  dir: [0, 1, 0],   xDir: [1, 0, 0] }, // Same as Front
+    yz:       { pos: [-100, 0, 0],  dir: [1, 0, 0],   xDir: [0, 1, 0] }, // Same as Left
+    yx:       { pos: [0, 0, 100],   dir: [0, 0, -1],  xDir: [1, 0, 0] }, // Same as Bottom
+    zx:       { pos: [0, 100, 0],   dir: [0, -1, 0],  xDir: [-1, 0, 0] }, // Same as Back
+    zy:       { pos: [100, 0, 0],   dir: [-1, 0, 0],  xDir: [0, -1, 0] }, // Same as Right
+  };
+
+  const standardView = standardViews[lowerViewType];
+
+  if (standardView && rotationAngle !== 0) {
+    console.log(`[TECH_DRAW_WORKER] Applying rotation: ${rotationAngle} degrees to ${viewType} view by rotating camera xDirection.`);
+    const stdPos = standardView.pos; // Use standard position array
+    const stdDir = standardView.dir;   // Use standard direction array (axis of rotation)
+    const stdXDir = standardView.xDir; // Use standard xDirection array (vector to rotate)
+
+    // Calculate the rotated xDirection using the helper function
+    const rotatedXDirArray = rotateVectorAroundAxis(stdXDir, stdDir, rotationAngle);
+    console.log(`[TECH_DRAW_WORKER] Calculated rotated xDirection Array: ${rotatedXDirArray.map(c=>c.toFixed(2))}`);
+
+    // Create the camera using standard position array, standard direction array,
+    // and the calculated rotated xDirection array
+    const camera = new ProjectionCamera(stdPos, stdDir, rotatedXDirArray);
+    cameraConfig = camera;
+
+  } else if (standardView) {
+    // Use the standard view name string for non-rotated views
+    cameraConfig = lowerViewType;
+    console.log(`[TECH_DRAW_WORKER] Using standard view string: ${cameraConfig}`);
+  } else {
+    // Fallback or error for unknown viewType
+    console.error(`[TECH_DRAW_WORKER] Unknown viewType: ${viewType}. Defaulting to 'front'.`);
+    cameraConfig = 'front';
+  }
+
+
+  // 4. Generate the specific projection using the determined camera config
   let projection;
   try {
-    console.time(`[PERF_TD_SINGLE] drawProjection ${modelName} ${partName || 'Whole'} ${viewType}`);
-    projection = drawProjection(modelToProject, viewType.toLowerCase()); // Call the imported helper
-    console.timeEnd(`[PERF_TD_SINGLE] drawProjection ${modelName} ${partName || 'Whole'} ${viewType}`);
+    console.time(`[PERF_TD_SINGLE] drawProjection ${modelName} ${partName || 'Whole'} ${viewType} Angle ${rotationAngle}`);
+    projection = drawProjection(modelToProject, cameraConfig); // Use cameraConfig (string or ProjectionCamera)
+    console.timeEnd(`[PERF_TD_SINGLE] drawProjection ${modelName} ${partName || 'Whole'} ${viewType} Angle ${rotationAngle}`);
   } catch (drawError) {
-    console.error(`[TECH_DRAW_WORKER] Error during drawProjection for ${modelName} ${partName || 'Whole'} ${viewType}:`, drawError);
+    // Log the camera config if it was an object (custom camera)
+    const configInfo = typeof cameraConfig === 'string' ? cameraConfig : `Custom Camera (Pos: ${cameraConfig.position?.toArray()?.map(c=>c.toFixed(2))}, Dir: ${cameraConfig.direction?.toArray()?.map(c=>c.toFixed(2))}, Up: ${cameraConfig.up?.toArray()?.map(c=>c.toFixed(2))})`;
+    console.error(`[TECH_DRAW_WORKER] Error during drawProjection for ${modelName} ${partName || 'Whole'} ${viewType} Angle ${rotationAngle} with config ${configInfo}:`, drawError);
     console.timeEnd(`[PERF_TD_SINGLE] Total ${modelName} ${partName || 'Whole'} ${viewType} projection`);
     return { error: true, message: `Drawing projection failed: ${drawError.message}` };
   }

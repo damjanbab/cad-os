@@ -24,6 +24,8 @@ export default function TechnicalDrawingCanvas({
   // Props for adding views
   selectedViewToAdd,
   onViewSelectionChange,
+  rotationAngle, // Add prop for rotation angle state
+  onRotationAngleChange, // Add handler for rotation angle change
   includeHiddenLines,
   onHiddenLinesToggle,
   onAddViewToCell,
@@ -617,6 +619,8 @@ export default function TechnicalDrawingCanvas({
         // Pass view selection props down
         selectedViewToAdd={selectedViewToAdd}
         onViewSelectionChange={onViewSelectionChange}
+        rotationAngle={rotationAngle} // Pass rotation angle state down
+        onRotationAngleChange={onRotationAngleChange} // Pass rotation angle handler down
         includeHiddenLines={includeHiddenLines}
         onHiddenLinesToggle={onHiddenLinesToggle}
         onAddViewToCell={onAddViewToCell}

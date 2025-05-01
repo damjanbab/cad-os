@@ -18,6 +18,8 @@ export default function DrawingControls({
   onLayoutChange, // Add prop for handling layout change
   selectedViewToAdd, // Add prop for selected view type
   onViewSelectionChange, // Add handler for view type change
+  rotationAngle, // Add prop for rotation angle state
+  onRotationAngleChange, // Add handler for rotation angle change
   includeHiddenLines, // Add prop for hidden lines state
   onHiddenLinesToggle, // Add handler for hidden lines toggle
   onAddViewToCell, // Add handler to trigger adding the view
@@ -281,6 +283,35 @@ export default function DrawingControls({
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Rotation Angle Input */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
+          <label htmlFor="rotationAngleInput" style={{ fontSize: isMobile ? '12px' : '10px', marginRight: '5px', minWidth: '35px' }}>
+            Rotate:
+          </label>
+          <input
+            type="number"
+            id="rotationAngleInput"
+            value={rotationAngle}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              // Clamp value between 0 and 359
+              const clampedVal = isNaN(val) ? 0 : Math.max(0, Math.min(359, val));
+              onRotationAngleChange(clampedVal);
+            }}
+            min="0"
+            max="359"
+            step="1"
+            style={{
+              padding: isMobile ? '4px 8px' : '2px 4px',
+              fontSize: isMobile ? '13px' : '11px',
+              width: '50px', // Adjust width as needed
+              marginRight: '5px'
+            }}
+            title="Rotation Angle (0-359 degrees)"
+          />
+          <span style={{ fontSize: isMobile ? '12px' : '10px' }}>deg</span>
         </div>
 
         {/* Hidden Lines Checkbox */}

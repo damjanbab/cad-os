@@ -59,6 +59,7 @@ export default function CadApp() {
   const [activeTab, setActiveTab] = useState('3d');
   const [selectedLayout, setSelectedLayout] = useState('1x1'); // New state for selected layout
   const [selectedViewToAdd, setSelectedViewToAdd] = useState('Front'); // State for the view type to add
+  const [rotationAngle, setRotationAngle] = useState(0); // New state for rotation angle
   const [includeHiddenLines, setIncludeHiddenLines] = useState(false); // State for hidden lines option
   const [selectedTarget, setSelectedTarget] = useState(null); // State for { viewboxId, cellIndex }
   const [controlsExpanded, setControlsExpanded] = useState(true);
@@ -75,12 +76,12 @@ const [isMobile, setIsMobile] = useState(false);
         setControlsExpanded(true);
       }
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-  
+
   // Use useCallback to memoize the mesh creation logic
   // Define it *before* the useEffect that calls it
   const createModelMesh = useCallback(async () => {
@@ -142,9 +143,9 @@ const requestHighDetailMesh = useCallback(async () => {
         modelParams.explosionFactor = explosionFactor;
       }
       // Call worker with 'high' quality setting
-      const result = await cad.createMesh(selectedModel, modelParams, 'high'); 
+      const result = await cad.createMesh(selectedModel, modelParams, 'high');
       console.timeEnd(`[PERF] worker call for ${selectedModel} (high detail)`);
-      
+
       if (result.error) {
         console.error("Error generating high-detail mesh:", result.validationErrors);
         setValidationErrors(result.validationErrors || ["Error generating high-detail mesh."]);
@@ -204,6 +205,12 @@ const requestHighDetailMesh = useCallback(async () => {
   const handleHiddenLinesToggle = (isChecked) => {
     setIncludeHiddenLines(isChecked);
     console.log(`[INFO] Include hidden lines toggled to: ${isChecked}`);
+  };
+
+  // Handler to update the rotation angle
+  const handleRotationAngleChange = (newAngle) => {
+    setRotationAngle(newAngle);
+    console.log(`[INFO] Rotation angle changed to: ${newAngle}`);
   };
 
   // Handler to update the selected target cell
@@ -283,6 +290,7 @@ const requestHighDetailMesh = useCallback(async () => {
             selectedModel,
             { ...params },
             viewType,
+            0, // Pass default rotation angle 0 for standard views
             includeHidden,
             entity.id // Pass null for assembly, partId for parts
           ).catch(err => { // Add individual catch for robustness
@@ -308,6 +316,7 @@ const requestHighDetailMesh = useCallback(async () => {
               id: `view-${viewboxId}-${standardViews[index]}-${entity.id || 'asm'}`,
               type: 'projection',
               viewType: standardViews[index],
+              rotationAngle: 0, // Store rotation angle (0 for standard)
               partName: entity.id, // Store part ID (null for assembly)
               includeHiddenLines: includeHidden,
               params: { ...params },
@@ -389,17 +398,18 @@ const requestHighDetailMesh = useCallback(async () => {
     }
     // --- End Parsing ---
 
-    console.log(`[ACTION] Attempting to add view to Viewbox ${targetViewboxId}, Cell ${targetCellIndex}: View='${viewTypeToAdd}', Part ID='${partIdForWorker || 'Whole Model'}', Hidden: ${includeHiddenLines}, Params:`, params);
+    console.log(`[ACTION] Attempting to add view to Viewbox ${targetViewboxId}, Cell ${targetCellIndex}: View='${viewTypeToAdd}', Part ID='${partIdForWorker || 'Whole Model'}', Angle=${rotationAngle}, Hidden: ${includeHiddenLines}, Params:`, params);
 
 
     // 1. Generate the projection data using the worker
     let projectionResult;
     try {
-      console.log(`[INFO] Calling techDrawWorker.generateSingleProjection for ${selectedModel} (Part ID: ${partIdForWorker || 'N/A'})...`);
+      console.log(`[INFO] Calling techDrawWorker.generateSingleProjection for ${selectedModel} (Part ID: ${partIdForWorker || 'N/A'}, Angle: ${rotationAngle})...`);
       projectionResult = await techDrawWorker.generateSingleProjection(
         selectedModel,
         { ...params }, // Pass a copy of current params
         viewTypeToAdd, // Use the parsed view type
+        rotationAngle, // Pass the rotation angle state
         includeHiddenLines,
         partIdForWorker // Pass the extracted part ID (or null)
       );
@@ -443,6 +453,7 @@ const requestHighDetailMesh = useCallback(async () => {
         id: `view-${Date.now()}-${Math.random().toString(16).slice(2)}`, // Unique ID
         type: 'projection',
         viewType: viewTypeToAdd, // Use parsed view type
+        rotationAngle: rotationAngle, // Store the rotation angle used
         partName: partIdForWorker, // Store the part ID (or null) - might rename state later if confusing
         includeHiddenLines: includeHiddenLines,
         params: { ...params }, // Store parameters used for this specific view
@@ -486,18 +497,18 @@ const requestHighDetailMesh = useCallback(async () => {
       setActiveTab('3d');
     }
   };
-  
+
   const handleParamChange = (paramName, value) => {
     setParams(prev => ({
       ...prev,
       [paramName]: value
     }));
   };
-  
+
   const handleExplosionChange = (e) => {
     setExplosionFactor(parseFloat(e.target.value));
   };
-  
+
   const toggleControls = () => {
 setControlsExpanded(!controlsExpanded);
 };
@@ -506,8 +517,8 @@ return (
 <>
       {/* Control Panel - DIRECT CHILD with no parent div for spacing */}
       <div style={{
-        padding: isMobile ? "8px" : "10px", 
-        borderBottom: "1px solid #eee", 
+        padding: isMobile ? "8px" : "10px",
+        borderBottom: "1px solid #eee",
         backgroundColor: "#f8f8f8",
         fontSize: isMobile ? "11px" : "12px",
         margin: 0,
@@ -520,18 +531,18 @@ return (
           marginBottom: "10px",
           gap: isMobile ? "8px" : "0"
         }}>
-          <div style={{ 
+          <div style={{
             display: "flex",
             alignItems: "center",
             width: isMobile ? "100%" : "auto"
           }}>
             <span style={{ marginRight: "5px", fontWeight: "bold" }}>Model:</span>
-            <select 
-              value={selectedModel} 
+            <select
+              value={selectedModel}
               onChange={handleModelChange}
-              style={{ 
-                marginRight: "10px", 
-                height: isMobile ? "30px" : "24px", 
+              style={{
+                marginRight: "10px",
+                height: isMobile ? "30px" : "24px",
                 fontSize: isMobile ? "14px" : "12px",
                 flex: isMobile ? "1" : "auto"
               }}
@@ -541,18 +552,18 @@ return (
               ))}
             </select>
           </div>
-          
+
           {/* View tabs */}
-          <div style={{ 
-            display: "flex", 
-            marginLeft: isMobile ? "0" : "20px", 
-            borderRadius: "4px", 
-            overflow: "hidden", 
+          <div style={{
+            display: "flex",
+            marginLeft: isMobile ? "0" : "20px",
+            borderRadius: "4px",
+            overflow: "hidden",
             border: "1px solid #ccc",
             width: isMobile ? "100%" : "auto"
           }}>
-            <button 
-              onClick={() => setActiveTab('3d')} 
+            <button
+              onClick={() => setActiveTab('3d')}
               style={{
                 padding: isMobile ? "8px 12px" : "4px 12px",
                 border: "none",
@@ -566,8 +577,8 @@ return (
             >
               3D View
             </button>
-            <button 
-              onClick={() => setActiveTab('technical')} 
+            <button
+              onClick={() => setActiveTab('technical')}
               style={{
                 padding: isMobile ? "8px 12px" : "4px 12px",
                 border: "none",
@@ -581,8 +592,8 @@ return (
             >
               Technical Drawing
             </button>
-            <button 
-              onClick={() => setActiveTab('rendering')} 
+            <button
+              onClick={() => setActiveTab('rendering')}
               style={{
                 padding: isMobile ? "8px 12px" : "4px 12px",
                 border: "none",
@@ -598,8 +609,8 @@ return (
             </button>
             {/* Conditionally render BoM tab */}
             {modelRegistry[selectedModel]?.hasBoM && (
-              <button 
-                onClick={() => setActiveTab('bom')} 
+              <button
+                onClick={() => setActiveTab('bom')}
                 style={{
                   padding: isMobile ? "8px 12px" : "4px 12px",
                   border: "none",
@@ -615,16 +626,16 @@ return (
               </button>
             )}
           </div>
-          
+
           {/* Toggle controls button (mobile only) */}
           {isMobile && (
-            <div style={{ 
-              width: "100%", 
-              display: "flex", 
-              justifyContent: "center", 
-              marginTop: "4px" 
+            <div style={{
+              width: "100%",
+              display: "flex",
+              justifyContent: "center",
+              marginTop: "4px"
             }}>
-              <button 
+              <button
                 onClick={toggleControls}
                 style={{
                   padding: "8px 16px",
@@ -640,12 +651,12 @@ return (
               </button>
             </div>
           )}
-          
+
           {/* Explosion factor slider - only show in 3D view */}
           {activeTab === '3d' && modelRegistry[selectedModel].hasExplosion && (
-            <div style={{ 
-              display: "flex", 
-              alignItems: "center", 
+            <div style={{
+              display: "flex",
+              alignItems: "center",
               marginLeft: isMobile ? "0" : "15px",
               backgroundColor: "#e6f7ff",
               padding: "5px 10px",
@@ -661,7 +672,7 @@ return (
                 step="0.01"
                 value={explosionFactor}
                 onChange={handleExplosionChange}
-                style={{ 
+                style={{
                   width: isMobile ? "calc(100% - 100px)" : "150px",
                   height: isMobile ? "24px" : "auto"
                 }}
@@ -672,27 +683,27 @@ return (
             </div>
           )}
         </div>
-        
+
         {/* Parameters section - collapsible on mobile */}
-        <div style={{ 
+        <div style={{
           display: controlsExpanded ? "flex" : "none",
-          flexWrap: "wrap", 
+          flexWrap: "wrap",
           gap: "10px",
           margin: 0,
           padding: 0
         }}>
           {modelRegistry[selectedModel].params.map(paramDef => {
             const { name, defaultValue } = paramDef;
-            
+
             // Skip explosionFactor as we handle it separately
             if (name === 'explosionFactor') return null;
-            
+
             const value = params[name];
             const isBoolean = typeof defaultValue === 'boolean';
-            
+
             return (
-              <div key={name} style={{ 
-                display: "flex", 
+              <div key={name} style={{
+                display: "flex",
                 alignItems: "center",
                 backgroundColor: "#fff",
                 border: "1px solid #ccc",
@@ -700,15 +711,15 @@ return (
                 borderRadius: "4px",
                 width: isMobile ? "calc(50% - 5px)" : "auto"
               }}>
-                <span style={{ 
-                  marginRight: "8px", 
+                <span style={{
+                  marginRight: "8px",
                   fontWeight: "bold",
                   color: "#333",
                   fontSize: isMobile ? "13px" : "inherit"
                 }}>
                   {name}:
                 </span>
-                
+
                 {isBoolean ? (
                   <input
                     id={`param-${name}`}
@@ -726,9 +737,9 @@ return (
                     type="number"
                     value={value}
                     onChange={(e) => handleParamChange(name, parseFloat(e.target.value))}
-                    style={{ 
-                      width: isMobile ? "calc(100% - 50px)" : "60px", 
-                      height: isMobile ? "30px" : "20px", 
+                    style={{
+                      width: isMobile ? "calc(100% - 50px)" : "60px",
+                      height: isMobile ? "30px" : "20px",
                       fontSize: isMobile ? "14px" : "12px",
                       flex: isMobile ? "1" : "none"
                     }}
@@ -738,7 +749,7 @@ return (
             );
           })}
         </div>
-        
+
         {validationErrors.length > 0 && (
           <div style={{
             marginTop: "10px",
@@ -760,7 +771,7 @@ return (
 
   {/* Visualization Area - Second DIRECT CHILD with explicit flex styling */}
       <div style={{
-        flex: 1, 
+        flex: 1,
         position: "relative",
         overflow: "hidden",
         display: "flex",
@@ -768,11 +779,11 @@ return (
         padding: 0
       }}>
         {validationErrors.length > 0 ? (
-          <div style={{ 
-            height: "100%", 
+          <div style={{
+            height: "100%",
             width: "100%",
-            display: "flex", 
-            alignItems: "center", 
+            display: "flex",
+            alignItems: "center",
             justifyContent: "center",
             fontSize: isMobile ? "14px" : "12px",
             color: "#999",
@@ -786,14 +797,14 @@ return (
         {/* 3D View */}
             {activeTab === '3d' && mesh ? (
               <ThreeContext>
-                <ReplicadMesh 
-                  edges={mesh.edges} 
-                  faces={mesh.faces} 
-                  helperSpaces={mesh.helperSpaces || []} 
+                <ReplicadMesh
+                  edges={mesh.edges}
+                  faces={mesh.faces}
+                  helperSpaces={mesh.helperSpaces || []}
                 />
               </ThreeContext>
             ) : null}
-            
+
             {/* Technical Drawing View */}
             {activeTab === 'technical' ? (
               // Always render canvas, pass viewboxes state
@@ -807,6 +818,8 @@ return (
                 // Pass view selection state and handlers
                 selectedViewToAdd={selectedViewToAdd}
                 onViewSelectionChange={handleViewSelectionChange}
+                rotationAngle={rotationAngle} // Pass rotation angle state
+                onRotationAngleChange={handleRotationAngleChange} // Pass rotation angle handler
                 includeHiddenLines={includeHiddenLines}
                 onHiddenLinesToggle={handleHiddenLinesToggle}
                 onAddViewToCell={handleAddViewToCell} // Pass view add handler
@@ -851,9 +864,9 @@ return (
               ) : (
                 <div style={{
                   height: "100%",
-                  width: "100%", 
-                  display: "flex", 
-                  alignItems: "center", 
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
                   justifyContent: "center",
                   fontSize: isMobile ? "14px" : "12px",
                   color: "#999"
@@ -862,20 +875,20 @@ return (
                 </div>
               )
             ) : null}
-            
+
             {/* Bill of Materials View */}
             {activeTab === 'bom' ? (
               bomData ? (
-                <BillOfMaterials 
-                  data={bomData} 
-                  modelName={selectedModel} 
+                <BillOfMaterials
+                  data={bomData}
+                  modelName={selectedModel}
                 />
               ) : (
-                <div style={{ 
+                <div style={{
                   height: "100%",
-                  width: "100%", 
-                  display: "flex", 
-                  alignItems: "center", 
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
                   justifyContent: "center",
                   fontSize: isMobile ? "14px" : "12px",
                   color: "#999"
