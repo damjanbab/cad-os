@@ -418,7 +418,21 @@ function ViewboxComponent({
             />
           </div>
 
+          {/* PDF Scale Override Input */}
+          <div style={settingRowStyle}>
+            <label style={settingLabelStyle} htmlFor={`customScaleOverride-${viewboxId}`}>PDF Scale Override:</label>
+            <input
+              id={`customScaleOverride-${viewboxId}`}
+              style={settingInputStyle}
+              type="text"
+              placeholder="e.g., 1:10, 2:1, 0=auto"
+              value={exportSettings.customScaleOverride || ''} // Use empty string if null/undefined
+              onChange={(e) => handleTextChange('customScaleOverride', e.target.value)}
+            />
+          </div>
+
           {/* --- Styling --- */}
+          <h5 style={{ marginTop: '10px', marginBottom: '5px', textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>Styling</h5>
           <div style={settingRowStyle}>
             <label style={settingLabelStyle} htmlFor={`visibleStrokeColor-${viewboxId}`}>Visible Line Color:</label>
             <input

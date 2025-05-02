@@ -277,6 +277,38 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
   return group.childNodes.length > 0 ? group : null;
 };
 
+// --- Helper Function to Parse Scale Override String ---
+// Parses "X:Y" or "X" into a numerical ratio (X/Y).
+// Returns null if invalid, empty, or "0".
+const parseScaleOverride = (overrideString) => {
+  if (!overrideString || overrideString.trim() === '' || overrideString.trim() === '0') {
+    return null; // Treat empty, "0", or whitespace as no override
+  }
+
+  const trimmed = overrideString.trim();
+
+  // Check for "X:Y" format
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':');
+    if (parts.length === 2) {
+      const x = parseFloat(parts[0]);
+      const y = parseFloat(parts[1]);
+      if (!isNaN(x) && !isNaN(y) && y > 1e-9) { // Avoid division by zero or near-zero
+        return x / y;
+      }
+    }
+  } else {
+    // Check for single number "X" format (interpret as X:1)
+    const x = parseFloat(trimmed);
+    if (!isNaN(x)) {
+      return x / 1; // Ratio is X/1
+    }
+  }
+
+  console.warn(`${LOG_PREFIX} Invalid scale override format: "${overrideString}". Using auto-scale.`);
+  return null; // Invalid format
+};
+
 
 // --- PDF Export Hook ---
 export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
@@ -420,13 +452,31 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
         }
 
         // Calculate the single scale factor for the views
-        const scaleX = spaceForViewsWidth / totalUnscaledViewsWidth;
-        const scaleY = spaceForViewsHeight / totalUnscaledViewsHeight;
-        viewScale = Math.min(scaleX, scaleY);
-        console.log(`${LOG_PREFIX}   Calculated View Scale: ${viewScale.toFixed(4)}`);
+        // Check for custom scale override first
+        const customScaleRatio = parseScaleOverride(settings.customScaleOverride);
+
+        if (customScaleRatio !== null) {
+          // Use override: Calculate viewScale based on the desired X:Y ratio
+          // Remember: trueScaleRatio = viewScale / 10, so viewScale = trueScaleRatio * 10
+          viewScale = customScaleRatio * 10;
+          console.log(`${LOG_PREFIX}   Using Custom Scale Override: "${settings.customScaleOverride}" -> Ratio=${customScaleRatio.toFixed(4)}, Calculated View Scale: ${viewScale.toFixed(4)}`);
+          // Optional: Add a check/warning if this scale makes content exceed available space
+          const checkWidth = totalUnscaledViewsWidth * viewScale + totalFixedGapWidth;
+          const checkHeight = totalUnscaledViewsHeight * viewScale + totalFixedGapHeight;
+          if (checkWidth > availableWidth + 1e-6 || checkHeight > availableHeight + 1e-6) { // Add tolerance
+            console.warn(`${LOG_PREFIX}   Warning: Custom scale override "${settings.customScaleOverride}" may cause content (W=${checkWidth.toFixed(2)}, H=${checkHeight.toFixed(2)}) to exceed available space (W=${availableWidth.toFixed(2)}, H=${availableHeight.toFixed(2)}).`);
+          }
+        } else {
+          // No valid override, calculate automatically
+          const scaleX = spaceForViewsWidth / totalUnscaledViewsWidth;
+          const scaleY = spaceForViewsHeight / totalUnscaledViewsHeight;
+          viewScale = Math.min(scaleX, scaleY);
+          console.log(`${LOG_PREFIX}   Calculated Auto View Scale: ${viewScale.toFixed(4)} (based on available space W=${spaceForViewsWidth.toFixed(2)}, H=${spaceForViewsHeight.toFixed(2)})`);
+        }
+
 
         if (viewScale <= 1e-6) {
-           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative view scale.`);
+           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative final view scale (override or auto).`);
            continue;
         }
 
