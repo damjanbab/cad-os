@@ -33,6 +33,8 @@ export default function MeasurementDisplay({
     calculatedValue = parseFloat(geometry.length.toFixed(2)).toString();
   } else if (type === 'circle' && geometry?.diameter != null) {
     calculatedValue = `⌀${parseFloat(geometry.diameter.toFixed(2)).toString()}`;
+  } else if (type === 'radius' && geometry?.radius != null) { // Handle radius type
+    calculatedValue = `R${parseFloat(geometry.radius.toFixed(2)).toString()}`;
   }
   // Use override if available and not empty, otherwise use calculated
   const displayValue = (overrideValue !== null && overrideValue !== '') ? overrideValue : calculatedValue;
@@ -712,7 +714,100 @@ export default function MeasurementDisplay({
         </g>
       );
     }
-    
+
+  } else if (type === 'radius' && geometry?.radius != null && textPosition) {
+    // --- Radius Measurement ---
+    // Use displayValue which already includes the 'R' prefix or the override
+    const textContent = displayValue;
+
+    // --- Calculate Input Position and Size (Radius) ---
+    const inputWidthRadius = Math.max(50, textContent.length * fontSize * 0.7 + 10);
+    const inputHeightRadius = fontSize * 1.8;
+    const inputXRadius = textPosition.x - inputWidthRadius / 2;
+    const inputYRadius = textPosition.y - inputHeightRadius / 2;
+
+    elements = (
+      <g id={pathId} className="measurement-group" onDoubleClick={handleDoubleClick}>
+        {/* No leader lines for now, just text */}
+        {/* Text with slight background */}
+        <g>
+          <rect
+            x={textPosition.x - (textContent.length * fontSize * 0.3)}
+            y={textPosition.y - fontSize * 0.7}
+            width={textContent.length * fontSize * 0.6}
+            height={fontSize * 1.4}
+            fill="white"
+            fillOpacity="0.9"
+            rx={fontSize * 0.2}
+            ry={fontSize * 0.2}
+            style={{ vectorEffect: 'non-scaling-stroke' }}
+          />
+          <text
+            x={textPosition.x}
+            y={textPosition.y}
+            fontSize={fontSize}
+            fill={strokeColor}
+            stroke="none"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontFamily="Arial, sans-serif"
+            style={{ userSelect: 'none', vectorEffect: 'non-scaling-stroke', pointerEvents: isEditing ? 'none' : 'auto' }}
+          >
+            {textContent}
+          </text>
+        </g>
+
+        {/* --- Input Field (rendered conditionally - Radius) --- */}
+        {isEditing && (
+          <foreignObject x={inputXRadius} y={inputYRadius} width={inputWidthRadius} height={inputHeightRadius}>
+            <div xmlns="http://www.w3.org/1999/xhtml" style={{ width: '100%', height: '100%' }}>
+              <input
+                ref={inputRef}
+                type="text"
+                value={editValue}
+                onChange={handleInputChange}
+                onBlur={handleInputBlur}
+                onKeyDown={handleInputKeyDown}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  padding: '0 2px',
+                  border: '1px solid #777',
+                  borderRadius: '2px',
+                  backgroundColor: '#fff',
+                  fontSize: `${fontSize * 0.9}px`,
+                  textAlign: 'center',
+                  boxSizing: 'border-box',
+                  fontFamily: 'Arial, sans-serif',
+                }}
+              />
+            </div>
+          </foreignObject>
+        )}
+
+        {/* Delete Button (X) - Radius */}
+        {onDeleteMeasurement && !isEditing && (
+          <text
+            x={textPosition.x + (textContent.length * fontSize * 0.3) + 2}
+            y={textPosition.y}
+            fontSize={fontSize * 1.1}
+            fill="red"
+            stroke="none"
+            textAnchor="start"
+            dominantBaseline="middle"
+            fontFamily="Arial, sans-serif"
+            style={{ cursor: 'pointer', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              console.log(`[MeasurementDisplay ${pathId}] Delete clicked.`);
+              onDeleteMeasurement(pathId);
+            }}
+          >
+            X
+          </text>
+        )}
+      </g>
+    );
   }
 
   return elements;

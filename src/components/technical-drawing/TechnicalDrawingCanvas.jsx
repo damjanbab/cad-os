@@ -419,8 +419,8 @@ export default function TechnicalDrawingCanvas({
     // --- Measurement Toggling Logic (only in 'measure' mode) ---
     // Clear any selected snap points when switching back to measure mode implicitly by clicking
     setSnapPoints([]);
-    // Only allow measurements for lines and circles with valid geometry
-    if (!path.geometry || (path.geometry.type !== 'line' && path.geometry.type !== 'circle')) {
+    // Only allow measurements for lines, circles, and arcs with valid geometry
+    if (!path.geometry || (path.geometry.type !== 'line' && path.geometry.type !== 'circle' && path.geometry.type !== 'arc')) {
       console.log(`[Canvas] Clicked non-measurable path in measure mode: ${uniquePathId}, Type: ${path.geometry?.type}`);
       return;
     }
@@ -444,6 +444,13 @@ export default function TechnicalDrawingCanvas({
         } else if (path.geometry.type === 'circle' && path.geometry.center && path.geometry.diameter != null) {
           initialTextPosition.x = path.geometry.center[0];
           initialTextPosition.y = path.geometry.center[1]; // Place inside initially
+        } else if (path.geometry.type === 'arc' && path.geometry.endpoints && path.geometry.endpoints.length === 2 && path.geometry.radiusX != null) {
+          // Initial position for arc radius: midpoint of endpoints, offset slightly
+          const [x1, y1] = path.geometry.endpoints[0];
+          const [x2, y2] = path.geometry.endpoints[1];
+          initialTextPosition.x = (x1 + x2) / 2;
+          initialTextPosition.y = (y1 + y2) / 2 - 5; // Offset up slightly
+          // TODO: Improve arc text positioning (e.g., along normal at midpoint)
         }
 
         // Scale the geometry values before storing
@@ -455,6 +462,12 @@ export default function TechnicalDrawingCanvas({
           if (scaledGeometry.radius != null) {
             scaledGeometry.radius *= 10; // Scale radius if present
           }
+        } else if (scaledGeometry.type === 'arc' && scaledGeometry.radiusX != null) {
+          // Scale arc radii (using radiusX as the primary radius for now)
+          scaledGeometry.radius = scaledGeometry.radiusX * 10; // Store scaled radiusX as 'radius'
+          // We can keep original radiusX/Y if needed for other calculations, or remove them:
+          // delete scaledGeometry.radiusX;
+          // delete scaledGeometry.radiusY;
         }
 
         // Determine the correct viewId for the measurement state
@@ -477,9 +490,12 @@ export default function TechnicalDrawingCanvas({
         }
 
 
+        // Determine measurement type based on geometry for the state object
+        const measurementType = path.geometry.type === 'arc' ? 'radius' : path.geometry.type;
+
         newMeasurements[uniquePathId] = {
           pathId: uniquePathId, // This is the full, unique path segment ID
-          type: path.geometry.type,
+          type: measurementType, // Use 'radius' for arcs, 'line'/'circle' otherwise
           textPosition: initialTextPosition,
           viewInstanceId: viewInstanceId, // Store the ID of the specific view instance
           geometry: scaledGeometry, // Store the SCALED geometry

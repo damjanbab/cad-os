@@ -89,7 +89,11 @@ const getStandardPageLayout = (contentWidth, contentHeight, paperSizeKey = DEFAU
   }
 };
 
-const scaleCoord = (coord, scale) => [coord[0] * scale, coord[1] * scale];
+const scaleCoord = (coord, scale) => {
+  if (!coord || !Array.isArray(coord) || coord.length < 2) return [0, 0]; // Safety check
+  return [coord[0] * scale, coord[1] * scale];
+};
+
 
 // --- Helper Function for Measurement SVG Rendering (for PDF) ---
 // Note: geometry coordinates (endpoints, center) are UNscaled.
@@ -116,12 +120,7 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
     return el;
   };
 
-  // Apply scale to geometry coordinates
-  // const scaleCoord = (coord, scale) => [coord[0] * scale, coord[1] * scale]; // Already moved outside
-  // const scaleValue = (val) => val * scale; // Not needed anymore for styles
-
   // --- Determine Text Content (Check for Override) ---
-  // (Keep existing logic for textContent determination)
   let textContent = '';
   if (measurementData.overrideValue !== null && measurementData.overrideValue !== '') {
     textContent = measurementData.overrideValue;
@@ -130,6 +129,8 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
     textContent = parseFloat(geometry.length.toFixed(2)).toString();
   } else if (type === 'circle' && geometry?.diameter != null) {
     textContent = `⌀${parseFloat(geometry.diameter.toFixed(2)).toString()}`;
+  } else if (type === 'radius' && geometry?.radius != null) { // Handle radius type here
+    textContent = `R${parseFloat(geometry.radius.toFixed(2)).toString()}`;
   }
   // Add a fallback if textContent is still empty
   if (textContent === '') {
@@ -245,13 +246,10 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
     group.appendChild(textEl);
 
   // --- CIRCLE MEASUREMENT RENDERING ---
-  // Note: Circle measurements are not affected by the relative positioning requirement,
-  // but we should ensure they still use fixed mm styles and don't rely on textPosition for placement.
-  // We'll place the text based on a fixed angle/offset from the center for consistency.
   } else if (type === 'circle' && geometry?.center && geometry.diameter != null) {
     const [uscx, uscy] = geometry.center; // Unscaled center
-    const cx = uscx * scale; // Scaled center (mm) - No need to use scaleCoord here
-    const cy = uscy * scale; // Scaled center (mm) - No need to use scaleCoord here
+    const cx = uscx * scale; // Scaled center (mm)
+    const cy = uscy * scale; // Scaled center (mm)
     const radius = (geometry.radius || geometry.diameter / 2) * scale; // Scaled radius (mm)
     // Use textContent determined above
 
@@ -271,6 +269,79 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
     const textEl = createSvgElement('text', { x: textX, y: textY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
     textEl.textContent = textContent;
     group.appendChild(textEl);
+
+  // --- RADIUS MEASUREMENT RENDERING ---
+  } else if (type === 'radius' && geometry?.radius != null && geometry?.center && geometry?.endpoints && measurementData.textPosition) {
+    // Use textContent determined above
+
+    // Scale geometry points
+    const [usp1, usp2] = geometry.endpoints;
+    const p1 = scaleCoord(usp1, scale);
+    const p2 = scaleCoord(usp2, scale);
+    const center = geometry.center ? scaleCoord(geometry.center, scale) : null; // Scale center if available
+    const scaledRadius = geometry.radius * scale; // Scaled radius in mm
+
+    if (!center) {
+      console.warn(`[PDF Export] Missing center point for radius measurement ${pathId}. Cannot draw leader line.`);
+      // Fallback: Just draw text at its position
+      const textX = measurementData.textPosition.x * scale;
+      const textY = measurementData.textPosition.y * scale;
+      const textEl = createSvgElement('text', { x: textX, y: textY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
+      textEl.textContent = textContent;
+      group.appendChild(textEl);
+    } else {
+      // Calculate chord midpoint (approximate arc midpoint for leader anchor)
+      const midX = (p1[0] + p2[0]) / 2;
+      const midY = (p1[1] + p2[1]) / 2;
+      const arcAnchor = [midX, midY]; // Use chord midpoint as anchor on arc
+
+      // Vector from center towards the user's text position
+      const userTextPos = scaleCoord([measurementData.textPosition.x, measurementData.textPosition.y], scale);
+      const textVecX = userTextPos[0] - center[0];
+      const textVecY = userTextPos[1] - center[1];
+      const textVecLen = Math.sqrt(textVecX*textVecX + textVecY*textVecY);
+      const textUx = textVecLen > 1e-9 ? textVecX / textVecLen : 1; // Default to horizontal if length is near zero
+      const textUy = textVecLen > 1e-9 ? textVecY / textVecLen : 0;
+
+      // Calculate the point on the arc where the leader line should ideally start (intersection of center-text line and arc)
+      // For simplicity, we'll use the chord midpoint (arcAnchor) for now, but orient the arrow correctly.
+      const leaderStartPoint = arcAnchor;
+
+      // Calculate the point where the leader line ends (slightly before the text)
+      const leaderEnd = [
+          userTextPos[0] - textUx * textOffset, // Pull back slightly from text anchor
+          userTextPos[1] - textUy * textOffset
+      ];
+
+      // Arrowhead at leaderStartPoint, pointing outwards along the user angle (textUx, textUy)
+      const arrowNormX = textUx;
+      const arrowNormY = textUy;
+      const arrowHeadFactor = 0.35;
+      const arrowTailFactor = 1 - arrowHeadFactor;
+      const arrow = `M ${leaderStartPoint[0]} ${leaderStartPoint[1]}
+                     l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize}
+                     l ${-arrowNormY * arrowSize * arrowHeadFactor} ${arrowNormX * arrowSize * arrowHeadFactor}
+                     l ${-arrowNormX * arrowSize * arrowTailFactor} ${-arrowNormY * arrowSize * arrowTailFactor}
+                     z`;
+
+      // Draw Leader Line (from center to leaderEnd)
+      group.appendChild(createSvgElement('line', { x1: center[0], y1: center[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+      // Draw Arrowhead
+      group.appendChild(createSvgElement('path', { d: arrow, fill: fillColor, stroke: 'none' }));
+      // Draw Text
+      const textEl = createSvgElement('text', {
+        x: userTextPos[0], // Use scaled user text position
+        y: userTextPos[1], // Use scaled user text position
+        'font-size': fontSize,
+        fill: fillColor,
+        stroke: 'none',
+        'text-anchor': 'middle',
+        'dominant-baseline': 'middle',
+        'font-family': fontFamily
+      });
+      textEl.textContent = textContent;
+      group.appendChild(textEl);
+    }
   }
 
   // Only return group if it contains elements (i.e., rendering was successful)
@@ -648,55 +719,67 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                   horizontalTop: [], horizontalBottom: [],
                   verticalLeft: [], verticalRight: [],
                   circle: [], // Circles handled separately
+                  radius: [], // Radius handled separately
                 };
+                const lineMeasurements = []; // Store line measurements for positioning
 
                 itemMeasurements.forEach(m => {
                   if (m.type === 'circle') {
                     groups.circle.push(m);
-                    return;
+                  } else if (m.type === 'radius') {
+                    groups.radius.push(m);
+                  } else if (m.type === 'line' && m.geometry.endpoints) {
+                    lineMeasurements.push(m); // Add to list for later grouping
                   }
-                  if (m.type === 'line' && m.geometry.endpoints) {
+                });
+
+                // Render Circle and Radius measurements first (no auto-positioning needed)
+                [...groups.circle, ...groups.radius].forEach(measurement => {
+                  const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale, null, settings); // Pass null for targetPosition
+                  if (measurementSvgGroup) {
+                    itemGroup.appendChild(measurementSvgGroup);
+                  } else {
+                    console.warn(`${LOG_PREFIX}           renderMeasurementToSvg returned null for ${measurement.pathId} (Type: ${measurement.type})`);
+                  }
+                });
+
+                // Now group and position only the LINE measurements
+                lineMeasurements.forEach(m => {
                     const [usp1, usp2] = m.geometry.endpoints;
-                    const p1 = scaleCoord(usp1, viewScale); // Scaled points (mm) - Pass viewScale
-                    const p2 = scaleCoord(usp2, viewScale); // Pass viewScale
+                    const p1 = scaleCoord(usp1, viewScale); // Scaled points (mm)
+                    const p2 = scaleCoord(usp2, viewScale);
                     const midX = (p1[0] + p2[0]) / 2;
                     const midY = (p1[1] + p2[1]) / 2;
                     const isHorizontal = Math.abs(p2[0] - p1[0]) > Math.abs(p2[1] - p1[1]);
 
-                    // Corrected Side Determination: Compare measurement midpoint to BBox edges
                     if (isHorizontal) {
-                      // If midpoint is closer to top edge (maxY) than bottom edge (minY)
                       if (Math.abs(midY - scaledBBox.maxY) < Math.abs(midY - scaledBBox.minY)) {
                          groups.horizontalTop.push(m);
                       } else {
                          groups.horizontalBottom.push(m);
                       }
                     } else { // Vertical
-                      // If midpoint is closer to right edge (maxX) than left edge (minX)
                        if (Math.abs(midX - scaledBBox.maxX) < Math.abs(midX - scaledBBox.minX)) {
                          groups.verticalRight.push(m);
                        } else {
                          groups.verticalLeft.push(m);
                        }
                     }
-                  }
                 });
 
-                console.log(`${LOG_PREFIX}         Grouped Measurements:`, {
+
+                console.log(`${LOG_PREFIX}         Grouped Line Measurements:`, {
                     horizontalTop: groups.horizontalTop.length, horizontalBottom: groups.horizontalBottom.length,
-                    verticalLeft: groups.verticalLeft.length, verticalRight: groups.verticalRight.length,
-                    circle: groups.circle.length
+                    verticalLeft: groups.verticalLeft.length, verticalRight: groups.verticalRight.length
                 });
 
-                // Calculate target positions and render
-                const measurementTargetPositions = {}; // Store { [pathId]: { x, y } }
+                // Calculate target positions for LINE measurements
+                const measurementTargetPositions = {};
 
-                // Use measurement offset settings
                 const measExtGap = settings.measurementExtensionGap ?? DEFAULT_PDF_BASE_MEASUREMENT_EXTENSION_GAP;
                 const measInitialOffset = settings.measurementInitialOffset ?? DEFAULT_PDF_MEASUREMENT_INITIAL_OFFSET;
                 const measStackingOffset = settings.measurementStackingOffset ?? DEFAULT_PDF_MEASUREMENT_STACKING_OFFSET;
 
-                // Horizontal Top (Offset upwards from maxY)
                 let currentOffset = measExtGap + measInitialOffset;
                 groups.horizontalTop.forEach(m => {
                   const targetY = scaledBBox.maxY + currentOffset;
@@ -704,7 +787,6 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                   currentOffset += measStackingOffset;
                 });
 
-                // Horizontal Bottom (Offset downwards from minY)
                 currentOffset = measExtGap + measInitialOffset;
                 groups.horizontalBottom.forEach(m => {
                   const targetY = scaledBBox.minY - currentOffset;
@@ -712,7 +794,6 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                   currentOffset += measStackingOffset;
                 });
 
-                // Vertical Left (Offset leftwards from minX)
                 currentOffset = measExtGap + measInitialOffset;
                 groups.verticalLeft.forEach(m => {
                   const targetX = scaledBBox.minX - currentOffset;
@@ -720,7 +801,6 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                   currentOffset += measStackingOffset;
                 });
 
-                // Vertical Right (Offset rightwards from maxX)
                 currentOffset = measExtGap + measInitialOffset;
                 groups.verticalRight.forEach(m => {
                   const targetX = scaledBBox.maxX + currentOffset;
@@ -728,27 +808,24 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                   currentOffset += measStackingOffset;
                 });
 
-                // Render all measurements for this item using calculated positions
-                console.log(`${LOG_PREFIX}         Rendering ${itemMeasurements.length} measurements with calculated positions...`);
-                itemMeasurements.forEach(measurement => {
-                  const targetPosition = measurementTargetPositions[measurement.pathId] || null; // Get calculated position (null for circles)
-                  // Circles don't need a target position from the layout logic
-                  if (measurement.type === 'circle' || targetPosition) {
-                     // console.log(`${LOG_PREFIX}           Rendering ${measurement.pathId} (Type: ${measurement.type}) Target:`, targetPosition); // Less verbose
-                     // Pass settings to measurement renderer
+                // Render LINE measurements using calculated positions
+                console.log(`${LOG_PREFIX}         Rendering ${lineMeasurements.length} line measurements with calculated positions...`);
+                lineMeasurements.forEach(measurement => {
+                  const targetPosition = measurementTargetPositions[measurement.pathId];
+                  if (targetPosition) {
                      const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale, targetPosition, settings);
                      if (measurementSvgGroup) {
-                       itemGroup.appendChild(measurementSvgGroup); // Append measurement group to the item's group
+                       itemGroup.appendChild(measurementSvgGroup);
                      } else {
-                       console.warn(`${LOG_PREFIX}           renderMeasurementToSvg returned null for ${measurement.pathId}`);
+                       console.warn(`${LOG_PREFIX}           renderMeasurementToSvg returned null for line measurement ${measurement.pathId}`);
                      }
                   } else {
-                      console.warn(`${LOG_PREFIX}           Skipping measurement ${measurement.pathId} (Type: ${measurement.type}) - Could not determine target position.`);
+                      // This case should ideally not happen if grouping logic is correct
+                      console.warn(`${LOG_PREFIX}           Skipping line measurement ${measurement.pathId} - Could not determine target position.`);
                   }
                 });
 
               } else if (itemMeasurements.length > 0) {
-                  // Update warning message to reflect the check location
                   console.warn(`${LOG_PREFIX}       Cannot process measurements for item ${item.id}: Missing item.svgData.geometryBoundingBox.`);
               }
             } // End if(storedItemData)

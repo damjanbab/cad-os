@@ -383,7 +383,37 @@ function decomposePathToSegments(pathData) { // Returns segments with geometry o
       case 'S': case 's': pairs = params.length / 4; for(let i=0; i<pairs; ++i) { const p = params.slice(i*4, (i+1)*4); if (p.length === 4) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, geometry: { type: 'curve', length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] } }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
       case 'Q': case 'q': pairs = params.length / 4; for(let i=0; i<pairs; ++i) { const p = params.slice(i*4, (i+1)*4); if (p.length === 4) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, geometry: { type: 'curve', length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] } }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
       case 'T': case 't': pairs = params.length / 2; for(let i=0; i<pairs; ++i) { const p = params.slice(i*2, (i+1)*2); if (p.length === 2) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'curve', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, geometry: { type: 'curve', length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] } }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
-      case 'A': case 'a': pairs = params.length / 7; for(let i=0; i<pairs; ++i) { const p = params.slice(i*7, (i+1)*7); if (p.length === 7) { const endpoint = getEndpointForCurve(command, p, currentX, currentY); segments.push({ type: 'arc', path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`, geometry: { type: 'arc', length: estimateCurveLength(command, p, currentX, currentY), endpoints: [[currentX, currentY], endpoint] } }); currentX = endpoint[0]; currentY = endpoint[1]; } } break;
+      case 'A': case 'a': pairs = params.length / 7; for(let i=0; i<pairs; ++i) { const p = params.slice(i*7, (i+1)*7); if (p.length === 7) {
+          const endpoint = getEndpointForCurve(command, p, currentX, currentY);
+          const radiusX = Math.abs(p[0]);
+          const radiusY = Math.abs(p[1]);
+          const xAxisRotationDeg = p[2];
+          const largeArcFlag = p[3];
+          const sweepFlag = p[4];
+          const endX = endpoint[0];
+          const endY = endpoint[1];
+
+          // Calculate center point
+          const center = getArcCenter(currentX, currentY, endX, endY, radiusX, radiusY, largeArcFlag, sweepFlag, xAxisRotationDeg);
+
+          segments.push({
+            type: 'arc',
+            path: `M ${currentX} ${currentY} ${command} ${p.join(' ')}`,
+            geometry: {
+              type: 'arc',
+              length: estimateCurveLength(command, p, currentX, currentY),
+              endpoints: [[currentX, currentY], endpoint],
+              radiusX: radiusX,
+              radiusY: radiusY,
+              center: center, // Store calculated center
+              // Store flags/rotation too if needed for drawing leader line precisely
+              xAxisRotation: xAxisRotationDeg,
+              largeArcFlag: largeArcFlag,
+              sweepFlag: sweepFlag
+            }
+          });
+          currentX = endX; currentY = endY;
+        } } break;
     }
   }
   return segments;
@@ -422,6 +452,58 @@ function getEndpointForCurve(command, params, currentX, currentY) {
   }
   return [x, y];
 }
+
+// --- Helper Function to Calculate Arc Center ---
+// Adapted from https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
+// and existing detectCircle logic
+function getArcCenter(x1, y1, x2, y2, rx, ry, largeArcFlag, sweepFlag, xAxisRotationDeg) {
+  if (rx <= 0 || ry <= 0) return null; // Invalid radii
+
+  const phi = xAxisRotationDeg * Math.PI / 180;
+  const cosPhi = Math.cos(phi);
+  const sinPhi = Math.sin(phi);
+
+  // Step 1: Compute (x1', y1') - coordinates transformed to align ellipse axes with coordinate axes
+  const x1p = cosPhi * (x1 - x2) / 2 + sinPhi * (y1 - y2) / 2;
+  const y1p = -sinPhi * (x1 - x2) / 2 + cosPhi * (y1 - y2) / 2;
+
+  const rx_sq = rx * rx;
+  const ry_sq = ry * ry;
+  const x1p_sq = x1p * x1p;
+  const y1p_sq = y1p * y1p;
+
+  // Ensure radii are large enough
+  let radiiCheck = x1p_sq / rx_sq + y1p_sq / ry_sq;
+  let correctedRx = rx;
+  let correctedRy = ry;
+  if (radiiCheck > 1) {
+    const sqrtRadiiCheck = Math.sqrt(radiiCheck);
+    correctedRx = sqrtRadiiCheck * rx;
+    correctedRy = sqrtRadiiCheck * ry;
+  }
+
+  const correctedRx_sq = correctedRx * correctedRx;
+  const correctedRy_sq = correctedRy * correctedRy;
+
+  // Step 2: Compute (cx', cy') - center of ellipse in transformed coordinates
+  let sign = (largeArcFlag === sweepFlag) ? -1 : 1;
+  // Avoid division by zero or negative sqrt
+  const denominator = correctedRx_sq * y1p_sq + correctedRy_sq * x1p_sq;
+  if (denominator < 1e-9) return null; // Avoid division by zero if endpoints are coincident after scaling/rotation
+  let sq = (correctedRx_sq * correctedRy_sq - correctedRx_sq * y1p_sq - correctedRy_sq * x1p_sq) / denominator;
+  sq = Math.max(0, sq); // Ensure non-negative before sqrt
+  let coef = sign * Math.sqrt(sq);
+  const cxp = coef * (correctedRx * y1p / correctedRy);
+  const cyp = coef * -(correctedRy * x1p / correctedRx);
+
+  // Step 3: Compute (cx, cy) - center of ellipse in original coordinates
+  const cx = cosPhi * cxp - sinPhi * cyp + (x1 + x2) / 2;
+  const cy = sinPhi * cxp + cosPhi * cyp + (y1 + y2) / 2;
+
+  return [cx, cy];
+}
+// --- End Arc Center Helper ---
+
 
 // --- Helper to Calculate Bounding Box from Normalized Paths ---
 function calculatePathsBoundingBox(paths) {
