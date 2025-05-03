@@ -280,6 +280,7 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
     const p2 = scaleCoord(usp2, scale);
     const center = geometry.center ? scaleCoord(geometry.center, scale) : null; // Scale center if available
     const scaledRadius = geometry.radius * scale; // Scaled radius in mm
+    const trueScaledRadius = scaledRadius / 10; // Use radius adjusted for 10x factor
 
     if (!center) {
       console.warn(`[PDF Export] Missing center point for radius measurement ${pathId}. Cannot draw leader line.`);
@@ -290,11 +291,6 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
       textEl.textContent = textContent;
       group.appendChild(textEl);
     } else {
-      // Calculate chord midpoint (approximate arc midpoint for leader anchor)
-      const midX = (p1[0] + p2[0]) / 2;
-      const midY = (p1[1] + p2[1]) / 2;
-      const arcAnchor = [midX, midY]; // Use chord midpoint as anchor on arc
-
       // Vector from center towards the user's text position
       const userTextPos = scaleCoord([measurementData.textPosition.x, measurementData.textPosition.y], scale);
       const textVecX = userTextPos[0] - center[0];
@@ -303,9 +299,10 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
       const textUx = textVecLen > 1e-9 ? textVecX / textVecLen : 1; // Default to horizontal if length is near zero
       const textUy = textVecLen > 1e-9 ? textVecY / textVecLen : 0;
 
-      // Calculate the point on the arc where the leader line should ideally start (intersection of center-text line and arc)
-      // For simplicity, we'll use the chord midpoint (arcAnchor) for now, but orient the arrow correctly.
-      const leaderStartPoint = arcAnchor;
+      // Calculate the point on the circumference where the leader line should start
+      const circumferencePointX = center[0] + textUx * trueScaledRadius;
+      const circumferencePointY = center[1] + textUy * trueScaledRadius;
+      const circumferencePoint = [circumferencePointX, circumferencePointY];
 
       // Calculate the point where the leader line ends (slightly before the text)
       const leaderEnd = [
@@ -313,19 +310,20 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
           userTextPos[1] - textUy * textOffset
       ];
 
-      // Arrowhead at leaderStartPoint, pointing outwards along the user angle (textUx, textUy)
+      // Arrowhead at circumferencePoint, pointing inwards towards the center (-textUx, -textUy)
       const arrowNormX = textUx;
       const arrowNormY = textUy;
       const arrowHeadFactor = 0.35;
       const arrowTailFactor = 1 - arrowHeadFactor;
-      const arrow = `M ${leaderStartPoint[0]} ${leaderStartPoint[1]}
+      // Arrow points outwards along the radial vector (arrowNormX, arrowNormY) from the circumference point
+      const arrow = `M ${circumferencePoint[0]} ${circumferencePoint[1]}
                      l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize}
                      l ${-arrowNormY * arrowSize * arrowHeadFactor} ${arrowNormX * arrowSize * arrowHeadFactor}
                      l ${-arrowNormX * arrowSize * arrowTailFactor} ${-arrowNormY * arrowSize * arrowTailFactor}
                      z`;
 
-      // Draw Leader Line (from center to leaderEnd)
-      group.appendChild(createSvgElement('line', { x1: center[0], y1: center[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+      // Draw NEW Leader Line (from circumference to near text)
+      group.appendChild(createSvgElement('line', { x1: circumferencePoint[0], y1: circumferencePoint[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
       // Draw Arrowhead
       group.appendChild(createSvgElement('path', { d: arrow, fill: fillColor, stroke: 'none' }));
       // Draw Text
