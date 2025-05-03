@@ -16,7 +16,9 @@ function ViewboxComponent({
   selectedTarget,
   onCellSelection,
   onTitleBlockChange, // Add prop for handling title block updates
-  onPathClick, // Add prop for path click handler
+  onPathClick, // Add prop for path click handler (measure mode)
+  onSnapClick, // Add prop for snap click handler (snap mode)
+  interactionMode, // Add prop for current interaction mode
   // Receive measurement props
   measurementsByViewInstanceId, // Renamed prop: object keyed by view instance ID
   // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
@@ -235,18 +237,21 @@ function ViewboxComponent({
               style={currentCellStyle}
               // Restore cell selection onClick with refined logic
               onClick={(event) => {
-                // Select the cell ONLY if the click target does NOT have an SVG ancestor
-                if (!event.target.closest('svg')) {
-                  onCellSelection(viewboxId, cellIndex);
+                // Select the cell ONLY if the click target is the cell div itself
+                // (i.e., not inside the SVG)
+                if (event.target === event.currentTarget) {
+                   onCellSelection(viewboxId, cellIndex);
                 }
-                // Otherwise, the click was inside the SVG, let its handlers manage it.
+                // If the click was inside the SVG, let SvgView handle it
               }}
             >
               {item ? (
                 // If item exists, render the SvgView component
                 <SvgView
                   viewInstanceData={item} // Pass renamed prop
-                  onPathClick={onPathClick}
+                  onPathClick={onPathClick} // Pass measure mode handler
+                  onSnapClick={onSnapClick} // Pass snap mode handler
+                  interactionMode={interactionMode} // Pass current mode
                   // Get the correct measurements for this specific view instance
                   measurements={measurementsByViewInstanceId[item.id] || []}
                   // onMeasurementUpdate={onMeasurementUpdate} // REMOVED - Update is handled via hook callback

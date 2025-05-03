@@ -12,11 +12,15 @@ const UI_HIDDEN_DASH_ARRAY = '4 2';
 const UI_SNAP_POINT_STROKE_COLOR = '#ff00ff'; // Magenta
 const UI_SNAP_POINT_STROKE_WIDTH = 2;
 const UI_SNAP_POINT_RADIUS = 4;
+const UI_MEASUREMENT_CENTER_FILL_COLOR = '#0000ff'; // Blue
+const UI_MEASUREMENT_CENTER_RADIUS = 2; // Smaller than snap points
 
 // Component to render the SVG content of a single view, including measurements - Memoized
 function SvgViewComponent({
   viewInstanceData, // Renamed from viewItemData
-  onPathClick,
+  onPathClick, // For measure mode
+  onSnapClick, // For snap mode
+  interactionMode, // Current mode
   // Receive measurement props
   measurements,
   // Receive snap points array prop
@@ -61,6 +65,23 @@ function SvgViewComponent({
   // Log the filtered points for this view
   console.log(`[SvgView ${viewId}] Relevant snapPoints for rendering:`, relevantSnapPoints);
 
+  // Click handler for the SVG element itself, used only in snap mode
+  const handleSvgClick = (event) => {
+    // Only trigger snap logic if in snap mode and the click wasn't on a path element
+    // (PathElement has its own onClick which calls onPathClick for measure mode)
+    if (interactionMode === 'snap' && event.target.tagName !== 'path' && onSnapClick) {
+       // Also check if the click wasn't on a measurement display element
+       if (!event.target.closest('.measurement-group')) {
+           console.log(`[SvgView ${viewId}] SVG background clicked in snap mode.`);
+           onSnapClick(event, viewId);
+       } else {
+           console.log(`[SvgView ${viewId}] Clicked measurement display in snap mode, ignoring.`);
+       }
+    } else if (interactionMode === 'snap') {
+        console.log(`[SvgView ${viewId}] Clicked path element in snap mode, ignoring SVG click.`);
+    }
+  };
+
   return (
     // Add data attribute to the container div
     <div style={svgContainerStyle} data-view-instance-id={viewId}>
@@ -71,6 +92,8 @@ function SvgViewComponent({
         viewBox={viewBox} // Use the viewBox from the generated data
         preserveAspectRatio="xMidYMid meet" // Scale SVG to fit, maintain aspect ratio
         style={{ display: 'block' }} // Prevent extra space below SVG
+        onClick={handleSvgClick} // Add the SVG click handler
+        data-view-instance-id={viewId} // Add data attribute for easier identification if needed
       >
         <g fill="none"> {/* Default fill to none */}
           {paths.map((path) => {
@@ -87,7 +110,7 @@ function SvgViewComponent({
                 stroke={stroke}
                 strokeWidth={strokeWidth}
                 strokeDasharray={strokeDasharray}
-                onPathClick={onPathClick} // Pass the handler down
+                onPathClick={onPathClick} // Pass the handler down (used in measure mode)
                 viewInstanceId={viewId} // Pass the unique ID of this SvgView instance
                 // isActive={activeMeasurements && activeMeasurements[path.id]} // Keep commented for now
                 // partName={partName} // Keep commented for now - partName is on viewItemData if needed
@@ -106,6 +129,23 @@ function SvgViewComponent({
               // Removed onDragStart
             />
           ))}
+          {/* Render center points for active circle/arc measurements */}
+          {measurements && measurements.map(measurement => {
+            if ((measurement.type === 'circle' || measurement.type === 'arc' || measurement.type === 'radius') && measurement.geometry?.center) {
+              return (
+                <circle
+                  key={`center-dot-${measurement.pathId}`}
+                  cx={measurement.geometry.center[0]}
+                  cy={measurement.geometry.center[1]}
+                  r={UI_MEASUREMENT_CENTER_RADIUS} // Use constant for center dot radius
+                  fill={UI_MEASUREMENT_CENTER_FILL_COLOR} // Use constant for center dot fill
+                  stroke="none" // No stroke for center dot
+                  style={{ pointerEvents: 'none' }}
+                />
+              );
+            }
+            return null;
+          })}
           {/* Render highlights for all relevant snap points */}
           {relevantSnapPoints.map((snapPoint, index) => (
             <circle
