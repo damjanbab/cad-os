@@ -32,7 +32,7 @@ export default function MeasurementDisplay({
   if (type === 'line' && geometry?.length != null) {
     calculatedValue = parseFloat(geometry.length.toFixed(2)).toString();
   } else if (type === 'circle' && geometry?.diameter != null) {
-    calculatedValue = `⌀${parseFloat(geometry.diameter.toFixed(2)).toString()}`;
+    calculatedValue = `⌀${parseFloat(geometry.diameter.toFixed(2)).toString()}`; // Revert back to Diameter symbol
   } else if (type === 'radius' && geometry?.radius != null) { // Handle radius type
     calculatedValue = `R${parseFloat(geometry.radius.toFixed(2)).toString()}`;
   }

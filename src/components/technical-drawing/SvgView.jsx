@@ -111,6 +111,8 @@ function SvgViewComponent({
                 strokeWidth={strokeWidth}
                 strokeDasharray={strokeDasharray}
                 onPathClick={onPathClick} // Pass the handler down (used in measure mode)
+                onSnapClick={onSnapClick} // Pass the snap handler down
+                interactionMode={interactionMode} // Pass the interaction mode down
                 viewInstanceId={viewId} // Pass the unique ID of this SvgView instance
                 // isActive={activeMeasurements && activeMeasurements[path.id]} // Keep commented for now
                 // partName={partName} // Keep commented for now - partName is on viewItemData if needed

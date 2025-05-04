@@ -3,18 +3,39 @@ import React, { useCallback, memo } from 'react'; // Import useCallback and memo
 /**
  * Renders a single SVG path - Memoized
  */
-// Add viewInstanceId to props
-const PathElementComponent = ({ path, stroke, strokeWidth, strokeDasharray, onPathClick, viewInstanceId, partName, partIndex }) => {
+// Add interactionMode and onSnapClick to props
+const PathElementComponent = ({
+  path,
+  stroke,
+  strokeWidth,
+  strokeDasharray,
+  onPathClick, // For measure mode
+  onSnapClick, // For snap mode
+  interactionMode, // Current mode
+  viewInstanceId,
+  partName,
+  partIndex
+}) => {
   if (!path) return null;
 
-  // Internal handler to call prop and stop propagation
+  // Internal handler to call the correct prop based on mode and stop propagation
   const handleClick = useCallback((event) => {
     event.stopPropagation(); // Prevent click from bubbling to parent cell
-    if (onPathClick) {
-      // Pass event, unique path ID, path object, partName, partIndex, AND viewInstanceId
+
+    if (interactionMode === 'snap' && onSnapClick) {
+      // In snap mode, call onSnapClick, passing the event and viewInstanceId
+      // The main snap handler in TechnicalDrawingCanvas will use event.target
+      // to identify the clicked path and its geometry.
+      console.log(`[PathElement ${path.id}] Clicked in snap mode. Calling onSnapClick.`);
+      onSnapClick(event, viewInstanceId);
+    } else if (interactionMode === 'measure' && onPathClick) {
+      // In measure mode, call onPathClick as before
+      console.log(`[PathElement ${path.id}] Clicked in measure mode. Calling onPathClick.`);
       onPathClick(event, path.id, path, partName, partIndex, viewInstanceId);
+    } else {
+      console.warn(`[PathElement ${path.id}] Clicked with unhandled mode or missing handler. Mode: ${interactionMode}`);
     }
-  }, [onPathClick, path, partName, partIndex, viewInstanceId]); // Add dependencies
+  }, [interactionMode, onPathClick, onSnapClick, path, partName, partIndex, viewInstanceId]); // Add dependencies
 
   // Handle different path formats
   const pathData = path.data || (typeof path === 'string' ? path : String(path));

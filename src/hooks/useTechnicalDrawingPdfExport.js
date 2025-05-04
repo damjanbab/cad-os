@@ -1,6 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react'; // Added useEffect, useState
 import { jsPDF } from "jspdf";
 import 'svg2pdf.js'; // Side-effect import
+// Import the font file - assuming Vite provides a URL/path
+import DejaVuSansFont from '../../assets/fonts/DejaVuSans.ttf'; // Use DejaVu Sans
 import { parseViewBox } from '../utils/svgUtils.js';
 import { vec } from '../utils/geometryUtils.js'; // Keep for potential future use
 // Import SVG path helpers including the new scalePathData
@@ -95,6 +97,63 @@ const scaleCoord = (coord, scale) => {
 };
 
 
+// --- Font Loading State ---
+let isFontLoaded = false;
+let fontLoadingPromise = null;
+
+// Function to load and register the font with jsPDF
+const loadPdfFont = async (pdfInstance) => {
+  if (isFontLoaded) return true;
+  if (fontLoadingPromise) return fontLoadingPromise;
+
+  fontLoadingPromise = (async () => {
+    try {
+      console.log(`${LOG_PREFIX} Fetching font file from: ${DejaVuSansFont}`); // Use DejaVu variable
+      const response = await fetch(DejaVuSansFont); // Use DejaVu variable
+      if (!response.ok) {
+        throw new Error(`Failed to fetch font: ${response.statusText}`);
+      }
+      const fontBlob = await response.blob();
+      const reader = new FileReader();
+
+      return new Promise((resolve, reject) => {
+        reader.onloadend = () => {
+          try {
+            // Extract base64 data (remove the data URL prefix)
+            const base64Font = reader.result.split(',')[1];
+            if (!base64Font) {
+              throw new Error("Failed to read font as base64.");
+            }
+            // Add font to jsPDF's virtual file system
+            pdfInstance.addFileToVFS('DejaVuSans.ttf', base64Font); // Use DejaVu filename
+            // Add font to jsPDF
+            pdfInstance.addFont('DejaVuSans.ttf', 'DejaVuSans', 'normal'); // Use DejaVu name
+            console.log(`${LOG_PREFIX} DejaVuSans font loaded and registered successfully.`); // Log DejaVu
+            isFontLoaded = true;
+            resolve(true);
+          } catch (error) {
+            console.error(`${LOG_PREFIX} Error processing font data:`, error);
+            reject(error);
+          }
+        };
+        reader.onerror = (error) => {
+          console.error(`${LOG_PREFIX} Error reading font blob:`, error);
+          reject(error);
+        };
+        reader.readAsDataURL(fontBlob); // Read as Data URL to get base64
+      });
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Error loading or registering font:`, error);
+      return false; // Indicate failure
+    } finally {
+      fontLoadingPromise = null; // Reset promise regardless of outcome
+    }
+  })();
+
+  return fontLoadingPromise;
+};
+
+
 // --- Helper Function for Measurement SVG Rendering (for PDF) ---
 // Note: geometry coordinates (endpoints, center) are UNscaled.
 // The 'scale' parameter (viewScale) is applied internally here.
@@ -113,7 +172,7 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
   const extensionOverhang = settings.measurementExtensionOverhang ?? DEFAULT_PDF_BASE_MEASUREMENT_EXTENSION_OVERHANG;
   const strokeColor = settings.measurementStrokeColor ?? DEFAULT_PDF_MEASUREMENT_STROKE_COLOR;
   const fillColor = settings.measurementFillColor ?? DEFAULT_PDF_MEASUREMENT_FILL_COLOR;
-  const fontFamily = settings.measurementFontFamily ?? DEFAULT_PDF_MEASUREMENT_FONT_FAMILY;
+  const fontFamily = 'DejaVuSans'; // <<< CHANGE: Use the registered DejaVuSans font
   const createSvgElement = (tag, attributes) => {
     const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
     for (const key in attributes) { el.setAttribute(key, attributes[key]); }
@@ -128,7 +187,7 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
   } else if (type === 'line' && geometry?.length != null) {
     textContent = parseFloat(geometry.length.toFixed(2)).toString();
   } else if (type === 'circle' && geometry?.diameter != null) {
-    textContent = `⌀${parseFloat(geometry.diameter.toFixed(2)).toString()}`;
+    textContent = `⌀${parseFloat(geometry.diameter.toFixed(2)).toString()}`; // Revert back to Diameter symbol
   } else if (type === 'radius' && geometry?.radius != null) { // Handle radius type here
     textContent = `R${parseFloat(geometry.radius.toFixed(2)).toString()}`;
   }
@@ -385,8 +444,6 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
   // --- PDF Export Logic ---
   const exportPdf = useCallback(async () => {
     console.log(`${LOG_PREFIX} Starting PDF Export...`);
-    // console.log(`${LOG_PREFIX} Input Viewboxes:`, viewboxes); // Log might be too verbose now
-    // console.log(`${LOG_PREFIX} Input Measurements:`, activeMeasurements);
 
     if (!viewboxes || viewboxes.length === 0) {
       console.error(`${LOG_PREFIX} No viewboxes available for PDF export.`);
@@ -575,11 +632,24 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
 
         // --- 4. Initialize PDF or Add Page ---
         if (isFirstPage) {
-          // Use paperSizeKey from settings
           pdf = new jsPDF({ orientation: pageLayout.orientation, unit: 'mm', format: paperSizeKey });
+          console.log(`${LOG_PREFIX} Initializing PDF and attempting to load font...`);
+          const fontLoaded = await loadPdfFont(pdf); // Load font on first page init
+          if (!fontLoaded) {
+            alert("Error loading required font for PDF export. Check console for details.");
+            return; // Stop export if font fails
+          }
           isFirstPage = false;
         } else {
-          // Use paperSizeKey from settings
+          // Ensure font is loaded for subsequent pages too (should be quick if already loaded)
+          if (!isFontLoaded) {
+             console.log(`${LOG_PREFIX} Font not loaded for subsequent page, attempting load...`);
+             const fontLoaded = await loadPdfFont(pdf);
+             if (!fontLoaded) {
+               alert("Error loading required font for PDF export. Check console for details.");
+               return; // Stop export if font fails
+             }
+          }
           pdf.addPage(paperSizeKey, pageLayout.orientation);
         }
         const currentPageNum = pdf.internal.getNumberOfPages();
@@ -893,8 +963,12 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
             ...viewbox.titleBlock, // Existing data
             scale: scaleString // Use the correctly calculated and formatted scale string
         };
-        // Pass settings to title block drawing function (for potential future use, e.g., font overrides)
+        // Pass settings to title block drawing function
+        // Ensure title block also uses a font that exists (Helvetica is standard)
+        pdf.setFont('helvetica'); // Set font explicitly before drawing title block
         drawTitleBlock(pdf, titleBlockLayout, titleBlockData, settings);
+        // Set font back to NotoSans if needed for other elements (though svg conversion handles measurement font)
+        // pdf.setFont('NotoSans'); // Might not be necessary if only measurements use it via SVG
 
       } // End for...of viewboxes loop
 
