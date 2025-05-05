@@ -827,13 +827,14 @@ return (
                 onCellSelection={handleCellSelection} // Pass cell selection handler
                 onTitleBlockChange={handleTitleBlockChange} // Pass title block update handler
                 onViewboxSettingsChange={handleViewboxSettingsChange} // Pass settings update handler
-                onRemoveViewbox={handleRemoveViewbox} // Pass remove handler
-                onSetupStandardViews={handleSetupStandardViews} // Pass the new handler
-                // Pass functions to update viewboxes later
-                // onViewboxesChange={setViewboxes}
-              />
-              // Removed old conditional loading/error logic based on 'projections'
-              /*
+                 onRemoveViewbox={handleRemoveViewbox} // Pass remove handler
+                 onSetupStandardViews={handleSetupStandardViews} // Pass the new handler
+                 // Pass state update handlers for import
+                 onViewboxesChange={setViewboxes} // Pass the state setter directly
+                 onModelNameChange={setSelectedModel} // Pass the state setter directly
+               />
+               // Removed old conditional loading/error logic based on 'projections'
+               /*
               projections ? ( ... ) : (
                 <div style={{
                   height: "100%",

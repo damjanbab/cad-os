@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'; // Import useState, useEffect, useMemo
+import React, { useState, useEffect, useMemo, useRef } from 'react'; // Import useState, useEffect, useMemo, useRef
 import { modelRegistry } from '../../models/index.js'; // Import modelRegistry
 
 export default function DrawingControls({
@@ -30,9 +30,12 @@ export default function DrawingControls({
    // Snap sub-type props
    snapSubType,
    onSnapSubTypeChange,
-   // Removed PDF Measurement Placement Props (now per-measurement)
+   // State Export/Import Props
+   onExportState,
+   onImportState,
  }) {
  
+   const fileInputRef = useRef(null); // Ref for the hidden file input
    const availableLayouts = ['1x1', '1x2', '2x1', '2x2']; // Define available layouts
 
   // --- Dynamic View Options ---
@@ -84,6 +87,50 @@ export default function DrawingControls({
     onZoomChange(newZoom);
     onPanChange({ x: newPanOffsetX, y: newPanOffsetY });
   };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click(); // Trigger click on hidden input
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      console.log("No file selected.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result;
+      if (typeof content === 'string') {
+        try {
+          // Basic check if it's JSON before passing up
+          JSON.parse(content);
+          onImportState(content); // Pass the raw string content up
+        } catch (error) {
+          console.error("Error reading or parsing file:", error);
+          alert("Failed to import state: Invalid JSON file.");
+        }
+      } else {
+        console.error("File content is not a string.");
+        alert("Failed to import state: Could not read file content.");
+      }
+      // Reset the input value so the same file can be selected again
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+    reader.onerror = (e) => {
+      console.error("FileReader error:", e);
+      alert("Failed to import state: Error reading file.");
+       // Reset the input value
+       if (fileInputRef.current) {
+         fileInputRef.current.value = '';
+       }
+    };
+    reader.readAsText(file);
+  };
+
 
   return (
     <div style={{
@@ -400,6 +447,52 @@ export default function DrawingControls({
       >
         Export PDF
       </button>
+
+      {/* Hidden File Input for Import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept=".json"
+        style={{ display: 'none' }}
+      />
+
+      {/* State Export/Import Buttons */}
+      <div style={{ borderTop: '1px solid #ccc', marginTop: '10px', paddingTop: '10px', display: 'flex', gap: '5px' }}>
+        <button
+          title="Export current drawing state"
+          style={{
+            flex: 1, // Take half the space
+            padding: isMobile ? '5px 10px' : '2px 8px',
+            cursor: 'pointer',
+            fontSize: isMobile ? '14px' : 'inherit',
+            backgroundColor: '#607D8B', // Blue Grey
+            color: 'white',
+            border: 'none',
+            borderRadius: '3px'
+          }}
+          onClick={onExportState} // Call the passed-in handler
+        >
+          Export State
+        </button>
+        <button
+          title="Import drawing state from file"
+          style={{
+            flex: 1, // Take half the space
+            padding: isMobile ? '5px 10px' : '2px 8px',
+            cursor: 'pointer',
+            fontSize: isMobile ? '14px' : 'inherit',
+            backgroundColor: '#795548', // Brown
+            color: 'white',
+            border: 'none',
+            borderRadius: '3px'
+          }}
+          onClick={handleImportClick} // Trigger hidden input
+        >
+          Import State
+        </button>
+      </div>
+
     </div>
   );
 }

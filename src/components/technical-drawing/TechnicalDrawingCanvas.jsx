@@ -40,6 +40,9 @@ export default function TechnicalDrawingCanvas({
   onRemoveViewbox,
   // Standard views setup prop
   onSetupStandardViews,
+  // State Import/Export Props from Parent
+  onViewboxesChange, // Handler to update parent's viewboxes state
+  onModelNameChange, // Handler to update parent's model name state
 }) {
   // Removed loading check for projections
   // if (!projections) return <div>Loading projections...</div>;
@@ -685,6 +688,149 @@ export default function TechnicalDrawingCanvas({
   }, [activeMeasurements, viewboxes]); // Dependencies: measurements state and viewboxes array structure (items)
 
 
+  // --- State Export Function ---
+  const exportDrawingState = useCallback(() => {
+    console.log("[Canvas] Exporting drawing state...");
+    try {
+      const stateToSave = {
+        version: 1, // Current format version
+        selectedModelName: selectedModelName, // From props
+        selectedLayout: selectedLayout, // From props
+        viewboxes: viewboxes, // From props
+        activeMeasurements: activeMeasurements, // From local state
+        viewState: {
+          zoomLevel: zoomLevel, // From local state
+          panOffset: panOffset, // From local state
+          scale: scale, // From local state
+        },
+        interactionState: {
+          interactionMode: interactionMode, // From local state
+          snapSubType: snapSubType, // From local state
+        }
+      };
+
+      const jsonString = JSON.stringify(stateToSave, null, 2); // Pretty print JSON
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // Create a filename based on model name and date/time
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const safeModelName = selectedModelName?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'drawing';
+      a.download = `${safeModelName}_state_${timestamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      console.log("[Canvas] State exported successfully.");
+
+    } catch (error) {
+      console.error("[Canvas] Error exporting drawing state:", error);
+      alert("Failed to export drawing state. See console for details.");
+    }
+  }, [
+    selectedModelName,
+    selectedLayout,
+    viewboxes,
+    activeMeasurements,
+    zoomLevel,
+    panOffset,
+    scale,
+    interactionMode,
+    snapSubType
+  ]); // Dependencies include all state being saved
+
+  // --- State Import Function ---
+  const importDrawingState = useCallback((jsonString) => {
+    console.log("[Canvas] Importing drawing state...");
+    try {
+      const importedState = JSON.parse(jsonString);
+
+      // --- Basic Validation ---
+      if (!importedState || typeof importedState !== 'object') {
+        throw new Error("Invalid file format: Not a JSON object.");
+      }
+      if (importedState.version !== 1) {
+        // Handle potential future version differences here
+        console.warn(`[Canvas] Importing state from version ${importedState.version}, current version is 1. Compatibility issues may arise.`);
+        // For now, we'll try to proceed but could add migration logic later.
+      }
+      if (!importedState.viewboxes || !Array.isArray(importedState.viewboxes)) {
+        throw new Error("Invalid state format: Missing or invalid 'viewboxes'.");
+      }
+      if (!importedState.activeMeasurements || typeof importedState.activeMeasurements !== 'object') {
+        throw new Error("Invalid state format: Missing or invalid 'activeMeasurements'.");
+      }
+      if (!importedState.viewState || typeof importedState.viewState !== 'object') {
+        throw new Error("Invalid state format: Missing or invalid 'viewState'.");
+      }
+      // Optional: Validate interactionState
+      if (!importedState.interactionState || typeof importedState.interactionState !== 'object') {
+        console.warn("[Canvas] Imported state missing 'interactionState'. Using defaults.");
+        // Allow import to continue, defaults will be used if missing
+      }
+
+      // --- Update State ---
+      console.log("[Canvas] Applying imported state...");
+
+      // 1. Update Parent-Managed State (via callbacks)
+      if (onViewboxesChange) {
+        console.log("  - Updating viewboxes via callback...");
+        onViewboxesChange(importedState.viewboxes);
+      } else {
+        console.warn("[Canvas] onViewboxesChange handler not provided by parent. Cannot update viewboxes.");
+      }
+      if (onModelNameChange && importedState.selectedModelName) {
+         console.log(`  - Updating model name to "${importedState.selectedModelName}" via callback...`);
+         onModelNameChange(importedState.selectedModelName);
+      } else if (!onModelNameChange) {
+         console.warn("[Canvas] onModelNameChange handler not provided. Cannot update model name.");
+      }
+      if (onLayoutChange && importedState.selectedLayout) {
+         console.log(`  - Updating layout to "${importedState.selectedLayout}" via callback...`);
+         onLayoutChange(importedState.selectedLayout);
+      } else if (!onLayoutChange) {
+         console.warn("[Canvas] onLayoutChange handler not provided. Cannot update layout.");
+      }
+
+
+      // 2. Update Local State (using setters)
+      console.log("  - Updating local canvas state...");
+      setActiveMeasurements(importedState.activeMeasurements);
+      setZoomLevel(importedState.viewState.zoomLevel ?? 1); // Use default if missing
+      setPanOffset(importedState.viewState.panOffset ?? { x: 0, y: 0 }); // Use default if missing
+      setScale(importedState.viewState.scale ?? 10); // Use default if missing
+
+      // Update interaction state if present, otherwise keep current or default
+      if (importedState.interactionState) {
+        setInteractionMode(importedState.interactionState.interactionMode ?? 'measure');
+        setSnapSubType(importedState.interactionState.snapSubType ?? 'point-to-point');
+      }
+
+      // 3. Reset transient states
+      setSnapPoints([]); // Clear any in-progress snap selections
+
+      console.log("[Canvas] State imported successfully.");
+      alert("Drawing state imported successfully!");
+
+    } catch (error) {
+      console.error("[Canvas] Error importing drawing state:", error);
+      alert(`Failed to import drawing state: ${error.message}`);
+    }
+  }, [
+    setActiveMeasurements,
+    setZoomLevel,
+    setPanOffset,
+    setScale,
+    setInteractionMode,
+    setSnapSubType,
+    setSnapPoints,
+    onViewboxesChange, // Include parent callbacks in dependencies
+    onModelNameChange,
+    onLayoutChange,
+  ]);
+
+
   return (
     <div
       ref={containerRef}
@@ -731,9 +877,12 @@ export default function TechnicalDrawingCanvas({
         onInteractionModeChange={setInteractionMode}
         // Pass snap sub-type state and setter
         snapSubType={snapSubType}
-        onSnapSubTypeChange={setSnapSubType}
-        // Pass the standard views setup handler
-        onSetupStandardViews={onSetupStandardViews}
+         onSnapSubTypeChange={setSnapSubType}
+         // Pass the standard views setup handler
+         onSetupStandardViews={onSetupStandardViews}
+         // Pass state export/import handlers
+         onExportState={exportDrawingState}
+         onImportState={importDrawingState}
         />
       </div>
 
