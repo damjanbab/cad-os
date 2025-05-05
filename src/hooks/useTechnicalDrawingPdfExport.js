@@ -157,10 +157,12 @@ const loadPdfFont = async (pdfInstance) => {
 // --- Helper Function for Measurement SVG Rendering (for PDF) ---
 // Note: geometry coordinates (endpoints, center) are UNscaled.
 // The 'scale' parameter (viewScale) is applied internally here.
-// targetDimensionLinePosition is the calculated absolute position (in mm) for the dimension line.
+// targetDimensionLinePosition is the calculated *automatic* position (in mm) for the dimension line.
 // Added 'settings' parameter to get styling values
+// measurementData now contains isManuallyPositioned flag
 const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDimensionLinePosition = null, settings = {}) => {
-  const { pathId, type } = measurementData; // Removed unscaledTextPos
+  // Destructure isManuallyPositioned, default to false
+  const { pathId, type, textPosition: uiTextPosition, isManuallyPositioned = false } = measurementData;
   const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
   // Get style values from settings, falling back to defaults
@@ -198,11 +200,12 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
   }
 
   // --- LINE MEASUREMENT RENDERING ---
-  if (type === 'line' && geometry?.endpoints && targetDimensionLinePosition) {
+  // Check if geometry exists, and EITHER manual placement is requested OR automatic position is provided
+  if (type === 'line' && geometry?.endpoints && (isManuallyPositioned || targetDimensionLinePosition)) {
     const [usp1, usp2] = geometry.endpoints; // Unscaled points relative to item origin
-    const p1 = scaleCoord(usp1, scale); // Scaled points (now in mm relative to item origin) - Pass scale
-    const p2 = scaleCoord(usp2, scale); // Pass scale
-    // Use textContent determined above (could be override or calculated)
+    const p1 = scaleCoord(usp1, scale); // Scaled points (now in mm relative to item origin)
+    const p2 = scaleCoord(usp2, scale);
+    // Use textContent determined above
 
     const vx = p2[0] - p1[0]; const vy = p2[1] - p1[1]; // Vector in mm
     const lineLen = Math.sqrt(vx * vx + vy * vy); // Length on paper (mm)
@@ -212,68 +215,97 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
     // Determine orientation for positioning logic
     const isHorizontal = Math.abs(ux) > Math.abs(uy); // Primarily horizontal if |vx| > |vy|
 
-    // Calculate dimension line points based on target position
-    let dimLineP1, dimLineP2;
-    let offsetSign = 1; // Assume offset is "positive" direction (e.g., above, right) initially
-    if (isHorizontal) {
-      // Horizontal measurement: targetDimensionLinePosition.y defines the line's y-coord
-      dimLineP1 = [p1[0], targetDimensionLinePosition.y];
-      dimLineP2 = [p2[0], targetDimensionLinePosition.y];
-      // Determine if target is above or below the original line's midpoint
-      const midY = (p1[1] + p2[1]) / 2;
-      offsetSign = Math.sign(targetDimensionLinePosition.y - midY);
-      if (offsetSign === 0) offsetSign = 1; // Default if perfectly aligned
-    } else {
-      // Vertical measurement: targetDimensionLinePosition.x defines the line's x-coord
-      dimLineP1 = [targetDimensionLinePosition.x, p1[1]];
-      dimLineP2 = [targetDimensionLinePosition.x, p2[1]];
-      // Determine if target is left or right of the original line's midpoint
-      const midX = (p1[0] + p2[0]) / 2;
-      offsetSign = Math.sign(targetDimensionLinePosition.x - midX);
-      if (offsetSign === 0) offsetSign = 1; // Default if perfectly aligned
-    }
-
-    // Calculate extension lines based on original points (p1, p2) and new dimension line (dimLineP1/2)
-    // Start extension line slightly away from the geometry point (p1/p2)
-    const extLineP1Start = [p1[0] + nx * offsetSign * extensionGap, p1[1] + ny * offsetSign * extensionGap];
-    const extLineP2Start = [p2[0] + nx * offsetSign * extensionGap, p2[1] + ny * offsetSign * extensionGap];
-    // End extension line slightly past the dimension line (dimLineP1/2)
-    const extLineP1End = [dimLineP1[0] + nx * offsetSign * extensionOverhang, dimLineP1[1] + ny * offsetSign * extensionOverhang];
-    const extLineP2End = [dimLineP2[0] + nx * offsetSign * extensionOverhang, dimLineP2[1] + ny * offsetSign * extensionOverhang];
-
-
-    // Arrow heads (fixed size in mm) - use ux, uy from the original line direction
-    const arrowNormX = ux; const arrowNormY = uy;
-    const arrowHeadFactor = 0.35; // Shape factor for arrowhead
-    const arrowTailFactor = 1 - arrowHeadFactor;
-    // Arrow 1 points from dimLineP1 towards dimLineP2 direction (ux, uy)
-    const arrow1 = `M ${dimLineP1[0]} ${dimLineP1[1]} l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize} l ${-arrowNormY * arrowSize * arrowHeadFactor} ${arrowNormX * arrowSize * arrowHeadFactor} l ${-arrowNormX * arrowSize * arrowTailFactor} ${-arrowNormY * arrowSize * arrowTailFactor} z`;
-    // Arrow 2 points from dimLineP2 towards dimLineP1 direction (-ux, -uy)
-    const arrow2 = `M ${dimLineP2[0]} ${dimLineP2[1]} l ${-arrowNormX * arrowSize} ${-arrowNormY * arrowSize} l ${arrowNormY * arrowSize * arrowHeadFactor} ${-arrowNormX * arrowSize * arrowHeadFactor} l ${arrowNormX * arrowSize * arrowTailFactor} ${arrowNormY * arrowSize * arrowTailFactor} z`;
-
-    // --- Calculate Dimension Line Midpoint (based on new dimLineP1/2) ---
-    const dimMidX = (dimLineP1[0] + dimLineP2[0]) / 2;
-    const dimMidY = (dimLineP1[1] + dimLineP2[1]) / 2;
-
-    // --- Calculate Text Rotation ---
+    let dimLineP1, dimLineP2, extLineP1Start, extLineP2Start, extLineP1End, extLineP2End;
+    let finalX, finalY; // Text anchor position
     let textRotation = 0;
-    // Rotate text if the original line is more vertical than horizontal
-    if (!isHorizontal) {
-      textRotation = -90; // Rotate 90 degrees clockwise for vertical dimensions
+
+    if (isManuallyPositioned && uiTextPosition) {
+      console.log(`[PDF Export] Using MANUAL position for line ${pathId}`);
+      // --- MANUAL PLACEMENT LOGIC (Based on MeasurementDisplay.jsx) ---
+      const scaledUiTextPos = { x: uiTextPosition.x * scale, y: uiTextPosition.y * scale };
+      const midX = (p1[0] + p2[0]) / 2;
+      const midY = (p1[1] + p2[1]) / 2;
+
+      // Vector from midpoint to scaled UI text position
+      const textOffsetX = scaledUiTextPos.x - midX;
+      const textOffsetY = scaledUiTextPos.y - midY;
+
+      // Project the text offset onto the normal vector to find the dimension line offset
+      const offsetDist = textOffsetX * nx + textOffsetY * ny;
+      // Use a minimum offset if text is too close to the line
+      const actualOffsetDist = Math.abs(offsetDist) < textOffset ? Math.sign(offsetDist || 1) * textOffset : offsetDist;
+
+      // Calculate dimension line points, parallel to original line, offset by actualOffsetDist
+      dimLineP1 = [p1[0] + nx * actualOffsetDist, p1[1] + ny * actualOffsetDist];
+      dimLineP2 = [p2[0] + nx * actualOffsetDist, p2[1] + ny * actualOffsetDist];
+
+      // Extension lines
+      const offsetSign = Math.sign(actualOffsetDist);
+      extLineP1Start = [p1[0] + nx * offsetSign * extensionGap, p1[1] + ny * offsetSign * extensionGap];
+      extLineP2Start = [p2[0] + nx * offsetSign * extensionGap, p2[1] + ny * offsetSign * extensionGap];
+      extLineP1End = [dimLineP1[0] + nx * offsetSign * extensionOverhang, dimLineP1[1] + ny * offsetSign * extensionOverhang];
+      extLineP2End = [dimLineP2[0] + nx * offsetSign * extensionOverhang, dimLineP2[1] + ny * offsetSign * extensionOverhang];
+
+      // Text Position (centered on the calculated dimension line)
+      finalX = midX + nx * actualOffsetDist;
+      finalY = midY + ny * actualOffsetDist;
+
+      // Text Rotation
+      if (!isHorizontal) {
+        textRotation = -90;
+      }
+
+    } else if (targetDimensionLinePosition) {
+      console.log(`[PDF Export] Using AUTOMATIC position for line ${pathId}`);
+      // --- AUTOMATIC PLACEMENT LOGIC (Original PDF logic) ---
+      let offsetSign = 1;
+      if (isHorizontal) {
+        dimLineP1 = [p1[0], targetDimensionLinePosition.y];
+        dimLineP2 = [p2[0], targetDimensionLinePosition.y];
+        const midY = (p1[1] + p2[1]) / 2;
+        offsetSign = Math.sign(targetDimensionLinePosition.y - midY);
+        if (offsetSign === 0) offsetSign = 1;
+      } else {
+        dimLineP1 = [targetDimensionLinePosition.x, p1[1]];
+        dimLineP2 = [targetDimensionLinePosition.x, p2[1]];
+        const midX = (p1[0] + p2[0]) / 2;
+        offsetSign = Math.sign(targetDimensionLinePosition.x - midX);
+        if (offsetSign === 0) offsetSign = 1;
+      }
+
+      // Extension Lines
+      extLineP1Start = [p1[0] + nx * offsetSign * extensionGap, p1[1] + ny * offsetSign * extensionGap];
+      extLineP2Start = [p2[0] + nx * offsetSign * extensionGap, p2[1] + ny * offsetSign * extensionGap];
+      extLineP1End = [dimLineP1[0] + nx * offsetSign * extensionOverhang, dimLineP1[1] + ny * offsetSign * extensionOverhang];
+      extLineP2End = [dimLineP2[0] + nx * offsetSign * extensionOverhang, dimLineP2[1] + ny * offsetSign * extensionOverhang];
+
+      // Text Position and Rotation (Original PDF logic)
+      const dimMidX = (dimLineP1[0] + dimLineP2[0]) / 2;
+      const dimMidY = (dimLineP1[1] + dimLineP2[1]) / 2;
+      if (!isHorizontal) {
+        textRotation = -90;
+      }
+      if (isHorizontal) {
+        finalX = dimMidX;
+        finalY = dimMidY - textOffset; // Above
+      } else {
+        finalX = dimMidX - textOffset; // Left
+        finalY = dimMidY;
+      }
+    } else {
+      console.warn(`[PDF Export] Skipping line measurement ${pathId} - No valid position data (manual or automatic).`);
+      return null; // Cannot render without position
     }
 
-    // --- Calculate Final Text Position (relative to new dimension line midpoint) ---
-    let finalX, finalY;
-    // Always place text consistently relative to the dimension line
-    if (isHorizontal) {
-      // Place text ABOVE horizontal dimension lines
-      finalX = dimMidX;
-      finalY = dimMidY - textOffset; // Subtract offset for "above" in SVG Y-down coords
-    } else {
-      // Place text to the LEFT of vertical dimension lines
-      finalX = dimMidX - textOffset; // Subtract offset for "left"
-      finalY = dimMidY;
-    }
+
+     // Arrow heads (fixed size in mm) - use ux, uy from the original line direction
+     const arrowNormX = ux; const arrowNormY = uy;
+     const arrowHeadFactor = 0.35; // Shape factor for arrowhead
+     const arrowTailFactor = 1 - arrowHeadFactor;
+     // Arrow 1 points from dimLineP1 towards dimLineP2 direction (ux, uy)
+     const arrow1 = `M ${dimLineP1[0]} ${dimLineP1[1]} l ${arrowNormX * arrowSize} ${arrowNormY * arrowSize} l ${-arrowNormY * arrowSize * arrowHeadFactor} ${arrowNormX * arrowSize * arrowHeadFactor} l ${-arrowNormX * arrowSize * arrowTailFactor} ${-arrowNormY * arrowSize * arrowTailFactor} z`;
+     // Arrow 2 points from dimLineP2 towards dimLineP1 direction (-ux, -uy)
+    const arrow2 = `M ${dimLineP2[0]} ${dimLineP2[1]} l ${-arrowNormX * arrowSize} ${-arrowNormY * arrowSize} l ${arrowNormY * arrowSize * arrowHeadFactor} ${-arrowNormX * arrowSize * arrowHeadFactor} l ${arrowNormX * arrowSize * arrowTailFactor} ${arrowNormY * arrowSize * arrowTailFactor} z`;
 
     // Draw elements
     // Extension Lines
@@ -312,25 +344,55 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
     const radius = (geometry.radius || geometry.diameter / 2) * scale; // Scaled radius (mm)
     // Use textContent determined above
 
-    // --- Calculate Leader Line and Text Position (Fixed Angle/Offset) ---
-    const angle = -Math.PI / 4; // Fixed angle (e.g., 45 degrees down-right)
-    const cosA = Math.cos(angle); const sinA = Math.sin(angle);
-    const leaderStart = [cx + cosA * radius, cy + sinA * radius]; // Start on circumference
-    // Place text a fixed offset away from the leader start point
-    const textDist = radius + textOffset * 2; // Distance from center to text anchor
-    const textX = cx + cosA * textDist;
-    const textY = cy + sinA * textDist;
-    const leaderEnd = [cx + cosA * (radius + textOffset * 0.5), cy + sinA * (radius + textOffset * 0.5)]; // End leader slightly before text
+    if (isManuallyPositioned && uiTextPosition) {
+      console.log(`[PDF Export] Using MANUAL position for circle ${pathId}`);
+      // --- MANUAL PLACEMENT LOGIC ---
+      const scaledUiTextPos = { x: uiTextPosition.x * scale, y: uiTextPosition.y * scale };
 
-    // Draw Leader Line
-    group.appendChild(createSvgElement('line', { x1: leaderStart[0], y1: leaderStart[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-    // Draw Text
-    const textEl = createSvgElement('text', { x: textX, y: textY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
-    textEl.textContent = textContent;
-    group.appendChild(textEl);
+      // Calculate vector from center to UI text position
+      const textVecX = scaledUiTextPos.x - cx;
+      const textVecY = scaledUiTextPos.y - cy;
+      const textDist = Math.sqrt(textVecX * textVecX + textVecY * textVecY);
+      const angle = Math.atan2(textVecY, textVecX);
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
+
+      // Leader line starts on circumference, points towards text
+      const leaderStart = [cx + cosA * radius, cy + sinA * radius];
+      // Leader line ends slightly before the text anchor
+      const leaderEnd = [scaledUiTextPos.x - cosA * textOffset, scaledUiTextPos.y - sinA * textOffset];
+
+      // Draw Leader Line
+      group.appendChild(createSvgElement('line', { x1: leaderStart[0], y1: leaderStart[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+      // Draw Text at the scaled UI position
+      const textEl = createSvgElement('text', { x: scaledUiTextPos.x, y: scaledUiTextPos.y, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
+      textEl.textContent = textContent;
+      group.appendChild(textEl);
+
+    } else {
+      console.log(`[PDF Export] Using AUTOMATIC position for circle ${pathId}`);
+      // --- AUTOMATIC PLACEMENT LOGIC (Fixed Angle/Offset) ---
+      const angle = -Math.PI / 4; // Fixed angle (e.g., 45 degrees down-right)
+      const cosA = Math.cos(angle); const sinA = Math.sin(angle);
+      const leaderStart = [cx + cosA * radius, cy + sinA * radius]; // Start on circumference
+      // Place text a fixed offset away from the leader start point
+      const textDist = radius + textOffset * 2; // Distance from center to text anchor
+      const textX = cx + cosA * textDist;
+      const textY = cy + sinA * textDist;
+      const leaderEnd = [cx + cosA * (radius + textOffset * 0.5), cy + sinA * (radius + textOffset * 0.5)]; // End leader slightly before text
+
+      // Draw Leader Line
+      group.appendChild(createSvgElement('line', { x1: leaderStart[0], y1: leaderStart[1], x2: leaderEnd[0], y2: leaderEnd[1], stroke: strokeColor, 'stroke-width': strokeWidth, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+      // Draw Text
+      const textEl = createSvgElement('text', { x: textX, y: textY, 'font-size': fontSize, fill: fillColor, stroke: 'none', 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': fontFamily });
+      textEl.textContent = textContent;
+      group.appendChild(textEl);
+    }
 
   // --- RADIUS MEASUREMENT RENDERING ---
-  } else if (type === 'radius' && geometry?.radius != null && geometry?.center && geometry?.endpoints && measurementData.textPosition) {
+  // NOTE: Radius rendering *always* uses the textPosition from measurementData, effectively acting as manual.
+  // No separate automatic logic is implemented here currently.
+  } else if (type === 'radius' && geometry?.radius != null && geometry?.center && geometry?.endpoints && uiTextPosition) {
     // Use textContent determined above
 
     // Scale geometry points
@@ -847,51 +909,63 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                 const measExtGap = settings.measurementExtensionGap ?? DEFAULT_PDF_BASE_MEASUREMENT_EXTENSION_GAP;
                 const measInitialOffset = settings.measurementInitialOffset ?? DEFAULT_PDF_MEASUREMENT_INITIAL_OFFSET;
                 const measStackingOffset = settings.measurementStackingOffset ?? DEFAULT_PDF_MEASUREMENT_STACKING_OFFSET;
-
-                let currentOffset = measExtGap + measInitialOffset;
-                groups.horizontalTop.forEach(m => {
-                  const targetY = scaledBBox.maxY + currentOffset;
-                  measurementTargetPositions[m.pathId] = { x: null, y: targetY };
-                  currentOffset += measStackingOffset;
-                });
-
-                currentOffset = measExtGap + measInitialOffset;
-                groups.horizontalBottom.forEach(m => {
-                  const targetY = scaledBBox.minY - currentOffset;
-                  measurementTargetPositions[m.pathId] = { x: null, y: targetY };
-                  currentOffset += measStackingOffset;
-                });
-
-                currentOffset = measExtGap + measInitialOffset;
-                groups.verticalLeft.forEach(m => {
-                  const targetX = scaledBBox.minX - currentOffset;
-                  measurementTargetPositions[m.pathId] = { x: targetX, y: null };
-                  currentOffset += measStackingOffset;
-                });
-
-                currentOffset = measExtGap + measInitialOffset;
-                groups.verticalRight.forEach(m => {
-                  const targetX = scaledBBox.maxX + currentOffset;
-                  measurementTargetPositions[m.pathId] = { x: targetX, y: null };
-                  currentOffset += measStackingOffset;
-                });
-
-                // Render LINE measurements using calculated positions
-                console.log(`${LOG_PREFIX}         Rendering ${lineMeasurements.length} line measurements with calculated positions...`);
-                lineMeasurements.forEach(measurement => {
-                  const targetPosition = measurementTargetPositions[measurement.pathId];
-                  if (targetPosition) {
-                     const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale, targetPosition, settings);
-                     if (measurementSvgGroup) {
-                       itemGroup.appendChild(measurementSvgGroup);
-                     } else {
-                       console.warn(`${LOG_PREFIX}           renderMeasurementToSvg returned null for line measurement ${measurement.pathId}`);
-                     }
-                  } else {
-                      // This case should ideally not happen if grouping logic is correct
-                      console.warn(`${LOG_PREFIX}           Skipping line measurement ${measurement.pathId} - Could not determine target position.`);
-                  }
-                });
+ 
+                 let currentOffset = measExtGap + measInitialOffset;
+                 // Calculate positions ONLY for automatically placed measurements in this group
+                 groups.horizontalTop.filter(m => !m.isManuallyPositioned).forEach(m => {
+                   const targetY = scaledBBox.maxY + currentOffset;
+                   measurementTargetPositions[m.pathId] = { x: null, y: targetY };
+                   currentOffset += measStackingOffset;
+                 });
+ 
+                 currentOffset = measExtGap + measInitialOffset;
+                 groups.horizontalBottom.filter(m => !m.isManuallyPositioned).forEach(m => {
+                   const targetY = scaledBBox.minY - currentOffset;
+                   measurementTargetPositions[m.pathId] = { x: null, y: targetY };
+                   currentOffset += measStackingOffset;
+                 });
+ 
+                 currentOffset = measExtGap + measInitialOffset;
+                 groups.verticalLeft.filter(m => !m.isManuallyPositioned).forEach(m => {
+                   const targetX = scaledBBox.minX - currentOffset;
+                   measurementTargetPositions[m.pathId] = { x: targetX, y: null };
+                   currentOffset += measStackingOffset;
+                 });
+ 
+                 currentOffset = measExtGap + measInitialOffset;
+                 groups.verticalRight.filter(m => !m.isManuallyPositioned).forEach(m => {
+                   const targetX = scaledBBox.maxX + currentOffset;
+                   measurementTargetPositions[m.pathId] = { x: targetX, y: null };
+                   currentOffset += measStackingOffset;
+                 });
+ 
+                 // Render LINE measurements using calculated positions
+                 console.log(`${LOG_PREFIX}         Rendering ${lineMeasurements.length} line measurements...`);
+                 lineMeasurements.forEach(measurement => {
+                   // Determine position based on manual flag
+                   const useManualPos = measurement.isManuallyPositioned ?? false;
+                   const autoTargetPosition = measurementTargetPositions[measurement.pathId]; // Might be undefined if manual
+ 
+                   // Render if manual OR if an automatic position was calculated
+                   if (useManualPos || autoTargetPosition) {
+                      // Pass null for targetPosition if manual, otherwise pass the calculated auto position
+                      const measurementSvgGroup = renderMeasurementToSvg(
+                        measurement,
+                        measurement.geometry,
+                        viewScale,
+                        useManualPos ? null : autoTargetPosition, // Key change: Pass null for manual
+                        settings
+                      );
+                      if (measurementSvgGroup) {
+                        itemGroup.appendChild(measurementSvgGroup);
+                      } else {
+                        console.warn(`${LOG_PREFIX}           renderMeasurementToSvg returned null for line measurement ${measurement.pathId}`);
+                      }
+                   } else {
+                       // This should only happen if it's an automatic measurement that somehow wasn't assigned a position
+                       console.warn(`${LOG_PREFIX}           Skipping line measurement ${measurement.pathId} - Not manual and no automatic position calculated.`);
+                   }
+                 });
 
               } else if (itemMeasurements.length > 0) {
                   console.warn(`${LOG_PREFIX}       Cannot process measurements for item ${item.id}: Missing item.svgData.geometryBoundingBox.`);

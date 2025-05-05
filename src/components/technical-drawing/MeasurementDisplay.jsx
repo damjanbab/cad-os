@@ -9,8 +9,10 @@ export default function MeasurementDisplay({
   onUpdatePosition, // Receive update handler (for dragging text)
   onUpdateOverrideValue, // Receive override update handler
   onDeleteMeasurement, // Receive delete handler
+  onToggleManualPosition, // Receive handler for toggling manual position lock
 }) {
-  const { pathId, type, geometry, textPosition, overrideValue } = measurementData; // Added overrideValue
+  // Added isManuallyPositioned and default to false if undefined
+  const { pathId, type, geometry, textPosition, overrideValue, isManuallyPositioned = false } = measurementData;
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef(null); // Ref for the input element
@@ -317,11 +319,37 @@ export default function MeasurementDisplay({
             // Apply the same rotation as the text group
             transform={`rotate(${textRotation} ${textX} ${textY})`}
           >
-            X
-          </text>
-        )}
-      </g>
-    );
+             X
+           </text>
+         )}
+ 
+         {/* Manual Position Toggle Icon (Lock/Unlock) - Line */}
+         {!isEditing && onToggleManualPosition && (
+           <text
+             // Position near the delete button, adjust as needed
+             x={textX + (textContent.length * fontSize * 0.3) + 2 + (fontSize * 1.5)} // Position to the right of delete 'X'
+             y={textY} // Align vertically
+             fontSize={fontSize * 1.1}
+             fill={isManuallyPositioned ? "green" : "gray"} // Green when locked, gray when unlocked
+             stroke="none"
+             textAnchor="start"
+             dominantBaseline="middle"
+             fontFamily="Arial, sans-serif"
+             style={{ cursor: 'pointer', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+             onClick={(e) => {
+               e.stopPropagation();
+               console.log(`[MeasurementDisplay ${pathId}] Toggle Manual Position clicked. Current: ${isManuallyPositioned}`);
+               onToggleManualPosition(pathId);
+             }}
+             // Apply the same rotation as the text group
+             transform={`rotate(${textRotation} ${textX} ${textY})`}
+             title={isManuallyPositioned ? "Unlock Position (Use Auto PDF Placement)" : "Lock Position (Use Manual PDF Placement)"}
+           >
+             {isManuallyPositioned ? '🔒' : '🔓'}
+           </text>
+         )}
+       </g>
+     );
 
   } else if (type === 'distance' && geometry.endpoints && geometry.endpoints.length === 2) {
     // NOTE: 'distance' type seems deprecated or unused based on handlePathClick logic.
@@ -559,11 +587,35 @@ export default function MeasurementDisplay({
               }}
               // No rotation needed here as text is not rotated relative to its group
             >
-              X
-            </text>
-          )}
-        </g>
-      );
+             X
+           </text>
+         )}
+ 
+         {/* Manual Position Toggle Icon (Lock/Unlock) - Small Circle */}
+         {!isEditing && onToggleManualPosition && (
+           <text
+             // Position near the delete button
+             x={adjustedTextPosition.x + (textContent.length * fontSize * 0.3) + 2 + (fontSize * 1.5)}
+             y={adjustedTextPosition.y} // Align vertically
+             fontSize={fontSize * 1.1}
+             fill={isManuallyPositioned ? "green" : "gray"}
+             stroke="none"
+             textAnchor="start"
+             dominantBaseline="middle"
+             fontFamily="Arial, sans-serif"
+             style={{ cursor: 'pointer', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+             onClick={(e) => {
+               e.stopPropagation();
+               console.log(`[MeasurementDisplay ${pathId}] Toggle Manual Position clicked. Current: ${isManuallyPositioned}`);
+               onToggleManualPosition(pathId);
+             }}
+             title={isManuallyPositioned ? "Unlock Position (Use Auto PDF Placement)" : "Lock Position (Use Manual PDF Placement)"}
+           >
+             {isManuallyPositioned ? '🔒' : '🔓'}
+           </text>
+         )}
+       </g>
+     );
     } else {
       // For larger circles, use the diameter line approach
       // --- Calculate Input Position and Size (Circle Diameter) ---
@@ -708,11 +760,35 @@ export default function MeasurementDisplay({
               }}
               // No rotation needed here as text is not rotated relative to its group
             >
-              X
-            </text>
-          )}
-        </g>
-      );
+             X
+           </text>
+         )}
+ 
+         {/* Manual Position Toggle Icon (Lock/Unlock) - Large Circle */}
+         {!isEditing && onToggleManualPosition && (
+           <text
+             // Position near the delete button
+             x={textPosition.x + (textContent.length * fontSize * 0.3) + 2 + (fontSize * 1.5)}
+             y={textPosition.y} // Align vertically
+             fontSize={fontSize * 1.1}
+             fill={isManuallyPositioned ? "green" : "gray"}
+             stroke="none"
+             textAnchor="start"
+             dominantBaseline="middle"
+             fontFamily="Arial, sans-serif"
+             style={{ cursor: 'pointer', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+             onClick={(e) => {
+               e.stopPropagation();
+               console.log(`[MeasurementDisplay ${pathId}] Toggle Manual Position clicked. Current: ${isManuallyPositioned}`);
+               onToggleManualPosition(pathId);
+             }}
+             title={isManuallyPositioned ? "Unlock Position (Use Auto PDF Placement)" : "Lock Position (Use Manual PDF Placement)"}
+           >
+             {isManuallyPositioned ? '🔒' : '🔓'}
+           </text>
+         )}
+       </g>
+     );
     }
 
   } else if (type === 'radius' && geometry?.radius != null && textPosition) {
@@ -803,11 +879,35 @@ export default function MeasurementDisplay({
               onDeleteMeasurement(pathId);
             }}
           >
-            X
-          </text>
-        )}
-      </g>
-    );
+             X
+           </text>
+         )}
+ 
+         {/* Manual Position Toggle Icon (Lock/Unlock) - Radius */}
+         {!isEditing && onToggleManualPosition && (
+           <text
+             // Position near the delete button
+             x={textPosition.x + (textContent.length * fontSize * 0.3) + 2 + (fontSize * 1.5)}
+             y={textPosition.y} // Align vertically
+             fontSize={fontSize * 1.1}
+             fill={isManuallyPositioned ? "green" : "gray"}
+             stroke="none"
+             textAnchor="start"
+             dominantBaseline="middle"
+             fontFamily="Arial, sans-serif"
+             style={{ cursor: 'pointer', userSelect: 'none', vectorEffect: 'non-scaling-stroke' }}
+             onClick={(e) => {
+               e.stopPropagation();
+               console.log(`[MeasurementDisplay ${pathId}] Toggle Manual Position clicked. Current: ${isManuallyPositioned}`);
+               onToggleManualPosition(pathId);
+             }}
+             title={isManuallyPositioned ? "Unlock Position (Use Auto PDF Placement)" : "Lock Position (Use Manual PDF Placement)"}
+           >
+             {isManuallyPositioned ? '🔒' : '🔓'}
+           </text>
+         )}
+       </g>
+     );
   }
 
   return elements;

@@ -27,12 +27,13 @@ export default function DrawingControls({
   // Interaction mode props
   interactionMode,
   onInteractionModeChange,
-  // Snap sub-type props
-  snapSubType,
-  onSnapSubTypeChange,
-}) {
-
-  const availableLayouts = ['1x1', '1x2', '2x1', '2x2']; // Define available layouts
+   // Snap sub-type props
+   snapSubType,
+   onSnapSubTypeChange,
+   // Removed PDF Measurement Placement Props (now per-measurement)
+ }) {
+ 
+   const availableLayouts = ['1x1', '1x2', '2x1', '2x2']; // Define available layouts
 
   // --- Dynamic View Options ---
   const availableViews = useMemo(() => {
@@ -383,11 +384,11 @@ export default function DrawingControls({
         }}
         onClick={onSetupStandardViews} // Call the new handler
       >
-        Setup Standard Views
-      </button>
-
-      {/* Export Button */}
-      <button
+         Setup Standard Views
+       </button>
+ 
+       {/* Export Button */}
+       <button
         title="Export as PDF"
         style={{
           marginTop: '5px',

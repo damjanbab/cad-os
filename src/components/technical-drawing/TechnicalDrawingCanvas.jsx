@@ -138,11 +138,12 @@ export default function TechnicalDrawingCanvas({
       },
       // Add the original snap point types if needed later
       // snapTypes: [point1.type, point2.type],
-      overrideValue: null, // Add overrideValue field
-      creationTimestamp: Date.now(), // Add timestamp
-    };
-
-    console.log(`--- Creating Snap Measurement ---`);
+       overrideValue: null, // Add overrideValue field
+       creationTimestamp: Date.now(), // Add timestamp
+       isManuallyPositioned: false, // Default to automatic PDF placement
+     };
+ 
+     console.log(`--- Creating Snap Measurement ---`);
     console.log(`  ID: ${newMeasurementId}`);
     console.log(`  Point 1: { x: ${p1Coords.x.toFixed(2)}, y: ${p1Coords.y.toFixed(2)} }`);
     console.log(`  Point 2: { x: ${p2Coords.x.toFixed(2)}, y: ${p2Coords.y.toFixed(2)} }`);
@@ -234,11 +235,12 @@ export default function TechnicalDrawingCanvas({
         isVerticalDistance: isHorizontalLine, // True if measuring vertical distance to horizontal line
         isHorizontalDistance: isVerticalLine, // True if measuring horizontal distance to vertical line
       },
-      overrideValue: null, // Add overrideValue field
-      creationTimestamp: Date.now(), // Add timestamp
-    };
-
-    console.log(`--- Creating Point-to-Line Measurement ---`);
+       overrideValue: null, // Add overrideValue field
+       creationTimestamp: Date.now(), // Add timestamp
+       isManuallyPositioned: false, // Default to automatic PDF placement
+     };
+ 
+     console.log(`--- Creating Point-to-Line Measurement ---`);
     console.log(`  ID: ${newMeasurementId}`);
     console.log(`  Point: { x: ${pointCoords.x.toFixed(2)}, y: ${pointCoords.y.toFixed(2)} } (Type: ${point.type})`);
     console.log(`  Line Endpoints: [${lx1.toFixed(2)}, ${ly1.toFixed(2)}] to [${lx2.toFixed(2)}, ${ly2.toFixed(2)}]`);
@@ -534,11 +536,12 @@ export default function TechnicalDrawingCanvas({
           textPosition: initialTextPosition,
           viewInstanceId: viewInstanceId, // Store the ID of the specific view instance
           geometry: scaledGeometry, // Store the SCALED geometry
-          overrideValue: null, // Add overrideValue field
-          creationTimestamp: Date.now(), // Add timestamp
-        };
-        console.log(`--- Added Measurement ---`);
-        console.log(`  Path ID: ${uniquePathId}`);
+           overrideValue: null, // Add overrideValue field
+           creationTimestamp: Date.now(), // Add timestamp
+           isManuallyPositioned: false, // Default to automatic PDF placement
+         };
+         console.log(`--- Added Measurement ---`);
+         console.log(`  Path ID: ${uniquePathId}`);
         console.log(`  Type: ${path.geometry.type}`);
         console.log(`  Initial Text Pos:`, initialTextPosition);
         console.log(`  Stored View Instance ID: ${viewInstanceId}`); // Log the stored instance ID
@@ -546,11 +549,30 @@ export default function TechnicalDrawingCanvas({
       }
 
       return newMeasurements;
-    });
-  }, [interactionMode, setActiveMeasurements]); // Removed snap-related dependencies
-
-
-  // --- Handler to update the override value for a measurement ---
+     });
+   }, [interactionMode, setActiveMeasurements]); // Removed snap-related dependencies
+ 
+ 
+   // --- Handler to toggle manual positioning for a measurement ---
+   const handleToggleManualPosition = useCallback((measurementId) => {
+     setActiveMeasurements(prev => {
+       if (!prev[measurementId]) {
+         console.warn(`[Canvas] Attempted to toggle manual position for non-existent measurement ID: ${measurementId}`);
+         return prev;
+       }
+       const currentFlag = prev[measurementId].isManuallyPositioned ?? false;
+       console.log(`[Canvas] Toggling manual position for ${measurementId} from ${currentFlag} to ${!currentFlag}`);
+       return {
+         ...prev,
+         [measurementId]: {
+           ...prev[measurementId],
+           isManuallyPositioned: !currentFlag, // Toggle the flag
+         }
+       };
+     });
+   }, [setActiveMeasurements]);
+ 
+   // --- Handler to update the override value for a measurement ---
   const handleUpdateOverrideValue = useCallback((measurementId, newValue) => {
     setActiveMeasurements(prev => {
       if (!prev[measurementId]) {
@@ -764,11 +786,13 @@ export default function TechnicalDrawingCanvas({
               // Pass down export settings and handler
               exportSettings={vb.exportSettings}
               onSettingsChange={onViewboxSettingsChange}
-              // Pass down delete handler
-              onDeleteMeasurement={handleDeleteMeasurement}
-            />
-          ))
-        )}
+               // Pass down delete handler
+               onDeleteMeasurement={handleDeleteMeasurement}
+               // Pass down manual position toggle handler
+               onToggleManualPosition={handleToggleManualPosition}
+             />
+           ))
+         )}
 
         {/* REMOVED old rendering logic for standardLayout and partsLayout */}
       </div>

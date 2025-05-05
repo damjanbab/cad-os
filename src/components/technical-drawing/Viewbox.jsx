@@ -29,12 +29,14 @@ function ViewboxComponent({
   onUpdateOverrideValue, // Add prop for override update handler
   // Export settings props
   exportSettings,
-  onSettingsChange,
-  // Add delete handler prop
-  onDeleteMeasurement,
-}) {
-  const { id: viewboxId, layout, titleBlock, items } = viewboxData; // Rename id to viewboxId for clarity
-  const [gridRows, gridCols] = parseLayout(layout);
+   onSettingsChange,
+   // Add delete handler prop
+   onDeleteMeasurement,
+   // Add manual position toggle handler prop
+   onToggleManualPosition,
+ }) {
+   const { id: viewboxId, layout, titleBlock, items } = viewboxData; // Rename id to viewboxId for clarity
+   const [gridRows, gridCols] = parseLayout(layout);
 
   // Log received snapPoints prop
   console.log(`[Viewbox ${viewboxId}] Received snapPoints:`, snapPoints);
@@ -257,12 +259,13 @@ function ViewboxComponent({
                   // onMeasurementUpdate={onMeasurementUpdate} // REMOVED - Update is handled via hook callback
                   // Removed onMeasurementDragStart
                   zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay
-                  snapPoints={snapPoints} // Pass snapPoints array down to SvgView
-                  onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
-                  onDeleteMeasurement={onDeleteMeasurement} // Pass delete handler down
-                />
-              ) : (
-                // If no item, display empty cell placeholder
+                   snapPoints={snapPoints} // Pass snapPoints array down to SvgView
+                   onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
+                   onDeleteMeasurement={onDeleteMeasurement} // Pass delete handler down
+                   onToggleManualPosition={onToggleManualPosition} // Pass toggle handler down
+                 />
+               ) : (
+                 // If no item, display empty cell placeholder
                 `Cell ${cellIndex + 1} (Empty)` // Use cellIndex
               )}
             </div>

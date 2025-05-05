@@ -28,11 +28,12 @@ function SvgViewComponent({
   // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
   // Removed onMeasurementDragStart
   // zoomLevel, // zoomLevel is not needed here anymore
-  onUpdateOverrideValue, // Add prop for override update handler
-  onDeleteMeasurement, // Add prop for delete handler
-}) {
-  const { id: viewId, viewType, svgData } = viewInstanceData; // Use renamed prop
-  const innerSvgRef = useRef(null); // Create ref for the inner SVG
+   onUpdateOverrideValue, // Add prop for override update handler
+   onDeleteMeasurement, // Add prop for delete handler
+   onToggleManualPosition, // Add prop for manual position toggle handler
+ }) {
+   const { id: viewId, viewType, svgData } = viewInstanceData; // Use renamed prop
+   const innerSvgRef = useRef(null); // Create ref for the inner SVG
 
   if (!svgData || !svgData.paths || !svgData.viewBox) {
     // Render placeholder if SVG data is missing
@@ -125,12 +126,13 @@ function SvgViewComponent({
             <MeasurementDisplay
               key={measurement.pathId}
               measurementData={measurement}
-              innerSvgRef={innerSvgRef} // Pass the ref down
-              onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
-              onDeleteMeasurement={onDeleteMeasurement} // Pass delete handler down
-              // Removed onDragStart
-            />
-          ))}
+               innerSvgRef={innerSvgRef} // Pass the ref down
+               onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
+               onDeleteMeasurement={onDeleteMeasurement} // Pass delete handler down
+               onToggleManualPosition={onToggleManualPosition} // Pass toggle handler down
+               // Removed onDragStart
+             />
+           ))}
           {/* Render center points for active circle/arc measurements */}
           {measurements && measurements.map(measurement => {
             if ((measurement.type === 'circle' || measurement.type === 'arc' || measurement.type === 'radius') && measurement.geometry?.center) {
