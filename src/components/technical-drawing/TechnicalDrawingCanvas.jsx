@@ -714,10 +714,29 @@ export default function TechnicalDrawingCanvas({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      // Create a filename based on model name and date/time
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const safeModelName = selectedModelName?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'drawing';
-      a.download = `${safeModelName}_state_${timestamp}.json`;
+
+      // Prompt user for filename
+      const defaultTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const defaultSafeModelName = selectedModelName?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'drawing';
+      const suggestedFilename = `${defaultSafeModelName}_state_${defaultTimestamp}`;
+      
+      let userFilename = window.prompt("Enter filename for state export (e.g., my-project-state):", suggestedFilename);
+
+      if (userFilename === null) { // User cancelled the prompt
+        console.log("[Canvas] State export cancelled by user.");
+        URL.revokeObjectURL(url); // Clean up the object URL
+        return; // Exit the function
+      }
+
+      // Use user's filename or fallback to default if empty
+      let finalFilename = userFilename.trim() !== '' ? userFilename : suggestedFilename;
+
+      // Ensure filename ends with .json
+      if (!finalFilename.toLowerCase().endsWith('.json')) {
+        finalFilename += '.json';
+      }
+      
+      a.download = finalFilename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

@@ -397,8 +397,8 @@ function createCloset({ width, depth, board_thickness }) {
 
   const middle_door = makeBox([depth - board_thickness, -width / 6 + 0.3, board_thickness], [depth, width / 6 - 0.3, bottom_shelf_height - 0.4])
 		.cut(bolt_hole.clone().translateY(2*board_thickness).mirror("XZ"))
-		.cut(hinge_hole.clone().translateY(width/3))
-		.cut(hinge_hole.clone().translate(0, width/3, -bottom_shelf_height + 6*board_thickness));
+		.cut(hinge_hole.clone().translateY(width/3 - board_thickness/2))
+		.cut(hinge_hole.clone().translate(0, width/3 - board_thickness/2, -bottom_shelf_height + 6*board_thickness));
   // Define middle door tapes before creating drawing model or adding to closet
   const middle_door_tape_left = makeBox([depth - board_thickness, -width / 6 + 0.1, board_thickness], [depth, -width / 6 + 0.3, bottom_shelf_height - 0.4]);
   const middle_door_tape_right = makeBox([depth - board_thickness, width / 6 - 0.3, board_thickness], [depth, width / 6 - 0.1, bottom_shelf_height - 0.4]);
