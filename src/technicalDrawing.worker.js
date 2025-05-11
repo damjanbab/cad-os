@@ -12,6 +12,9 @@ import { parseViewBox, combineViewBoxes } from './utils/svgUtils.js'; // Assumin
 import { TOLERANCE, arePointsClose, areCollinear } from './utils/geometryUtils.js'; // Assuming these are needed by helpers
 import { parsePathData, transformPathData, serializePathData } from './utils/svgPathUtils.js'; // Import SVG path helpers
 
+// --- UI Constants ---
+const UI_VIEWBOX_CONTENT_SCALE_FACTOR = 0.625; // Content takes ~62.5% of view, implies marginFactor = 1 / 0.625 = 1.6
+
 // --- OpenCascade Initialization (Copied from original worker) ---
 let loaded = false;
 const init = async () => {
@@ -167,7 +170,8 @@ function createNormalizedViewBox(viewBox, maxWidth, maxHeight) {
   const centerY = viewBox.y + viewBox.height / 2;
   const baseWidth = maxWidth > 0 ? maxWidth : 100;
   const baseHeight = maxHeight > 0 ? maxHeight : 100;
-  const marginFactor = 1.3;
+  // const marginFactor = 1.3; // Original value
+  const marginFactor = 1 / UI_VIEWBOX_CONTENT_SCALE_FACTOR; // New: Use the constant
   const paddedWidth = baseWidth * marginFactor;
   const paddedHeight = baseHeight * marginFactor;
   const newX = centerX - paddedWidth / 2;
@@ -749,7 +753,12 @@ const generateSingleProjection = async (modelName, params, viewType, rotationAng
 
   // 5. Determine combined viewBox using the projection result
   // 5. Determine combined viewBox string (as before)
-  const viewBoxString = projection.visible.toSVGViewBox(5); // Get viewBox string with margin
+  // Original: const viewBoxString = projection.visible.toSVGViewBox(5); // Get viewBox string with margin
+  // New margin: (1 / UI_VIEWBOX_CONTENT_SCALE_FACTOR - 1) / 2 * 100
+  // (1.6 - 1) / 2 * 100 = 0.6 / 2 * 100 = 0.3 * 100 = 30
+  const singleViewMarginPercentage = ( (1 / UI_VIEWBOX_CONTENT_SCALE_FACTOR) - 1) / 2 * 100;
+  const viewBoxString = projection.visible.toSVGViewBox(singleViewMarginPercentage);
+
 
   // 6. Calculate the actual geometry bounding box from the combined paths
   const geometryBoundingBox = calculatePathsBoundingBox(combinedPaths);

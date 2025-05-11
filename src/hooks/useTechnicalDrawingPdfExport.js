@@ -9,6 +9,7 @@ import { vec } from '../utils/geometryUtils.js'; // Keep for potential future us
 import { parsePathData, transformPathData, scalePathData, serializePathData } from '../utils/svgPathUtils.js';
 
 const LOG_PREFIX = "[PDF Export]";
+const WORKER_UI_CONTENT_SCALE_FACTOR = 0.625; // Factor by which content is smaller in UI viewBox from worker
 
 // Parses layout string "rowsxcols" into [rows, cols]
 const parseLayout = (layoutString) => {
@@ -597,18 +598,28 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
             continue;
           }
 
-          const itemVB = parseViewBox(item.svgData.viewBox);
+          // item variable is already declared at the start of the loop.
+          // The following duplicate declaration and if-block were erroneously inserted.
+          // const item = viewbox.items[cellIndex]; // Reverted
+          // if (!item || !item.svgData || !item.svgData.viewBox) {
+          //   itemData[cellIndex] = null; // Mark cell as empty
+          //   continue;
+          // }
+
+          const itemVB = parseViewBox(item.svgData.viewBox); // Reverted: use itemVB directly
           if (!itemVB || itemVB.width <= 0 || itemVB.height <= 0) {
             itemData[cellIndex] = null; // Mark cell as invalid
             continue;
           }
 
-          itemData[cellIndex] = { item, itemVB }; // Store valid item data
+          // Store the original itemVB from worker (which is padded for UI)
+          itemData[cellIndex] = { item, itemVB }; // Reverted
 
           const colIndex = cellIndex % gridCols;
           const rowIndex = Math.floor(cellIndex / gridCols);
-          colWidths[colIndex] = Math.max(colWidths[colIndex], itemVB.width);
-          rowHeights[rowIndex] = Math.max(rowHeights[rowIndex], itemVB.height);
+          // Layout calculations are based on these worker-provided (padded) dimensions
+          colWidths[colIndex] = Math.max(colWidths[colIndex], itemVB.width); // Reverted
+          rowHeights[rowIndex] = Math.max(rowHeights[rowIndex], itemVB.height); // Reverted
         }
 
         // Calculate total unscaled dimensions of *only* the views
@@ -643,7 +654,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
         // --- 3. Calculate Available Space, View Scale, and Final Layout ---
         let availableWidth, availableHeight;
         let spaceForViewsWidth, spaceForViewsHeight;
-        let viewScale;
+        let viewScale; // This will be the scale for the padded viewBox
+        let correctedViewScale; // This will be viewScale / WORKER_UI_CONTENT_SCALE_FACTOR
         let finalScaledViewsWidth, finalScaledViewsHeight;
         let finalTotalLayoutWidth, finalTotalLayoutHeight;
         let originX, originY; // Top-left corner of the entire layout block
@@ -711,17 +723,27 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
           // No valid override, calculate automatically
           const scaleX = spaceForViewsWidth / totalUnscaledViewsWidth;
           const scaleY = spaceForViewsHeight / totalUnscaledViewsHeight;
-          viewScale = Math.min(scaleX, scaleY);
-          console.log(`${LOG_PREFIX}   Calculated Auto View Scale: ${viewScale.toFixed(4)} (based on available space W=${spaceForViewsWidth.toFixed(2)}, H=${spaceForViewsHeight.toFixed(2)})`);
+          viewScale = Math.min(scaleX, scaleY); // Scale for the worker-provided (padded) viewBox
+          console.log(`${LOG_PREFIX}   Calculated Auto View Scale (for padded VB): ${viewScale.toFixed(4)} (based on available space W=${spaceForViewsWidth.toFixed(2)}, H=${spaceForViewsHeight.toFixed(2)})`);
         }
 
-
         if (viewScale <= 1e-6) {
-           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative final view scale (override or auto).`);
+           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative initial view scale (override or auto).`);
+           continue;
+        }
+
+        // Adjust viewScale to get the scale for the actual content
+        correctedViewScale = viewScale / WORKER_UI_CONTENT_SCALE_FACTOR;
+        console.log(`${LOG_PREFIX}   Corrected View Scale (for actual content): ${correctedViewScale.toFixed(4)}`);
+
+
+        if (correctedViewScale <= 1e-6) {
+           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative corrected view scale.`);
            continue;
         }
 
         // Calculate final dimensions of the scaled views and the total layout block
+        // These are based on the original (padded) totalUnscaledViewsWidth/Height and the original viewScale
         finalScaledViewsWidth = totalUnscaledViewsWidth * viewScale;
         finalScaledViewsHeight = totalUnscaledViewsHeight * viewScale;
         finalTotalLayoutWidth = finalScaledViewsWidth + totalFixedGapWidth;
@@ -794,26 +816,31 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
             const storedItemData = itemData[cellIndex];
 
             if (storedItemData) {
-              const { item, itemVB } = storedItemData;
-              const itemScaledWidth = itemVB.width * viewScale;
-              const itemScaledHeight = itemVB.height * viewScale;
+              const { item, itemVB } = storedItemData; // itemVB is the worker's (padded) viewBox
 
-              // Calculate alignment offset within the cell (based on max scaled size for the row/col)
-              const cellWidth = scaledColWidths[colIndex];
-              const cellHeight = scaledRowHeights[rowIndex];
-              const alignOffsetX = (cellWidth - itemScaledWidth) / 2;
-              const alignOffsetY = (cellHeight - itemScaledHeight) / 2;
+              // The size of the content being drawn in this cell, using correctedViewScale
+              const drawnContentWidth = itemVB.width * correctedViewScale;
+              const drawnContentHeight = itemVB.height * correctedViewScale;
 
-              // Item's top-left position on the page (currentX/Y already include offsets)
+              // Calculate alignment offset within the cell.
+              // cellWidth/Height is the space allocated for this cell based on max padded item in col/row, scaled by uncorrected viewScale.
+              const cellWidth = scaledColWidths[colIndex]; // This is max_padded_width_for_col * viewScale
+              const cellHeight = scaledRowHeights[rowIndex]; // This is max_padded_height_for_row * viewScale
+              
+              const alignOffsetX = (cellWidth - drawnContentWidth) / 2;
+              const alignOffsetY = (cellHeight - drawnContentHeight) / 2;
+
+              // Item's top-left position on the page
               const itemPosX = currentX + alignOffsetX;
               const itemPosY = currentY + alignOffsetY;
 
               console.log(`${LOG_PREFIX}     Rendering Item ${item.id} in Cell[${rowIndex},${colIndex}] at page pos [${itemPosX.toFixed(2)}, ${itemPosY.toFixed(2)}] (Origin was [${originX.toFixed(2)}, ${originY.toFixed(2)}])`);
+              console.log(`${LOG_PREFIX}       Cell Alloc W: ${cellWidth.toFixed(2)}, H: ${cellHeight.toFixed(2)}. DrawnContent W: ${drawnContentWidth.toFixed(2)}, H: ${drawnContentHeight.toFixed(2)}. AlignOffset X: ${alignOffsetX.toFixed(2)}, Y: ${alignOffsetY.toFixed(2)}`);
 
-              // Create item group: Translate item's internal origin (itemVB.x, itemVB.y) *after scaling* to its calculated page position (itemPosX, itemPosY)
+              // Create item group: Translate item's internal origin (itemVB.x, itemVB.y) *after scaling with correctedViewScale*
               const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-              // Translation accounts for moving the scaled item's top-left (which corresponds to itemVB.x * viewScale, itemVB.y * viewScale) to itemPosX, itemPosY
-              const itemTranslate = `translate(${itemPosX - itemVB.x * viewScale}, ${itemPosY - itemVB.y * viewScale})`;
+              // Translation maps the scaled origin of the item's viewBox to the calculated itemPosX, itemPosY
+              const itemTranslate = `translate(${itemPosX - itemVB.x * correctedViewScale}, ${itemPosY - itemVB.y * correctedViewScale})`;
               itemGroup.setAttribute('transform', itemTranslate);
               svgPageGroup.appendChild(itemGroup); // Add directly to page group, scaling happens inside render functions
 
@@ -833,11 +860,11 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
               const renderAndAppendPath = (path, targetGroup) => {
                 const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-                // Apply viewScale to path data directly
+                // Apply correctedViewScale to path data directly
                 try {
                     const parsedData = parsePathData(path.data);
                     // Scale the parsed data in place using the new function
-                    scalePathData(parsedData, viewScale);
+                    scalePathData(parsedData, correctedViewScale); // Use correctedViewScale
                     // Serialize the scaled data
                     pathEl.setAttribute('d', serializePathData(parsedData));
                 } catch (e) {
@@ -887,15 +914,15 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
               // Check for bounding box within item.svgData
               if (itemMeasurements.length > 0 && item.svgData && item.svgData.geometryBoundingBox) {
                 const bbox = item.svgData.geometryBoundingBox; // Access from item.svgData
-                // Scale the bounding box to mm for calculations
+                // Scale the bounding box to mm for calculations using correctedViewScale
                 const scaledBBox = {
-                  minX: bbox.minX * viewScale,
-                  minY: bbox.minY * viewScale,
-                  maxX: bbox.maxX * viewScale,
-                  maxY: bbox.maxY * viewScale,
+                  minX: bbox.minX * correctedViewScale,
+                  minY: bbox.minY * correctedViewScale,
+                  maxX: bbox.maxX * correctedViewScale,
+                  maxY: bbox.maxY * correctedViewScale,
                 };
                 // console.log(`${LOG_PREFIX}         Item BBox (unscaled):`, bbox); // Less verbose logging
-                // console.log(`${LOG_PREFIX}         Item BBox (scaled, mm):`, scaledBBox);
+                // console.log(`${LOG_PREFIX}         Item BBox (scaled with correctedViewScale, mm):`, scaledBBox);
 
                 // Group measurements by side and orientation
                 const groups = {
@@ -920,8 +947,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                 itemMeasurements.forEach(measurement => {
                   if (measurement.type === 'customLine' && measurement.geometry?.type === 'line' && measurement.geometry.endpoints) {
                     const [usp1, usp2] = measurement.geometry.endpoints; // Unscaled points
-                    const p1 = scaleCoord(usp1, viewScale); // Scaled points (mm)
-                    const p2 = scaleCoord(usp2, viewScale);
+                    const p1 = scaleCoord(usp1, correctedViewScale); // Use correctedViewScale
+                    const p2 = scaleCoord(usp2, correctedViewScale); // Use correctedViewScale
 
                     const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                     lineEl.setAttribute('x1', p1[0]);
@@ -941,7 +968,7 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                     console.log(`${LOG_PREFIX}           Rendered customLine ${measurement.pathId}`);
 
                   } else if (measurement.type === 'circle' || measurement.type === 'radius') {
-                    const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale, null, settings);
+                    const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, correctedViewScale, null, settings); // Use correctedViewScale
                     if (measurementSvgGroup) {
                       itemGroup.appendChild(measurementSvgGroup);
                     } else {
@@ -955,8 +982,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                 const actualLineMeasurements = itemMeasurements.filter(m => m.type === 'line' && m.geometry?.endpoints);
                 actualLineMeasurements.forEach(m => {
                     const [usp1, usp2] = m.geometry.endpoints;
-                    const p1 = scaleCoord(usp1, viewScale); // Scaled points (mm)
-                    const p2 = scaleCoord(usp2, viewScale);
+                    const p1 = scaleCoord(usp1, correctedViewScale); // Use correctedViewScale
+                    const p2 = scaleCoord(usp2, correctedViewScale); // Use correctedViewScale
                     const midX = (p1[0] + p2[0]) / 2;
                     const midY = (p1[1] + p2[1]) / 2;
                     const isHorizontal = Math.abs(p2[0] - p1[0]) > Math.abs(p2[1] - p1[1]);
@@ -1031,7 +1058,7 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                       const measurementSvgGroup = renderMeasurementToSvg(
                         measurement,
                         measurement.geometry,
-                        viewScale,
+                        correctedViewScale, // Use correctedViewScale
                         useManualPos ? null : autoTargetPosition, // Key change: Pass null for manual
                         settings
                       );
@@ -1052,8 +1079,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                   itemMeasurements.forEach(measurement => {
                     if (measurement.type === 'customLine' && measurement.geometry?.type === 'line' && measurement.geometry.endpoints) {
                         const [usp1, usp2] = measurement.geometry.endpoints;
-                        const p1 = scaleCoord(usp1, viewScale);
-                        const p2 = scaleCoord(usp2, viewScale);
+                        const p1 = scaleCoord(usp1, correctedViewScale); // Use correctedViewScale
+                        const p2 = scaleCoord(usp2, correctedViewScale); // Use correctedViewScale
                         const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                         lineEl.setAttribute('x1', p1[0]);
                         lineEl.setAttribute('y1', p1[1]);
@@ -1081,7 +1108,7 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                 if (itemViewUserTexts.length > 0) {
                   console.log(`${LOG_PREFIX}       Processing ${itemViewUserTexts.length} user texts for item ${item.id}...`);
                   itemViewUserTexts.forEach(textData => {
-                    const userTextSvgElement = renderUserTextToSvg(textData, viewScale, settings);
+                    const userTextSvgElement = renderUserTextToSvg(textData, correctedViewScale, settings); // Use correctedViewScale
                     if (userTextSvgElement) {
                       itemGroup.appendChild(userTextSvgElement);
                     } else {
@@ -1128,9 +1155,9 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
         );
 
         // Calculate the true scale ratio: Drawing Size (mm) / Real Size (mm)
-        // viewScale = Drawing Size (mm) / Real Size (cm)
-        // trueScaleRatio = viewScale / 10
-        const trueScaleRatio = viewScale / 10; // Use viewScale calculated earlier
+        // correctedViewScale = Drawing Size (mm) / Real Size (cm)
+        // trueScaleRatio = correctedViewScale / 10
+        const trueScaleRatio = correctedViewScale / 10; // Use correctedViewScale
         let scaleString = "NTS"; // Default if calculation fails
 
         if (trueScaleRatio > 1e-6) { // Avoid division by zero or tiny scales
