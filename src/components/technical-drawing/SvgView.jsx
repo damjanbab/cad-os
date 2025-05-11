@@ -66,20 +66,19 @@ function SvgViewComponent({
   // Log the filtered points for this view
   console.log(`[SvgView ${viewId}] Relevant snapPoints for rendering:`, relevantSnapPoints);
 
-  // Click handler for the SVG element itself, used only in snap mode
+  // Click handler for the SVG element itself, used in snap or customLine mode
   const handleSvgClick = (event) => {
-    // Only trigger snap logic if in snap mode and the click wasn't on a path element
-    // (PathElement has its own onClick which calls onPathClick for measure mode)
-    if (interactionMode === 'snap' && event.target.tagName !== 'path' && onSnapClick) {
-       // Also check if the click wasn't on a measurement display element
-       if (!event.target.closest('.measurement-group')) {
-           console.log(`[SvgView ${viewId}] SVG background clicked in snap mode.`);
+    // Trigger logic if in snap or customLine mode and the click wasn't on a path element
+    if ((interactionMode === 'snap' || interactionMode === 'customLine') && event.target.tagName !== 'path' && onSnapClick) {
+       // Also check if the click wasn't on a measurement display element or a custom line itself
+       if (!event.target.closest('.measurement-group') && !event.target.closest('.custom-line-element')) {
+           console.log(`[SvgView ${viewId}] SVG background clicked in ${interactionMode} mode.`);
            onSnapClick(event, viewId);
        } else {
-           console.log(`[SvgView ${viewId}] Clicked measurement display in snap mode, ignoring.`);
+           console.log(`[SvgView ${viewId}] Clicked measurement display or custom line in ${interactionMode} mode, ignoring SVG background click.`);
        }
-    } else if (interactionMode === 'snap') {
-        console.log(`[SvgView ${viewId}] Clicked path element in snap mode, ignoring SVG click.`);
+    } else if (interactionMode === 'snap' || interactionMode === 'customLine') {
+        console.log(`[SvgView ${viewId}] Clicked path element in ${interactionMode} mode, ignoring SVG background click.`);
     }
   };
 
@@ -121,29 +120,47 @@ function SvgViewComponent({
               />
             );
           })}
-          {/* Render measurements belonging to this view */}
-          {measurements && measurements.map(measurement => (
-            <MeasurementDisplay
-              key={measurement.pathId}
-              measurementData={measurement}
-               innerSvgRef={innerSvgRef} // Pass the ref down
-               onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
-               onDeleteMeasurement={onDeleteMeasurement} // Pass delete handler down
-               onToggleManualPosition={onToggleManualPosition} // Pass toggle handler down
-               // Removed onDragStart
-             />
-           ))}
-          {/* Render center points for active circle/arc measurements */}
+          {/* Render measurements and custom lines belonging to this view */}
           {measurements && measurements.map(measurement => {
-            if ((measurement.type === 'circle' || measurement.type === 'arc' || measurement.type === 'radius') && measurement.geometry?.center) {
+            if (measurement.type === 'customLine' && measurement.geometry?.type === 'line' && measurement.geometry.endpoints) {
+              const [p1, p2] = measurement.geometry.endpoints;
+              return (
+                <line
+                  key={measurement.pathId}
+                  x1={p1[0]}
+                  y1={p1[1]}
+                  x2={p2[0]}
+                  y2={p2[1]}
+                  stroke={UI_VISIBLE_STROKE_COLOR} // Use same as visible model lines for now
+                  strokeWidth={UI_VISIBLE_STROKE_WIDTH}
+                  className="custom-line-element" // Add class for potential specific targeting
+                />
+              );
+            } else if (measurement.type !== 'customLine') { // Render MeasurementDisplay for non-customLine types
+              return (
+                <MeasurementDisplay
+                  key={measurement.pathId}
+                  measurementData={measurement}
+                  innerSvgRef={innerSvgRef} // Pass the ref down
+                  onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
+                  onDeleteMeasurement={onDeleteMeasurement} // Pass delete handler down
+                  onToggleManualPosition={onToggleManualPosition} // Pass toggle handler down
+                />
+              );
+            }
+            return null;
+          })}
+          {/* Render center points for active circle/arc measurements (excluding custom lines) */}
+          {measurements && measurements.map(measurement => {
+            if (measurement.type !== 'customLine' && (measurement.type === 'circle' || measurement.type === 'arc' || measurement.type === 'radius') && measurement.geometry?.center) {
               return (
                 <circle
                   key={`center-dot-${measurement.pathId}`}
                   cx={measurement.geometry.center[0]}
                   cy={measurement.geometry.center[1]}
-                  r={UI_MEASUREMENT_CENTER_RADIUS} // Use constant for center dot radius
-                  fill={UI_MEASUREMENT_CENTER_FILL_COLOR} // Use constant for center dot fill
-                  stroke="none" // No stroke for center dot
+                  r={UI_MEASUREMENT_CENTER_RADIUS}
+                  fill={UI_MEASUREMENT_CENTER_FILL_COLOR}
+                  stroke="none"
                   style={{ pointerEvents: 'none' }}
                 />
               );

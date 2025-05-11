@@ -863,18 +863,44 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                   }
                 });
 
-                // Render Circle and Radius measurements first (no auto-positioning needed)
-                [...groups.circle, ...groups.radius].forEach(measurement => {
-                  const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale, null, settings); // Pass null for targetPosition
-                  if (measurementSvgGroup) {
-                    itemGroup.appendChild(measurementSvgGroup);
-                  } else {
-                    console.warn(`${LOG_PREFIX}           renderMeasurementToSvg returned null for ${measurement.pathId} (Type: ${measurement.type})`);
+                // Render Circle, Radius, and CustomLine measurements first (no auto-positioning needed for custom lines)
+                itemMeasurements.forEach(measurement => {
+                  if (measurement.type === 'customLine' && measurement.geometry?.type === 'line' && measurement.geometry.endpoints) {
+                    const [usp1, usp2] = measurement.geometry.endpoints; // Unscaled points
+                    const p1 = scaleCoord(usp1, viewScale); // Scaled points (mm)
+                    const p2 = scaleCoord(usp2, viewScale);
+
+                    const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    lineEl.setAttribute('x1', p1[0]);
+                    lineEl.setAttribute('y1', p1[1]);
+                    lineEl.setAttribute('x2', p2[0]);
+                    lineEl.setAttribute('y2', p2[1]);
+                    // Style custom lines similar to measurement lines for thickness, but simpler color
+                    const customLineStrokeWidth = settings.measurementStrokeWidth ?? DEFAULT_PDF_BASE_MEASUREMENT_STROKE_WIDTH;
+                    const customLineStrokeColor = settings.visibleStrokeColor ?? DEFAULT_PDF_VISIBLE_STROKE_COLOR; // Or a dedicated custom line color
+                    
+                    lineEl.setAttribute('stroke', customLineStrokeColor);
+                    lineEl.setAttribute('stroke-width', customLineStrokeWidth);
+                    lineEl.setAttribute('stroke-linecap', 'round');
+                    lineEl.setAttribute('stroke-linejoin', 'round');
+                    lineEl.setAttribute('vector-effect', 'non-scaling-stroke');
+                    itemGroup.appendChild(lineEl);
+                    console.log(`${LOG_PREFIX}           Rendered customLine ${measurement.pathId}`);
+
+                  } else if (measurement.type === 'circle' || measurement.type === 'radius') {
+                    const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale, null, settings);
+                    if (measurementSvgGroup) {
+                      itemGroup.appendChild(measurementSvgGroup);
+                    } else {
+                      console.warn(`${LOG_PREFIX}           renderMeasurementToSvg returned null for ${measurement.pathId} (Type: ${measurement.type})`);
+                    }
                   }
+                  // Line measurements are handled separately below for auto-positioning
                 });
 
-                // Now group and position only the LINE measurements
-                lineMeasurements.forEach(m => {
+                // Now group and position only the LINE measurements (excluding customLine, circle, radius)
+                const actualLineMeasurements = itemMeasurements.filter(m => m.type === 'line' && m.geometry?.endpoints);
+                actualLineMeasurements.forEach(m => {
                     const [usp1, usp2] = m.geometry.endpoints;
                     const p1 = scaleCoord(usp1, viewScale); // Scaled points (mm)
                     const p2 = scaleCoord(usp2, viewScale);
@@ -940,8 +966,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                  });
  
                  // Render LINE measurements using calculated positions
-                 console.log(`${LOG_PREFIX}         Rendering ${lineMeasurements.length} line measurements...`);
-                 lineMeasurements.forEach(measurement => {
+                 console.log(`${LOG_PREFIX}         Rendering ${actualLineMeasurements.length} actual line measurements...`);
+                 actualLineMeasurements.forEach(measurement => {
                    // Determine position based on manual flag
                    const useManualPos = measurement.isManuallyPositioned ?? false;
                    const autoTargetPosition = measurementTargetPositions[measurement.pathId]; // Might be undefined if manual
@@ -969,6 +995,28 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
 
               } else if (itemMeasurements.length > 0) {
                   console.warn(`${LOG_PREFIX}       Cannot process measurements for item ${item.id}: Missing item.svgData.geometryBoundingBox.`);
+                  // Still render custom lines if BBox is missing but custom lines exist
+                  itemMeasurements.forEach(measurement => {
+                    if (measurement.type === 'customLine' && measurement.geometry?.type === 'line' && measurement.geometry.endpoints) {
+                        const [usp1, usp2] = measurement.geometry.endpoints;
+                        const p1 = scaleCoord(usp1, viewScale);
+                        const p2 = scaleCoord(usp2, viewScale);
+                        const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        lineEl.setAttribute('x1', p1[0]);
+                        lineEl.setAttribute('y1', p1[1]);
+                        lineEl.setAttribute('x2', p2[0]);
+                        lineEl.setAttribute('y2', p2[1]);
+                        const customLineStrokeWidth = settings.measurementStrokeWidth ?? DEFAULT_PDF_BASE_MEASUREMENT_STROKE_WIDTH;
+                        const customLineStrokeColor = settings.visibleStrokeColor ?? DEFAULT_PDF_VISIBLE_STROKE_COLOR;
+                        lineEl.setAttribute('stroke', customLineStrokeColor);
+                        lineEl.setAttribute('stroke-width', customLineStrokeWidth);
+                        lineEl.setAttribute('stroke-linecap', 'round');
+                        lineEl.setAttribute('stroke-linejoin', 'round');
+                        lineEl.setAttribute('vector-effect', 'non-scaling-stroke');
+                        itemGroup.appendChild(lineEl);
+                        console.log(`${LOG_PREFIX}           Rendered customLine ${measurement.pathId} (no BBox for item)`);
+                    }
+                  });
               }
             } // End if(storedItemData)
 

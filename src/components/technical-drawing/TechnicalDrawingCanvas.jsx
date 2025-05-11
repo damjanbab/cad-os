@@ -53,12 +53,12 @@ export default function TechnicalDrawingCanvas({
   const [scale, setScale] = useState(10); // Initial scale: 10 pixels per cm
   // State for active measurements, keyed by uniquePathId (measurement group ID)
   const [activeMeasurements, setActiveMeasurements] = useState({});
-  // State for interaction mode: 'measure' or 'snap'
+  // State for interaction mode: 'measure', 'snap', or 'customLine'
   const [interactionMode, setInteractionMode] = useState('measure');
   // State for snap sub-type: 'point-to-point' or 'point-to-line'
   const [snapSubType, setSnapSubType] = useState('point-to-point'); // Default to point-to-point
-  // State for the currently selected snap points (up to 2)
-  const [snapPoints, setSnapPoints] = useState([]);
+  // State for the currently selected points (up to 2 for snap or customLine)
+  const [snapPoints, setSnapPoints] = useState([]); // Renaming to selectedPoints might be clearer later
 
   // --- Use Hooks ---
   // Function for the interaction hook to get the current measurement state
@@ -266,9 +266,9 @@ export default function TechnicalDrawingCanvas({
 
 
   // --- New Unified Snap Click Handler ---
-  // This function is called directly by SvgView's onClick when in snap mode
+  // This function is called directly by SvgView's onClick when in snap or customLine mode
   const handleSnapClick = useCallback((event, viewInstanceId) => {
-    console.log(`[Canvas] handleSnapClick triggered for view: ${viewInstanceId}`);
+    console.log(`[Canvas] handleSnapClick triggered for view: ${viewInstanceId} in mode: ${interactionMode}`);
 
     const svgElement = event.target.closest('svg');
     if (!svgElement) {
@@ -365,112 +365,167 @@ export default function TechnicalDrawingCanvas({
 
     // --- Update Snap State Based on Closest Point ---
 
-    // Point-to-Point Snap Logic
-    if (snapSubType === 'point-to-point') {
-      if (closestPoint) {
-        console.log(`[Canvas P2P] Snapped to ${closestPoint.type} at { x: ${closestPoint.coordinates.x.toFixed(2)}, y: ${closestPoint.coordinates.y.toFixed(2)} } in view ${viewInstanceId}`);
+    if (interactionMode === 'snap') {
+      // Point-to-Point Snap Logic
+      if (snapSubType === 'point-to-point') {
+        if (closestPoint) {
+          console.log(`[Canvas P2P] Snapped to ${closestPoint.type} at { x: ${closestPoint.coordinates.x.toFixed(2)}, y: ${closestPoint.coordinates.y.toFixed(2)} } in view ${viewInstanceId}`);
+          setSnapPoints(currentSnapPoints => {
+            if (currentSnapPoints.length === 1 && currentSnapPoints[0].viewInstanceId !== closestPoint.viewInstanceId) {
+              console.warn("[Canvas P2P] Second snap point is in a different view. Resetting selection.");
+              return [closestPoint];
+            }
+            const updatedPoints = [...currentSnapPoints, closestPoint];
+            if (updatedPoints.length === 2) {
+              createMeasurementFromSnapPoints(updatedPoints[0], updatedPoints[1]);
+              return []; // Reset after creating measurement
+            } else if (updatedPoints.length > 2) {
+               console.warn("[Canvas P2P] More than two snap points detected, resetting.");
+               return [closestPoint];
+            } else {
+              return updatedPoints; // Only one point selected
+            }
+          });
+        } else {
+          console.log("[Canvas P2P] No snap point found within threshold.");
+          // setSnapPoints([]); // Optionally reset if click misses
+        }
+      }
+      // Point-to-Line Snap Logic
+      else if (snapSubType === 'point-to-line') {
         setSnapPoints(currentSnapPoints => {
-          if (currentSnapPoints.length === 1 && currentSnapPoints[0].viewInstanceId !== closestPoint.viewInstanceId) {
-            console.warn("[Canvas P2P] Second snap point is in a different view. Resetting selection.");
-            return [closestPoint];
+          // First Click: Select a Point
+          if (currentSnapPoints.length === 0) {
+            if (closestPoint) {
+              console.log(`[Canvas P2L] Selected first point: ${closestPoint.type} at { x: ${closestPoint.coordinates.x.toFixed(2)}, y: ${closestPoint.coordinates.y.toFixed(2)} } in view ${viewInstanceId}`);
+              return [{ ...closestPoint, selectionRole: 'point' }];
+            } else {
+              console.log("[Canvas P2L] First click did not snap to a point.");
+              return []; // Reset if first click misses
+            }
           }
-          const updatedPoints = [...currentSnapPoints, closestPoint];
-          if (updatedPoints.length === 2) {
-            createMeasurementFromSnapPoints(updatedPoints[0], updatedPoints[1]);
-            return []; // Reset after creating measurement
-          } else if (updatedPoints.length > 2) {
-             console.warn("[Canvas P2P] More than two snap points detected, resetting.");
-             return [closestPoint];
-          } else {
-            return updatedPoints; // Only one point selected
+          // Second Click: Select a Line
+          else if (currentSnapPoints.length === 1) {
+            const firstSelection = currentSnapPoints[0];
+            if (firstSelection.selectionRole !== 'point') {
+                console.warn("[Canvas P2L] Invalid state: First selection was not a point. Resetting.");
+                return [];
+            }
+            // Check if the clicked element is a line path in the same view
+            const clickedElement = event.target;
+            const clickedElementIsLine = clickedElement.tagName === 'path' &&
+                                         clickedElement.getAttribute('data-geometry-type') === 'line' &&
+                                         clickedElement.closest('svg')?.getAttribute('data-view-instance-id') === firstSelection.viewInstanceId;
+
+            if (clickedElementIsLine) {
+               const lineEndpointsAttr = clickedElement.getAttribute('data-endpoints');
+               let lineGeometry = null;
+               if (lineEndpointsAttr) {
+                   try {
+                       const parsedEndpoints = JSON.parse(lineEndpointsAttr);
+                       if (Array.isArray(parsedEndpoints) && parsedEndpoints.length === 2) {
+                           lineGeometry = { type: 'line', endpoints: parsedEndpoints };
+                       }
+                   } catch (e) { console.error("Error parsing line endpoints for P2L snap:", e); }
+               }
+
+               if (lineGeometry) {
+                  console.log(`[Canvas P2L] Selected second element: Line in view ${viewInstanceId}`);
+                  const lineSelection = {
+                    type: 'line',
+                    geometry: lineGeometry,
+                    viewInstanceId: viewInstanceId,
+                    selectionRole: 'line'
+                  };
+                  createPointToLineMeasurement(firstSelection, lineSelection);
+                  return []; // Reset after creating measurement
+               } else {
+                   console.warn("[Canvas P2L] Could not get geometry for clicked line element.");
+                   return currentSnapPoints; // Keep first point
+               }
+            } else if (viewInstanceId !== firstSelection.viewInstanceId) {
+              console.warn("[Canvas P2L] Second click is in a different view. Resetting selection.");
+              if (closestPoint && closestPoint.viewInstanceId === viewInstanceId) {
+                 console.log(`[Canvas P2L] Starting new selection with point in view ${viewInstanceId}`);
+                 return [{ ...closestPoint, selectionRole: 'point' }];
+              }
+              return [];
+            } else {
+              console.log("[Canvas P2L] Second click did not select a line in the same view.");
+              return currentSnapPoints;
+            }
+          }
+          // Invalid State
+          else {
+            console.warn("[Canvas P2L] Invalid state: More than one snap point selected. Resetting.");
+             if (closestPoint) {
+                 return [{ ...closestPoint, selectionRole: 'point' }];
+             }
+             return [];
           }
         });
-      } else {
-        console.log("[Canvas P2P] No snap point found within threshold.");
-        // setSnapPoints([]); // Optionally reset if click misses
       }
-    }
-    // Point-to-Line Snap Logic
-    else if (snapSubType === 'point-to-line') {
-      setSnapPoints(currentSnapPoints => {
-        // First Click: Select a Point
-        if (currentSnapPoints.length === 0) {
-          if (closestPoint) {
-            console.log(`[Canvas P2L] Selected first point: ${closestPoint.type} at { x: ${closestPoint.coordinates.x.toFixed(2)}, y: ${closestPoint.coordinates.y.toFixed(2)} } in view ${viewInstanceId}`);
-            return [{ ...closestPoint, selectionRole: 'point' }];
-          } else {
-            console.log("[Canvas P2L] First click did not snap to a point.");
-            return []; // Reset if first click misses
-          }
-        }
-        // Second Click: Select a Line
-        else if (currentSnapPoints.length === 1) {
-          const firstSelection = currentSnapPoints[0];
-          if (firstSelection.selectionRole !== 'point') {
-              console.warn("[Canvas P2L] Invalid state: First selection was not a point. Resetting.");
-              return [];
-          }
-          // Check if the clicked element is a line path in the same view
-          const clickedElement = event.target;
-          const clickedElementIsLine = clickedElement.tagName === 'path' &&
-                                       clickedElement.getAttribute('data-geometry-type') === 'line' &&
-                                       clickedElement.closest('svg')?.getAttribute('data-view-instance-id') === firstSelection.viewInstanceId;
+    } else if (interactionMode === 'customLine') {
+      // Custom Line Drawing Logic
+      // For custom lines, we don't strictly need to snap, just capture the click coordinates.
+      // However, using `closestPoint` if available can provide a "snap-to-point" feel for precision.
+      const pointToUse = closestPoint ? closestPoint : { type: 'freehand', coordinates: svgCoords, viewInstanceId };
 
-          if (clickedElementIsLine) {
-             const lineEndpointsAttr = clickedElement.getAttribute('data-endpoints');
-             let lineGeometry = null;
-             if (lineEndpointsAttr) {
-                 try {
-                     const parsedEndpoints = JSON.parse(lineEndpointsAttr);
-                     if (Array.isArray(parsedEndpoints) && parsedEndpoints.length === 2) {
-                         lineGeometry = { type: 'line', endpoints: parsedEndpoints };
-                     }
-                 } catch (e) { console.error("Error parsing line endpoints for P2L snap:", e); }
-             }
-
-             if (lineGeometry) {
-                console.log(`[Canvas P2L] Selected second element: Line in view ${viewInstanceId}`);
-                const lineSelection = {
-                  type: 'line',
-                  geometry: lineGeometry,
-                  viewInstanceId: viewInstanceId,
-                  selectionRole: 'line'
-                };
-                createPointToLineMeasurement(firstSelection, lineSelection);
-                return []; // Reset after creating measurement
-             } else {
-                 console.warn("[Canvas P2L] Could not get geometry for clicked line element.");
-                 return currentSnapPoints; // Keep first point
-             }
-          } else if (viewInstanceId !== firstSelection.viewInstanceId) {
-            console.warn("[Canvas P2L] Second click is in a different view. Resetting selection.");
-            if (closestPoint && closestPoint.viewInstanceId === viewInstanceId) {
-               console.log(`[Canvas P2L] Starting new selection with point in view ${viewInstanceId}`);
-               return [{ ...closestPoint, selectionRole: 'point' }];
-            }
-            return [];
-          } else {
-            console.log("[Canvas P2L] Second click did not select a line in the same view.");
-            return currentSnapPoints;
-          }
+      console.log(`[Canvas CustomLine] Clicked at { x: ${pointToUse.coordinates.x.toFixed(2)}, y: ${pointToUse.coordinates.y.toFixed(2)} } in view ${viewInstanceId}`);
+      setSnapPoints(currentPoints => {
+        if (currentPoints.length === 1 && currentPoints[0].viewInstanceId !== pointToUse.viewInstanceId) {
+          console.warn("[Canvas CustomLine] Second point is in a different view. Resetting selection.");
+          return [pointToUse];
         }
-        // Invalid State
-        else {
-          console.warn("[Canvas P2L] Invalid state: More than one snap point selected. Resetting.");
-           if (closestPoint) {
-               return [{ ...closestPoint, selectionRole: 'point' }];
-           }
-           return [];
+        const updatedPoints = [...currentPoints, pointToUse];
+        if (updatedPoints.length === 2) {
+          // Create a custom line instead of a measurement
+          const newCustomLineId = `custom-line-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+          const p1Coords = updatedPoints[0].coordinates;
+          const p2Coords = updatedPoints[1].coordinates;
+
+          const newCustomLine = {
+            pathId: newCustomLineId,
+            type: 'customLine', // New type
+            viewInstanceId: updatedPoints[0].viewInstanceId,
+            geometry: {
+              type: 'line', // Represented as a line
+              endpoints: [
+                [p1Coords.x, p1Coords.y],
+                [p2Coords.x, p2Coords.y]
+              ]
+              // No length or textPosition needed for basic custom lines
+            },
+            creationTimestamp: Date.now(),
+          };
+
+          console.log(`--- Creating Custom Line ---`);
+          console.log(`  ID: ${newCustomLineId}`);
+          console.log(`  Point 1: { x: ${p1Coords.x.toFixed(2)}, y: ${p1Coords.y.toFixed(2)} }`);
+          console.log(`  Point 2: { x: ${p2Coords.x.toFixed(2)}, y: ${p2Coords.y.toFixed(2)} }`);
+          console.log(`  View ID: ${newCustomLine.viewInstanceId}`);
+          console.log(`-----------------------------`);
+
+          setActiveMeasurements(prev => ({
+            ...prev,
+            [newCustomLineId]: newCustomLine,
+          }));
+          return []; // Reset after creating line
+        } else if (updatedPoints.length > 2) {
+           console.warn("[Canvas CustomLine] More than two points detected, resetting.");
+           return [pointToUse];
+        } else {
+          return updatedPoints; // Only one point selected
         }
       });
     }
-  }, [interactionMode, snapSubType, zoomLevel, getMeasurementState, setSnapPoints, createMeasurementFromSnapPoints, createPointToLineMeasurement]); // Added zoomLevel dependency
+  }, [interactionMode, snapSubType, zoomLevel, getMeasurementState, setSnapPoints, createMeasurementFromSnapPoints, createPointToLineMeasurement, setActiveMeasurements]); // Added setActiveMeasurements and interactionMode
 
 
   // Handle path click - ONLY toggle measurement display
   const handlePathClick = useCallback((event, uniquePathId, path, partName, partIndex, viewInstanceId) => {
-    // If in snap mode, do nothing here (handled by handleSnapClick on the SVG)
-    if (interactionMode === 'snap') {
+    // If in snap or customLine mode, do nothing here (handled by handleSnapClick on the SVG)
+    if (interactionMode === 'snap' || interactionMode === 'customLine') {
       return;
     }
 
@@ -607,11 +662,11 @@ export default function TechnicalDrawingCanvas({
     });
   }, [setActiveMeasurements]); // Dependency on the state setter
 
-  // --- Effect for Escape key to cancel snap ---
+  // --- Effect for Escape key to cancel snap or custom line drawing ---
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && interactionMode === 'snap' && snapPoints.length > 0) {
-        console.log("[Canvas] Escape pressed in snap mode. Clearing snap points.");
+      if (event.key === 'Escape' && (interactionMode === 'snap' || interactionMode === 'customLine') && snapPoints.length > 0) {
+        console.log(`[Canvas] Escape pressed in ${interactionMode} mode. Clearing points.`);
         setSnapPoints([]);
       }
     };
@@ -643,7 +698,8 @@ export default function TechnicalDrawingCanvas({
     setActiveMeasurements({}); // Also reset measurements
     setSnapPoints([]); // Reset snap points array
     setSnapSubType('point-to-point'); // Also reset snap sub-type
-  }, [resetInteraction, setSnapSubType]); // Add setSnapSubType dependency
+    // setInteractionMode('measure'); // Optionally reset interaction mode to default
+  }, [resetInteraction, setSnapSubType, setActiveMeasurements, setSnapPoints]); // Add setActiveMeasurements, setSnapPoints
 
   // --- Layout Calculation (REMOVED old logic based on projections) ---
   // const standardLayout = projections.standardLayout;

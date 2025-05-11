@@ -194,23 +194,57 @@ export default function DrawingControls({
       </div>
 
       {/* Interaction Mode Toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', marginTop: '5px' }}>
-         <button
-          title={`Switch to ${interactionMode === 'measure' ? 'Snap' : 'Measure'} Mode`}
+      <div style={{ display: 'flex', alignItems: 'center', marginTop: '5px', gap: '5px' }}>
+        <button
+          title="Switch to Measure Mode"
           style={{
-            width: '100%',
+            flex: 1,
             padding: isMobile ? '5px 10px' : '2px 8px',
             cursor: 'pointer',
             fontSize: isMobile ? '14px' : 'inherit',
-            backgroundColor: interactionMode === 'snap' ? '#ff9800' : '#bdbdbd', // Orange when snap is active
+            backgroundColor: interactionMode === 'measure' ? '#66bb6a' : '#bdbdbd', // Green when active
             color: 'white',
             border: 'none',
             borderRadius: '3px',
             textAlign: 'center',
           }}
-          onClick={() => onInteractionModeChange(interactionMode === 'measure' ? 'snap' : 'measure')}
+          onClick={() => onInteractionModeChange('measure')}
         >
-          {interactionMode === 'measure' ? 'Measure Mode' : 'Snap Mode'}
+          Measure
+        </button>
+        <button
+          title="Switch to Snap Mode"
+          style={{
+            flex: 1,
+            padding: isMobile ? '5px 10px' : '2px 8px',
+            cursor: 'pointer',
+            fontSize: isMobile ? '14px' : 'inherit',
+            backgroundColor: interactionMode === 'snap' ? '#ff9800' : '#bdbdbd', // Orange when active
+            color: 'white',
+            border: 'none',
+            borderRadius: '3px',
+            textAlign: 'center',
+          }}
+          onClick={() => onInteractionModeChange('snap')}
+        >
+          Snap
+        </button>
+        <button
+          title="Switch to Custom Line Mode"
+          style={{
+            flex: 1,
+            padding: isMobile ? '5px 10px' : '2px 8px',
+            cursor: 'pointer',
+            fontSize: isMobile ? '14px' : 'inherit',
+            backgroundColor: interactionMode === 'customLine' ? '#42a5f5' : '#bdbdbd', // Blue when active
+            color: 'white',
+            border: 'none',
+            borderRadius: '3px',
+            textAlign: 'center',
+          }}
+          onClick={() => onInteractionModeChange('customLine')}
+        >
+          Line
         </button>
       </div>
 
