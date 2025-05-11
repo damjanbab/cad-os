@@ -2,6 +2,7 @@ import React, { useRef, memo } from 'react'; // Import useRef, memo
 
 import PathElement from './PathElement.jsx'; // Reuse PathElement for rendering
 import MeasurementDisplay from './MeasurementDisplay.jsx'; // Import MeasurementDisplay
+import TextDisplay from './TextDisplay.jsx'; // Import TextDisplay for user-added text
 
 // --- UI Styling Constants ---
 const UI_VISIBLE_STROKE_COLOR = '#333333';
@@ -20,9 +21,14 @@ function SvgViewComponent({
   viewInstanceData, // Renamed from viewItemData
   onPathClick, // For measure mode
   onSnapClick, // For snap mode
+  onTextPlacementClick, // For text mode
   interactionMode, // Current mode
   // Receive measurement props
   measurements,
+  // Receive user text props
+  userTexts,
+  onUserTextUpdate,
+  onDeleteUserText,
   // Receive snap points array prop
   snapPoints,
   // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
@@ -68,17 +74,29 @@ function SvgViewComponent({
 
   // Click handler for the SVG element itself, used in snap or customLine mode
   const handleSvgClick = (event) => {
-    // Trigger logic if in snap or customLine mode and the click wasn't on a path element
+    // Check if the click was on a measurement, custom line, or text display element
+    const clickedOnInteractiveElement = event.target.closest('.measurement-group') ||
+                                      event.target.closest('.custom-line-element') ||
+                                      event.target.closest('.text-display-group');
+
+    if (clickedOnInteractiveElement) {
+      console.log(`[SvgView ${viewId}] Clicked on an interactive element (${event.target.tagName}, class: ${event.target.className}), specific handlers should take over.`);
+      return; // Let specific element handlers (like double-click on TextDisplay) manage this
+    }
+
+    // If in snap or customLine mode and the click wasn't on a path element (already handled by PathElement)
     if ((interactionMode === 'snap' || interactionMode === 'customLine') && event.target.tagName !== 'path' && onSnapClick) {
-       // Also check if the click wasn't on a measurement display element or a custom line itself
-       if (!event.target.closest('.measurement-group') && !event.target.closest('.custom-line-element')) {
-           console.log(`[SvgView ${viewId}] SVG background clicked in ${interactionMode} mode.`);
-           onSnapClick(event, viewId);
-       } else {
-           console.log(`[SvgView ${viewId}] Clicked measurement display or custom line in ${interactionMode} mode, ignoring SVG background click.`);
-       }
+      console.log(`[SvgView ${viewId}] SVG background clicked in ${interactionMode} mode.`);
+      onSnapClick(event, viewId);
+    }
+    // If in text mode, call the text placement handler
+    else if (interactionMode === 'text' && onTextPlacementClick) {
+      console.log(`[SvgView ${viewId}] SVG background clicked in text mode.`);
+      onTextPlacementClick(event, viewId);
     } else if (interactionMode === 'snap' || interactionMode === 'customLine') {
-        console.log(`[SvgView ${viewId}] Clicked path element in ${interactionMode} mode, ignoring SVG background click.`);
+      // This case might be redundant if PathElement's onClick for snap/customLine stops propagation
+      // or if the above conditions correctly handle it.
+      console.log(`[SvgView ${viewId}] Clicked path element in ${interactionMode} mode, PathElement's onClick should handle.`);
     }
   };
 
@@ -134,6 +152,7 @@ function SvgViewComponent({
                   stroke={UI_VISIBLE_STROKE_COLOR} // Use same as visible model lines for now
                   strokeWidth={UI_VISIBLE_STROKE_WIDTH}
                   className="custom-line-element" // Add class for potential specific targeting
+                  style={{ vectorEffect: 'non-scaling-stroke' }} // Add non-scaling-stroke
                 />
               );
             } else if (measurement.type !== 'customLine') { // Render MeasurementDisplay for non-customLine types
@@ -150,6 +169,16 @@ function SvgViewComponent({
             }
             return null;
           })}
+          {/* Render User-Added Text */}
+          {userTexts && userTexts.map(textData => (
+            <TextDisplay
+              key={textData.id}
+              textData={textData}
+              onUpdateText={onUserTextUpdate}
+              onDeleteText={onDeleteUserText}
+              // zoomLevel={zoomLevel} // Pass if needed for TextDisplay scaling UI elements
+            />
+          ))}
           {/* Render center points for active circle/arc measurements (excluding custom lines) */}
           {measurements && measurements.map(measurement => {
             if (measurement.type !== 'customLine' && (measurement.type === 'circle' || measurement.type === 'arc' || measurement.type === 'radius') && measurement.geometry?.center) {

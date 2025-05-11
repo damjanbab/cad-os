@@ -246,6 +246,23 @@ export default function DrawingControls({
         >
           Line
         </button>
+        <button
+          title="Switch to Text Mode"
+          style={{
+            flex: 1,
+            padding: isMobile ? '5px 10px' : '2px 8px',
+            cursor: 'pointer',
+            fontSize: isMobile ? '14px' : 'inherit',
+            backgroundColor: interactionMode === 'text' ? '#9c27b0' : '#bdbdbd', // Purple when active
+            color: 'white',
+            border: 'none',
+            borderRadius: '3px',
+            textAlign: 'center',
+          }}
+          onClick={() => onInteractionModeChange('text')}
+        >
+          Text
+        </button>
       </div>
 
       {/* Snap Sub-Type Selection (Only visible in Snap mode) */}

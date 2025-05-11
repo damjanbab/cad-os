@@ -467,6 +467,59 @@ const renderMeasurementToSvg = (measurementData, geometry, scale = 1, targetDime
   return group.childNodes.length > 0 ? group : null;
 };
 
+// --- Helper Function for User Text SVG Rendering (for PDF) ---
+const renderUserTextToSvg = (textData, scale = 1, settings = {}) => {
+  const { id, content, position, fontSize: uiFontSize, color: uiColor, rotation = 0 } = textData;
+
+  const createSvgElement = (tag, attributes) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const key in attributes) { el.setAttribute(key, attributes[key]); }
+    return el;
+  };
+
+  // Use measurement font size and color from settings as a base, or defaults
+  const pdfFontSize = (settings.measurementFontSize ?? DEFAULT_PDF_BASE_MEASUREMENT_FONT_SIZE);
+  // User text color should ideally come from textData.color, then settings, then default.
+  // For now, let's use a similar approach to measurements or a dedicated text color setting.
+  const pdfTextColor = uiColor || settings.measurementFillColor || DEFAULT_PDF_MEASUREMENT_FILL_COLOR;
+  const fontFamily = 'DejaVuSans'; // Consistent with measurements in PDF
+
+  // Scale the UI font size (which is in SVG units) by the viewScale to get mm size for PDF
+  // The uiFontSize (e.g., 2.2) is relative to the SVG coordinate system.
+  // The pdfFontSize (e.g., 3.5mm) is the target size on paper for typical measurement text.
+  // We want the user text to appear the same height as measurements.
+  // If measurement UI font size is also 2.2, and PDF is 3.5mm, then the ratio is 3.5/2.2.
+  // So, user text on PDF should be uiFontSize * (pdfMeasurementFontSize / uiMeasurementFontSize)
+  // Assuming uiMeasurementFontSize is also 2.2 (as per TextDisplay and MeasurementDisplay defaults)
+  const effectivePdfFontSize = (uiFontSize || 2.2) * (pdfFontSize / 2.2);
+
+
+  const scaledPositionX = position.x * scale;
+  const scaledPositionY = position.y * scale;
+
+  const textAttributes = {
+    x: scaledPositionX,
+    y: scaledPositionY,
+    'font-size': effectivePdfFontSize, // Use the calculated effective PDF font size
+    fill: pdfTextColor,
+    stroke: 'none',
+    'text-anchor': 'middle',
+    'dominant-baseline': 'middle',
+    'font-family': fontFamily,
+  };
+
+  if (rotation !== 0) {
+    textAttributes.transform = `rotate(${rotation} ${scaledPositionX} ${scaledPositionY})`;
+  }
+
+  const textEl = createSvgElement('text', textAttributes);
+  textEl.textContent = content;
+
+  console.log(`${LOG_PREFIX} Rendering UserText ${id} for PDF: Content="${content}", Pos=(${scaledPositionX.toFixed(2)},${scaledPositionY.toFixed(2)}), Size=${effectivePdfFontSize.toFixed(2)}mm`);
+  return textEl;
+};
+
+
 // --- Helper Function to Parse Scale Override String ---
 // Parses "X:Y" or "X" into a numerical ratio (X/Y).
 // Returns null if invalid, empty, or "0".
@@ -501,7 +554,7 @@ const parseScaleOverride = (overrideString) => {
 
 
 // --- PDF Export Hook ---
-export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
+export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, userTexts) { // Add userTexts
 
   // --- PDF Export Logic ---
   const exportPdf = useCallback(async () => {
@@ -1018,6 +1071,25 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
                     }
                   });
               }
+
+              // --- Process and Render User Texts for this item ---
+              if (userTexts && Object.keys(userTexts).length > 0) {
+                const itemViewUserTexts = Object.values(userTexts)
+                  .filter(ut => ut && ut.viewInstanceId === item.id && ut.content)
+                  .sort((a, b) => (a.creationTimestamp || 0) - (b.creationTimestamp || 0));
+
+                if (itemViewUserTexts.length > 0) {
+                  console.log(`${LOG_PREFIX}       Processing ${itemViewUserTexts.length} user texts for item ${item.id}...`);
+                  itemViewUserTexts.forEach(textData => {
+                    const userTextSvgElement = renderUserTextToSvg(textData, viewScale, settings);
+                    if (userTextSvgElement) {
+                      itemGroup.appendChild(userTextSvgElement);
+                    } else {
+                      console.warn(`${LOG_PREFIX}           renderUserTextToSvg returned null for user text ${textData.id}`);
+                    }
+                  });
+                }
+              }
             } // End if(storedItemData)
 
             // Advance currentX for the next item in the row (use currentFixedGap)
@@ -1109,7 +1181,7 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements) {
       alert(`Failed to export PDF: ${error.message}. See console for details.`);
     }
 
-  }, [viewboxes, activeMeasurements]); // Dependencies
+  }, [viewboxes, activeMeasurements, userTexts]); // Add userTexts to dependencies
 
   return { exportPdf };
 }

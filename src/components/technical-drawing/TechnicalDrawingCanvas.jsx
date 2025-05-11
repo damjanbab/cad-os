@@ -12,6 +12,7 @@ import { useTechnicalDrawingPdfExport } from '../../hooks/useTechnicalDrawingPdf
 // Import hook AND helpers
 import { useCanvasInteraction, getSvgCoordinates, distance, SNAP_THRESHOLD } from '../../hooks/useCanvasInteraction.js';
 import MeasurementDisplay from './MeasurementDisplay.jsx'; // Import MeasurementDisplay
+import TextDisplay from './TextDisplay.jsx'; // Import TextDisplay for user text
 
 // Main canvas component for technical drawings - Updated for viewboxes
 export default function TechnicalDrawingCanvas({
@@ -53,7 +54,8 @@ export default function TechnicalDrawingCanvas({
   const [scale, setScale] = useState(10); // Initial scale: 10 pixels per cm
   // State for active measurements, keyed by uniquePathId (measurement group ID)
   const [activeMeasurements, setActiveMeasurements] = useState({});
-  // State for interaction mode: 'measure', 'snap', or 'customLine'
+  const [userTexts, setUserTexts] = useState({}); // State for user-added text objects
+  // State for interaction mode: 'measure', 'snap', 'customLine', or 'text'
   const [interactionMode, setInteractionMode] = useState('measure');
   // State for snap sub-type: 'point-to-point' or 'point-to-line'
   const [snapSubType, setSnapSubType] = useState('point-to-point'); // Default to point-to-point
@@ -63,9 +65,11 @@ export default function TechnicalDrawingCanvas({
   // --- Use Hooks ---
   // Function for the interaction hook to get the current measurement state
   const getMeasurementState = useCallback(() => activeMeasurements, [activeMeasurements]);
+  // Function for the interaction hook to get the current user texts state
+  const getUserTextState = useCallback(() => userTexts, [userTexts]);
 
-  // Use the updated hook with viewboxes and activeMeasurements
-  const { exportPdf } = useTechnicalDrawingPdfExport(viewboxes, activeMeasurements);
+  // Use the updated hook with viewboxes, activeMeasurements and userTexts
+  const { exportPdf } = useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, userTexts);
   // const exportPdf = () => console.warn("PDF Export is temporarily disabled."); // Remove placeholder
   const {
     zoomLevel,
@@ -78,9 +82,10 @@ export default function TechnicalDrawingCanvas({
     setPanOffset,
     // Hook setters for callbacks
     setOnMeasurementDrag,
+    setOnUserTextDrag, // Destructure the new setter
     // setInteractionSvgRef, // Not setting SVG ref directly here for now
     // Removed snapPoint from hook return value
-  } = useCanvasInteraction(containerRef, getMeasurementState, interactionMode); // Pass state getter and interactionMode
+  } = useCanvasInteraction(containerRef, getMeasurementState, getUserTextState, interactionMode); // Pass state getters and interactionMode
 
 
   // Handler to update measurement text position (called by the hook via setOnMeasurementDrag)
@@ -90,9 +95,46 @@ export default function TechnicalDrawingCanvas({
       [pathId]: {
         ...prev[pathId],
         textPosition: newPosition,
+        isManuallyPositioned: true, // Dragging implies manual positioning
       }
     }));
-  }, []); // Keep dependency array empty
+  }, []);
+
+
+  // Handler to update user text (content, position, etc.)
+  const handleUserTextUpdate = useCallback((textId, updates) => {
+    setUserTexts(prev => {
+      if (!prev[textId]) {
+        console.warn(`[Canvas] Attempted to update non-existent user text ID: ${textId}`);
+        return prev;
+      }
+      // If position is updated, mark as manually positioned
+      const newIsManuallyPositioned = updates.position ? true : prev[textId].isManuallyPositioned;
+      console.log(`[Canvas] Updating user text ${textId}:`, updates);
+      return {
+        ...prev,
+        [textId]: {
+          ...prev[textId],
+          ...updates,
+          isManuallyPositioned: newIsManuallyPositioned,
+        }
+      };
+    });
+  }, []);
+
+  // Handler to delete a user text object
+  const handleDeleteUserText = useCallback((textId) => {
+    setUserTexts(prev => {
+      const newTexts = { ...prev };
+      if (newTexts[textId]) {
+        console.log(`[Canvas] Deleting user text: ${textId}`);
+        delete newTexts[textId];
+      } else {
+        console.warn(`[Canvas] Attempted to delete non-existent user text ID: ${textId}`);
+      }
+      return newTexts;
+    });
+  }, []);
 
 
   // --- Effect to set the measurement drag handler in the hook ---
@@ -100,9 +142,13 @@ export default function TechnicalDrawingCanvas({
     if (setOnMeasurementDrag) {
       setOnMeasurementDrag(handleMeasurementUpdate);
     }
-    // Cleanup function if needed, though likely not for setting a ref callback
-    // return () => { setOnMeasurementDrag(null); };
-  }, [setOnMeasurementDrag, handleMeasurementUpdate]); // Re-run if setters or handler change
+    if (setOnUserTextDrag) {
+      // Adapt the call: hook provides (id, newPosition), handleUserTextUpdate expects (id, { position: newPosition })
+      setOnUserTextDrag((textId, newPosition) => {
+        handleUserTextUpdate(textId, { position: newPosition });
+      });
+    }
+  }, [setOnMeasurementDrag, handleMeasurementUpdate, setOnUserTextDrag, handleUserTextUpdate]);
 
 
   // Function to create a distance measurement between two snapped points
@@ -268,6 +314,11 @@ export default function TechnicalDrawingCanvas({
   // --- New Unified Snap Click Handler ---
   // This function is called directly by SvgView's onClick when in snap or customLine mode
   const handleSnapClick = useCallback((event, viewInstanceId) => {
+    // If in text mode, this handler should not run. Text placement is separate.
+    if (interactionMode === 'text') {
+        console.log(`[Canvas] Click in text mode, ignoring snap/customLine logic.`);
+        return;
+    }
     console.log(`[Canvas] handleSnapClick triggered for view: ${viewInstanceId} in mode: ${interactionMode}`);
 
     const svgElement = event.target.closest('svg');
@@ -524,8 +575,8 @@ export default function TechnicalDrawingCanvas({
 
   // Handle path click - ONLY toggle measurement display
   const handlePathClick = useCallback((event, uniquePathId, path, partName, partIndex, viewInstanceId) => {
-    // If in snap or customLine mode, do nothing here (handled by handleSnapClick on the SVG)
-    if (interactionMode === 'snap' || interactionMode === 'customLine') {
+    // If in snap, customLine, or text mode, do nothing here (handled by other handlers)
+    if (interactionMode === 'snap' || interactionMode === 'customLine' || interactionMode === 'text') {
       return;
     }
 
@@ -698,8 +749,56 @@ export default function TechnicalDrawingCanvas({
     setActiveMeasurements({}); // Also reset measurements
     setSnapPoints([]); // Reset snap points array
     setSnapSubType('point-to-point'); // Also reset snap sub-type
+    setUserTexts({}); // Also reset user texts
     // setInteractionMode('measure'); // Optionally reset interaction mode to default
-  }, [resetInteraction, setSnapSubType, setActiveMeasurements, setSnapPoints]); // Add setActiveMeasurements, setSnapPoints
+  }, [resetInteraction, setSnapSubType, setActiveMeasurements, setSnapPoints, setUserTexts]);
+
+  // --- Handler for placing text ---
+  const handleTextPlacementClick = useCallback((event, viewInstanceId) => {
+    if (interactionMode !== 'text') return;
+
+    const svgElement = event.target.closest('svg');
+    if (!svgElement) {
+      console.warn("[Canvas Text] Could not find parent SVG for text placement click.");
+      return;
+    }
+
+    const screenX = event.clientX;
+    const screenY = event.clientY;
+    const svgCoords = getSvgCoordinates(screenX, screenY, svgElement);
+
+    if (!svgCoords) {
+      console.warn("[Canvas Text] Could not get SVG coordinates for text placement.");
+      return;
+    }
+
+    const textContent = window.prompt("Enter text:", "Sample Text");
+    if (textContent === null || textContent.trim() === "") {
+      console.log("[Canvas Text] Text input cancelled or empty.");
+      return;
+    }
+
+    const newTextId = `user-text-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const newTextObject = {
+      id: newTextId,
+      content: textContent,
+      position: { x: svgCoords.x, y: svgCoords.y },
+      viewInstanceId: viewInstanceId,
+      fontSize: 2.2, // Default, matches measurements
+      color: "#222222", // Default, matches measurements
+      rotation: 0,
+      isManuallyPositioned: true, // Placed by user implies manual
+      creationTimestamp: Date.now(),
+    };
+
+    setUserTexts(prev => ({
+      ...prev,
+      [newTextId]: newTextObject,
+    }));
+    console.log(`[Canvas Text] Added new text object:`, newTextObject);
+
+  }, [interactionMode, setUserTexts]);
+
 
   // --- Layout Calculation (REMOVED old logic based on projections) ---
   // const standardLayout = projections.standardLayout;
@@ -733,15 +832,34 @@ export default function TechnicalDrawingCanvas({
     allMeasurements.forEach(m => {
       if (m.viewInstanceId && grouped.hasOwnProperty(m.viewInstanceId)) { // Check if key exists
         grouped[m.viewInstanceId].push(m);
-      } else {
-        // This might happen if a measurement's viewInstanceId doesn't match a current view instance
-        // Could be due to viewbox removal or other state inconsistencies. Log it.
-        // console.warn(`[Canvas] Measurement ${m.pathId} has viewInstanceId ${m.viewInstanceId} which doesn't match any current view instance ID.`);
       }
     });
-    console.log("[Canvas] Recalculated memoized measurementsByViewInstanceId:", grouped); // Debug log
+    // console.log("[Canvas] Recalculated memoized measurementsByViewInstanceId:", grouped);
     return grouped;
-  }, [activeMeasurements, viewboxes]); // Dependencies: measurements state and viewboxes array structure (items)
+  }, [activeMeasurements, viewboxes]);
+
+
+  // --- Memoize User Texts per View Instance ID ---
+  const userTextsByViewInstanceId = useMemo(() => {
+    const grouped = {};
+    const allUserTexts = Object.values(userTexts);
+
+    viewboxes.forEach(vb => {
+      vb.items.forEach(item => {
+        if (item) {
+          grouped[item.id] = [];
+        }
+      });
+    });
+
+    allUserTexts.forEach(ut => {
+      if (ut.viewInstanceId && grouped.hasOwnProperty(ut.viewInstanceId)) {
+        grouped[ut.viewInstanceId].push(ut);
+      }
+    });
+    // console.log("[Canvas] Recalculated memoized userTextsByViewInstanceId:", grouped);
+    return grouped;
+  }, [userTexts, viewboxes]);
 
 
   // --- State Export Function ---
@@ -754,6 +872,7 @@ export default function TechnicalDrawingCanvas({
         selectedLayout: selectedLayout, // From props
         viewboxes: viewboxes, // From props
         activeMeasurements: activeMeasurements, // From local state
+        userTexts: userTexts, // Add userTexts to export
         viewState: {
           zoomLevel: zoomLevel, // From local state
           panOffset: panOffset, // From local state
@@ -808,6 +927,7 @@ export default function TechnicalDrawingCanvas({
     selectedLayout,
     viewboxes,
     activeMeasurements,
+    userTexts, // Add userTexts dependency
     zoomLevel,
     panOffset,
     scale,
@@ -835,6 +955,13 @@ export default function TechnicalDrawingCanvas({
       }
       if (!importedState.activeMeasurements || typeof importedState.activeMeasurements !== 'object') {
         throw new Error("Invalid state format: Missing or invalid 'activeMeasurements'.");
+      }
+      // Add validation for userTexts (optional, can default to empty)
+      if (importedState.userTexts && typeof importedState.userTexts !== 'object') {
+        console.warn("[Canvas] Imported state has invalid 'userTexts' format. Ignoring.");
+        importedState.userTexts = {}; // Default to empty if invalid
+      } else if (!importedState.userTexts) {
+        importedState.userTexts = {}; // Default to empty if missing
       }
       if (!importedState.viewState || typeof importedState.viewState !== 'object') {
         throw new Error("Invalid state format: Missing or invalid 'viewState'.");
@@ -872,6 +999,7 @@ export default function TechnicalDrawingCanvas({
       // 2. Update Local State (using setters)
       console.log("  - Updating local canvas state...");
       setActiveMeasurements(importedState.activeMeasurements);
+      setUserTexts(importedState.userTexts || {}); // Set userTexts, default to empty object if missing
       setZoomLevel(importedState.viewState.zoomLevel ?? 1); // Use default if missing
       setPanOffset(importedState.viewState.panOffset ?? { x: 0, y: 0 }); // Use default if missing
       setScale(importedState.viewState.scale ?? 10); // Use default if missing
@@ -900,6 +1028,7 @@ export default function TechnicalDrawingCanvas({
     setInteractionMode,
     setSnapSubType,
     setSnapPoints,
+    setUserTexts, // Add setUserTexts dependency
     onViewboxesChange, // Include parent callbacks in dependencies
     onModelNameChange,
     onLayoutChange,
@@ -999,24 +1128,26 @@ export default function TechnicalDrawingCanvas({
               onTitleBlockChange={onTitleBlockChange} // Pass down title block handler
               onPathClick={handlePathClick} // Pass down path click handler (for measure mode)
               onSnapClick={handleSnapClick} // Pass down the new snap click handler
+              onTextPlacementClick={handleTextPlacementClick} // Pass down text placement handler
               interactionMode={interactionMode} // Pass down interaction mode
               // Pass down measurement-related props
-              measurementsByViewInstanceId={measurementsByViewInstanceId} // Pass the grouped measurements object
-              onUpdateOverrideValue={handleUpdateOverrideValue} // Pass down the override update handler
-              // Removed onMeasurementDragStart
-              zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay rendering
-              snapPoints={snapPoints} // Pass down the array of snap points
-              onRemove={onRemoveViewbox} // Pass down the remove handler
-              // Pass down export settings and handler
+              allMeasurementsByView={measurementsByViewInstanceId} // Pass the entire map
+              onUpdateMeasurementOverride={handleUpdateOverrideValue}
+              onDeleteMeasurement={handleDeleteMeasurement}
+              onToggleMeasurementManualPosition={handleToggleManualPosition}
+              // Pass down user text related props
+              allUserTextsByView={userTextsByViewInstanceId} // Pass the entire map
+              onUserTextUpdate={handleUserTextUpdate}
+              onDeleteUserText={handleDeleteUserText}
+              // Common props
+              zoomLevel={zoomLevel}
+              snapPoints={snapPoints}
+              onRemove={onRemoveViewbox}
               exportSettings={vb.exportSettings}
               onSettingsChange={onViewboxSettingsChange}
-               // Pass down delete handler
-               onDeleteMeasurement={handleDeleteMeasurement}
-               // Pass down manual position toggle handler
-               onToggleManualPosition={handleToggleManualPosition}
-             />
-           ))
-         )}
+            />
+          ))
+        )}
 
         {/* REMOVED old rendering logic for standardLayout and partsLayout */}
       </div>

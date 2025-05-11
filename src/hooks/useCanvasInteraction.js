@@ -36,7 +36,7 @@ export const SNAP_THRESHOLD = 5;
 
 // Centralized hook for canvas interactions: panning, zooming, measurement dragging
 // Note: Snap logic is now handled in TechnicalDrawingCanvas onClick
-export function useCanvasInteraction(containerRef, getMeasurementState, interactionMode) { // Add interactionMode
+export function useCanvasInteraction(containerRef, getMeasurementState, getUserTextState, interactionMode) { // Add getUserTextState, interactionMode
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -44,6 +44,7 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
   const [panStartOffset, setPanStartOffset] = useState({ x: 0, y: 0 });
 
   const [draggingMeasurementId, setDraggingMeasurementId] = useState(null);
+  const [draggingUserTextId, setDraggingUserTextId] = useState(null); // New state for user text drag
   const [dragStartScreenPos, setDragStartScreenPos] = useState({ x: 0, y: 0 });
   const [dragStartSvgPos, setDragStartSvgPos] = useState({ x: 0, y: 0 });
   // Removed snapPoint state
@@ -51,6 +52,7 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
   // Refs
   const svgRef = useRef(null); // Ref for the *specific* SVG being interacted with (set during drag/snap)
   const onMeasurementDragRef = useRef(null);
+  const onUserTextDragRef = useRef(null); // New ref for user text drag handler
   // Ref to store the currently active listeners (wrappers)
   const activeListenersRef = useRef({ move: null, end: null, cancel: null, target: null, type: null, options: null });
   // Refs to store the latest interaction logic
@@ -60,6 +62,11 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
   // Setter for the parent's measurement update callback
   const setOnMeasurementDrag = useCallback((handler) => {
     onMeasurementDragRef.current = handler;
+  }, []);
+
+  // Setter for the parent's user text update callback
+  const setOnUserTextDrag = useCallback((handler) => {
+    onUserTextDragRef.current = handler;
   }, []);
 
   // Setter for the relevant SVG element
@@ -89,33 +96,39 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
   // --- Update Logic Refs ---
   // This effect updates the logic refs whenever state they depend on changes
   useEffect(() => {
-    // --- Panning/Measurement Drag Move Logic ---
+    // --- Panning/Measurement/User Text Drag Move Logic ---
     moveLogicRef.current = (e) => {
-      // Only handle pan/drag move, snap move is separate
-      if (interactionMode === 'snap') return;
+      // Only handle pan/drag move, snap/text placement are separate
+      if (interactionMode === 'snap' || interactionMode === 'text') return;
 
       const isTouchEvent = activeListenersRef.current.type === 'touch'; // Use stored type
       const eventPos = isTouchEvent ? e.touches[0] : e;
       if (!eventPos) return;
 
+      const targetSvg = svgRef.current;
+      if (!targetSvg) return;
+      const invMatrix = targetSvg.getScreenCTM()?.inverse();
+      if (!invMatrix) return;
+
+      const dxScreen = eventPos.clientX - dragStartScreenPos.x;
+      const dyScreen = eventPos.clientY - dragStartScreenPos.y;
+      const deltaX_svg = dxScreen * invMatrix.a + dyScreen * invMatrix.c;
+      const deltaY_svg = dxScreen * invMatrix.b + dyScreen * invMatrix.d;
+      
+      const newPos = {
+        x: dragStartSvgPos.x + deltaX_svg,
+        y: dragStartSvgPos.y + deltaY_svg,
+      };
+
       // Measurement Drag Move
-      if (draggingMeasurementId) {
+      if (draggingMeasurementId && onMeasurementDragRef.current) {
         if (isTouchEvent && e.cancelable) e.preventDefault();
-        const dxScreen = eventPos.clientX - dragStartScreenPos.x;
-        const dyScreen = eventPos.clientY - dragStartScreenPos.y;
-        const targetSvg = svgRef.current;
-        if (!targetSvg) return;
-        const invMatrix = targetSvg.getScreenCTM()?.inverse();
-        if (!invMatrix) return;
-        const deltaX_svg = dxScreen * invMatrix.a + dyScreen * invMatrix.c;
-        const deltaY_svg = dxScreen * invMatrix.b + dyScreen * invMatrix.d;
-        const newTextPos = {
-          x: dragStartSvgPos.x + deltaX_svg,
-          y: dragStartSvgPos.y + deltaY_svg,
-        };
-        if (onMeasurementDragRef.current) {
-          onMeasurementDragRef.current(draggingMeasurementId, newTextPos);
-        }
+        onMeasurementDragRef.current(draggingMeasurementId, newPos);
+      }
+      // User Text Drag Move
+      else if (draggingUserTextId && onUserTextDragRef.current) {
+        if (isTouchEvent && e.cancelable) e.preventDefault();
+        onUserTextDragRef.current(draggingUserTextId, newPos);
       }
       // Panning Move
       else if (isPanning) {
@@ -159,25 +172,27 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
       if (draggingMeasurementId) {
         setDraggingMeasurementId(null);
         if (svgRef.current) svgRef.current = null;
+      } else if (draggingUserTextId) { // Add handling for user text drag end
+        setDraggingUserTextId(null);
+        if (svgRef.current) svgRef.current = null;
       } else if (isPanning) {
         setIsPanning(false);
       }
     };
   }, [
-    isPanning, draggingMeasurementId, // State dependencies for logic
+    isPanning, draggingMeasurementId, draggingUserTextId, // State dependencies for logic
     panStart, panStartOffset, dragStartScreenPos, dragStartSvgPos, // Other state
-    onMeasurementDragRef, svgRef, containerRef, // Refs
-    setPanOffset, setDraggingMeasurementId, setIsPanning, // Setters
-    interactionMode // Add interactionMode dependency
+    onMeasurementDragRef, onUserTextDragRef, svgRef, containerRef, // Refs
+    setPanOffset, setDraggingMeasurementId, setDraggingUserTextId, setIsPanning, // Setters
+    interactionMode, // Add interactionMode dependency
+    setDragStartScreenPos, setDragStartSvgPos // Added missing setters to dependency array
   ]);
 
 
-  // --- Combined Interaction Start Handler (Panning / Measurement Drag) ---
+  // --- Combined Interaction Start Handler (Panning / Measurement Drag / User Text Drag) ---
   const handleInteractionStart = useCallback((e) => {
-    // Ignore interaction starts if in snap mode (handled by separate listener)
-    if (interactionMode === 'snap') {
-        // Potentially handle click *in* snap mode here later if needed
-        // For now, just prevent pan/drag start
+    // Ignore interaction starts if in snap or text mode (these are handled by separate click listeners on SvgView)
+    if (interactionMode === 'snap' || interactionMode === 'text') {
         return;
     }
 
@@ -198,9 +213,10 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
     svgRef.current = containingSvg;
 
     const measurementGroup = targetElement.closest('.measurement-group');
+    const userTextGroup = targetElement.closest('.text-display-group'); // Check for user text group
     const controls = targetElement.closest('button, input[type="range"], .drawing-controls');
 
-    if (controls) return;
+    if (controls) return; // Ignore clicks on controls
 
     // --- Define Stable Wrapper Functions ---
     // These functions will be added/removed, their identity is stable
@@ -212,6 +228,22 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
     let eventType = null;
     let listenerOptions = null;
 
+    const commonDragSetup = (id, currentPos) => {
+      if (e.preventDefault) e.preventDefault();
+      setDragStartScreenPos({ x: eventPos.clientX, y: eventPos.clientY });
+      setDragStartSvgPos(currentPos);
+
+      target = window;
+      eventType = isTouchEvent ? 'touch' : 'mouse';
+      listenerOptions = isTouchEvent ? { passive: false } : undefined;
+
+      window.addEventListener(eventType === 'touch' ? 'touchmove' : 'mousemove', onMoveWrapper, listenerOptions);
+      window.addEventListener(eventType === 'touch' ? 'touchend' : 'mouseup', onEndWrapper);
+      if (eventType === 'touch') {
+        window.addEventListener('touchcancel', onCancelWrapper);
+      }
+    };
+
     // --- Measurement Drag Start ---
     if (measurementGroup && measurementGroup.id && svgRef.current) {
       const measurementId = measurementGroup.id;
@@ -222,34 +254,21 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
         console.warn(`[Interaction] Measurement ${measurementId} not found or invalid textPosition. Aborting drag start.`, currentMeasurement);
         return;
       }
-      // Optional CTM check
-      try {
-          const ctmCheck = svgRef.current.getScreenCTM();
-          if (!ctmCheck || !ctmCheck.inverse()) {
-             console.error(`[Interaction] Drag Start Error: Invalid CTM for SVG:`, svgRef.current);
-             return;
-          }
-      } catch (error) {
-          console.error(`[Interaction] Drag Start Error: Exception getting/inverting CTM for SVG:`, svgRef.current, error);
-          return;
-      }
-
-      if (e.preventDefault) e.preventDefault();
-
       setDraggingMeasurementId(measurementId);
-      setDragStartScreenPos({ x: eventPos.clientX, y: eventPos.clientY });
-      setDragStartSvgPos(currentMeasurement.textPosition);
+      commonDragSetup(measurementId, currentMeasurement.textPosition);
+    }
+    // --- User Text Drag Start ---
+    else if (userTextGroup && userTextGroup.id && svgRef.current && getUserTextState) {
+      const textId = userTextGroup.id;
+      const currentUserTexts = getUserTextState ? getUserTextState() : {};
+      const currentUserText = currentUserTexts[textId];
 
-      // Add listeners to window using wrappers
-      target = window;
-      eventType = isTouchEvent ? 'touch' : 'mouse';
-      listenerOptions = isTouchEvent ? { passive: false } : undefined; // Passive false for touchmove preventDefault
-
-      window.addEventListener(eventType === 'touch' ? 'touchmove' : 'mousemove', onMoveWrapper, listenerOptions);
-      window.addEventListener(eventType === 'touch' ? 'touchend' : 'mouseup', onEndWrapper);
-      if (eventType === 'touch') {
-        window.addEventListener('touchcancel', onCancelWrapper);
+      if (!currentUserText || typeof currentUserText.position?.x !== 'number' || typeof currentUserText.position?.y !== 'number') {
+        console.warn(`[Interaction] User text ${textId} not found or invalid position. Aborting drag start.`, currentUserText);
+        return;
       }
+      setDraggingUserTextId(textId);
+      commonDragSetup(textId, currentUserText.position);
     }
     // --- Panning Start ---
     else if ((!isTouchEvent && e.button === 0) || (isTouchEvent && e.touches.length === 1)) {
@@ -293,9 +312,8 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
   }, [
       panOffset, // Need current panOffset for panStartOffset
       containerRef,
-      getMeasurementState,
-      // No dependency on the logic refs or useCallback handlers here
-      setDraggingMeasurementId, // State setters
+      getMeasurementState, getUserTextState,
+      setDraggingMeasurementId, setDraggingUserTextId, // State setters
       setDragStartScreenPos,
       setDragStartSvgPos,
       setIsPanning,
@@ -323,10 +341,11 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
     } else {
         // Still update state if no listeners were active but state might be stuck
         if (draggingMeasurementId) setDraggingMeasurementId(null);
+        if (draggingUserTextId) setDraggingUserTextId(null); // Clear user text drag state
         if (isPanning) setIsPanning(false);
     }
     // Removed snapPoint reset
-  }, [draggingMeasurementId, isPanning]); // Depend on state to check if reset is needed
+  }, [draggingMeasurementId, draggingUserTextId, isPanning]); // Add draggingUserTextId
 
   // Handlers attached to the container element
   const interactionHandlers = {
@@ -345,6 +364,7 @@ export function useCanvasInteraction(containerRef, getMeasurementState, interact
     setZoomLevel,
     setPanOffset,
     setOnMeasurementDrag,
+    setOnUserTextDrag, // Add new setter to return
     setInteractionSvgRef,
     // Removed snapPoint from return
   };

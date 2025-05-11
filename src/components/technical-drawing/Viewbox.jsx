@@ -18,22 +18,27 @@ function ViewboxComponent({
   onTitleBlockChange, // Add prop for handling title block updates
   onPathClick, // Add prop for path click handler (measure mode)
   onSnapClick, // Add prop for snap click handler (snap mode)
+  onTextPlacementClick, // Add prop for text placement click handler
   interactionMode, // Add prop for current interaction mode
   // Receive measurement props
-  measurementsByViewInstanceId, // Renamed prop: object keyed by view instance ID
+  allMeasurementsByView, // Changed from measurementsForView
+  // User Text props
+  allUserTextsByView, // Changed from userTextsForView to receive the whole map
+  onUserTextUpdate,
+  onDeleteUserText,
   // onMeasurementUpdate, // REMOVED - Update is handled via hook callback
   // Removed onMeasurementDragStart
   zoomLevel,
   snapPoints, // Renamed prop
   onRemove, // Add prop for remove handler
-  onUpdateOverrideValue, // Add prop for override update handler
+  onUpdateMeasurementOverride, // Renamed from onUpdateOverrideValue
   // Export settings props
   exportSettings,
    onSettingsChange,
    // Add delete handler prop
    onDeleteMeasurement,
    // Add manual position toggle handler prop
-   onToggleManualPosition,
+   onToggleMeasurementManualPosition, // Renamed from onToggleManualPosition
  }) {
    const { id: viewboxId, layout, titleBlock, items } = viewboxData; // Rename id to viewboxId for clarity
    const [gridRows, gridCols] = parseLayout(layout);
@@ -253,16 +258,21 @@ function ViewboxComponent({
                   viewInstanceData={item} // Pass renamed prop
                   onPathClick={onPathClick} // Pass measure mode handler
                   onSnapClick={onSnapClick} // Pass snap mode handler
+                  onTextPlacementClick={onTextPlacementClick} // Pass text placement handler
                   interactionMode={interactionMode} // Pass current mode
                   // Get the correct measurements for this specific view instance
-                  measurements={measurementsByViewInstanceId[item.id] || []}
+                  measurements={allMeasurementsByView[item.id] || []} // Filter measurements for this specific item.id
+                  // User Text props
+                  userTexts={allUserTextsByView[item.id] || []} // Filter texts for this specific item.id
+                  onUserTextUpdate={onUserTextUpdate}
+                  onDeleteUserText={onDeleteUserText}
                   // onMeasurementUpdate={onMeasurementUpdate} // REMOVED - Update is handled via hook callback
                   // Removed onMeasurementDragStart
                   zoomLevel={zoomLevel} // Pass zoomLevel for potential use in MeasurementDisplay
                    snapPoints={snapPoints} // Pass snapPoints array down to SvgView
-                   onUpdateOverrideValue={onUpdateOverrideValue} // Pass override handler down
+                   onUpdateOverrideValue={onUpdateMeasurementOverride} // Use renamed prop
                    onDeleteMeasurement={onDeleteMeasurement} // Pass delete handler down
-                   onToggleManualPosition={onToggleManualPosition} // Pass toggle handler down
+                   onToggleManualPosition={onToggleMeasurementManualPosition} // Use renamed prop
                  />
                ) : (
                  // If no item, display empty cell placeholder
