@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'; // Added useEffect, useState
 import { jsPDF } from "jspdf";
 import 'svg2pdf.js'; // Side-effect import
+import { UI_CONTENT_VIEWBOX_SCALE_FACTOR } from '../config/drawingConstants.js'; // Import shared constant
 // Import the font file - assuming Vite provides a URL/path
 import DejaVuSansFont from '../../assets/fonts/DejaVuSans.ttf'; // Use DejaVu Sans
 import { parseViewBox } from '../utils/svgUtils.js';
@@ -9,7 +10,7 @@ import { vec } from '../utils/geometryUtils.js'; // Keep for potential future us
 import { parsePathData, transformPathData, scalePathData, serializePathData } from '../utils/svgPathUtils.js';
 
 const LOG_PREFIX = "[PDF Export]";
-const WORKER_UI_CONTENT_SCALE_FACTOR = 0.625; // Factor by which content is smaller in UI viewBox from worker
+// REMOVED: const WORKER_UI_CONTENT_SCALE_FACTOR = 0.625; // Factor by which content is smaller in UI viewBox from worker
 
 // Parses layout string "rowsxcols" into [rows, cols]
 const parseLayout = (layoutString) => {
@@ -706,13 +707,23 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
 
         // Calculate the single scale factor for the views
         // Check for custom scale override first
-        const customScaleRatio = parseScaleOverride(settings.customScaleOverride);
+        const parsedUserScaleRatio = parseScaleOverride(settings.customScaleOverride); // User's desired true scale ratio
 
-        if (customScaleRatio !== null) {
-          // Use override: Calculate viewScale based on the desired X:Y ratio
-          // Remember: trueScaleRatio = viewScale / 10, so viewScale = trueScaleRatio * 10
-          viewScale = customScaleRatio * 10;
-          console.log(`${LOG_PREFIX}   Using Custom Scale Override: "${settings.customScaleOverride}" -> Ratio=${customScaleRatio.toFixed(4)}, Calculated View Scale: ${viewScale.toFixed(4)}`);
+        if (parsedUserScaleRatio !== null) {
+          console.log(`${LOG_PREFIX}   Using Custom Scale Override: "${settings.customScaleOverride}" -> Parsed User Ratio=${parsedUserScaleRatio.toFixed(4)}`);
+
+          // parsedUserScaleRatio is the desired "true scale" (Drawing Units on Paper / Real World Units).
+          // correctedViewScale is Drawing Units on Paper (mm) / Real World Units (cm from worker geometry).
+          // So, correctedViewScale = parsedUserScaleRatio * 10.
+          correctedViewScale = parsedUserScaleRatio * 10;
+          console.log(`${LOG_PREFIX}     Calculated Corrected View Scale (for geometry): ${correctedViewScale.toFixed(4)}`);
+
+          // viewScale is for the padded worker viewBox (dimensions also in cm-equivalent units).
+          // We know: correctedViewScale = viewScale / UI_CONTENT_VIEWBOX_SCALE_FACTOR
+          // So, viewScale = correctedViewScale * UI_CONTENT_VIEWBOX_SCALE_FACTOR
+          viewScale = correctedViewScale * UI_CONTENT_VIEWBOX_SCALE_FACTOR;
+          console.log(`${LOG_PREFIX}     Calculated View Scale (for padded VB): ${viewScale.toFixed(4)}`);
+          
           // Optional: Add a check/warning if this scale makes content exceed available space
           const checkWidth = totalUnscaledViewsWidth * viewScale + totalFixedGapWidth;
           const checkHeight = totalUnscaledViewsHeight * viewScale + totalFixedGapHeight;
@@ -725,20 +736,19 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
           const scaleY = spaceForViewsHeight / totalUnscaledViewsHeight;
           viewScale = Math.min(scaleX, scaleY); // Scale for the worker-provided (padded) viewBox
           console.log(`${LOG_PREFIX}   Calculated Auto View Scale (for padded VB): ${viewScale.toFixed(4)} (based on available space W=${spaceForViewsWidth.toFixed(2)}, H=${spaceForViewsHeight.toFixed(2)})`);
+          
+          correctedViewScale = viewScale / UI_CONTENT_VIEWBOX_SCALE_FACTOR;
+          console.log(`${LOG_PREFIX}   Corrected View Scale (for actual content, using factor ${UI_CONTENT_VIEWBOX_SCALE_FACTOR}): ${correctedViewScale.toFixed(4)}`);
         }
 
         if (viewScale <= 1e-6) {
            console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative initial view scale (override or auto).`);
-           continue;
+            continue;
         }
-
-        // Adjust viewScale to get the scale for the actual content
-        correctedViewScale = viewScale / WORKER_UI_CONTENT_SCALE_FACTOR;
-        console.log(`${LOG_PREFIX}   Corrected View Scale (for actual content): ${correctedViewScale.toFixed(4)}`);
-
-
+        // Note: correctedViewScale is derived after viewScale, so this check might be redundant if viewScale is already checked.
+        // However, keeping it for safety, especially if custom scale logic changes.
         if (correctedViewScale <= 1e-6) {
-           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative corrected view scale.`);
+           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative corrected view scale (derived from viewScale or custom override).`);
            continue;
         }
 
@@ -1155,29 +1165,37 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
         );
 
         // Calculate the true scale ratio: Drawing Size (mm) / Real Size (mm)
-        // correctedViewScale = Drawing Size (mm) / Real Size (cm)
-        // trueScaleRatio = correctedViewScale / 10
-        const trueScaleRatio = correctedViewScale / 10; // Use correctedViewScale
+        let titleBlockTrueScaleRatio;
+        if (parsedUserScaleRatio !== null) {
+            // If user provided an override, that IS the true scale ratio for the title block
+            titleBlockTrueScaleRatio = parsedUserScaleRatio;
+        } else {
+            // Otherwise, calculate from the auto-derived correctedViewScale
+            // correctedViewScale = Drawing Size (mm) / Real Size (cm)
+            // titleBlockTrueScaleRatio = correctedViewScale / 10
+            titleBlockTrueScaleRatio = correctedViewScale / 10;
+        }
+        console.log(`${LOG_PREFIX}       True Scale Ratio for Title Block: ${titleBlockTrueScaleRatio.toFixed(4)}`);
+        
         let scaleString = "NTS"; // Default if calculation fails
-
-        if (trueScaleRatio > 1e-6) { // Avoid division by zero or tiny scales
-            if (Math.abs(trueScaleRatio - 1) < 1e-6) {
+        if (titleBlockTrueScaleRatio > 1e-6) { // Avoid division by zero or tiny scales
+            if (Math.abs(titleBlockTrueScaleRatio - 1) < 1e-6) {
                 scaleString = "1 : 1"; // Exactly 1:1
-            } else if (trueScaleRatio < 1) {
+            } else if (titleBlockTrueScaleRatio < 1) {
                 // Reduction scale (e.g., 1 : 8.5 becomes 1 : 9)
-                const reductionFactor = 1 / trueScaleRatio;
+                const reductionFactor = 1 / titleBlockTrueScaleRatio;
                 let integerY = Math.round(reductionFactor); // Round Y to nearest integer
                 integerY = Math.max(1, integerY); // Ensure Y is at least 1
                 scaleString = `1 : ${integerY}`; // Format as 1 : Integer
             } else {
                 // Enlargement scale (e.g., 2.3 : 1 becomes 2 : 1)
-                const enlargementFactor = trueScaleRatio;
+                const enlargementFactor = titleBlockTrueScaleRatio;
                 let integerX = Math.round(enlargementFactor); // Round X to nearest integer
                 integerX = Math.max(1, integerX); // Ensure X is at least 1
                 scaleString = `${integerX} : 1`; // Format as Integer : 1
             }
         }
-        console.log(`${LOG_PREFIX}       Calculated True Scale Ratio: ${trueScaleRatio.toFixed(4)}, Formatted String for Title Block: ${scaleString}`);
+        console.log(`${LOG_PREFIX}       Formatted Scale String for Title Block: ${scaleString}`);
 
         // Add calculated scale to title block data
         const titleBlockData = {

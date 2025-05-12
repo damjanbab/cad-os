@@ -4,6 +4,7 @@ import opencascadeWasm from "replicad-opencascadejs/src/replicad_single.wasm?url
 // Import necessary replicad components
 import { setOC, drawProjection, ProjectionCamera } from "replicad"; // Remove Vector import if not needed elsewhere
 import { expose } from "comlink";
+import { UI_CONTENT_VIEWBOX_SCALE_FACTOR } from './config/drawingConstants.js'; // Import shared constant
 
 // Import model creation and utilities needed for projections
 import { modelRegistry, createModelWithValidation } from "./models";
@@ -11,9 +12,6 @@ import { exportableModel } from './helperUtils.js';
 import { parseViewBox, combineViewBoxes } from './utils/svgUtils.js'; // Assuming these are needed by helpers
 import { TOLERANCE, arePointsClose, areCollinear } from './utils/geometryUtils.js'; // Assuming these are needed by helpers
 import { parsePathData, transformPathData, serializePathData } from './utils/svgPathUtils.js'; // Import SVG path helpers
-
-// --- UI Constants ---
-const UI_VIEWBOX_CONTENT_SCALE_FACTOR = 0.625; // Content takes ~62.5% of view, implies marginFactor = 1 / 0.625 = 1.6
 
 // --- OpenCascade Initialization (Copied from original worker) ---
 let loaded = false;
@@ -754,9 +752,8 @@ const generateSingleProjection = async (modelName, params, viewType, rotationAng
   // 5. Determine combined viewBox using the projection result
   // 5. Determine combined viewBox string (as before)
   // Original: const viewBoxString = projection.visible.toSVGViewBox(5); // Get viewBox string with margin
-  // New margin: (1 / UI_VIEWBOX_CONTENT_SCALE_FACTOR - 1) / 2 * 100
-  // (1.6 - 1) / 2 * 100 = 0.6 / 2 * 100 = 0.3 * 100 = 30
-  const singleViewMarginPercentage = ( (1 / UI_VIEWBOX_CONTENT_SCALE_FACTOR) - 1) / 2 * 100;
+  // Calculate margin percentage based on the imported constant
+  const singleViewMarginPercentage = ( (1 / UI_CONTENT_VIEWBOX_SCALE_FACTOR) - 1) / 2 * 100;
   const viewBoxString = projection.visible.toSVGViewBox(singleViewMarginPercentage);
 
 
