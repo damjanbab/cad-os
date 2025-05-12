@@ -191,8 +191,9 @@ export function useCanvasInteraction(containerRef, getMeasurementState, getUserT
 
   // --- Combined Interaction Start Handler (Panning / Measurement Drag / User Text Drag) ---
   const handleInteractionStart = useCallback((e) => {
-    // Ignore interaction starts if in snap or text mode (these are handled by separate click listeners on SvgView)
-    if (interactionMode === 'snap' || interactionMode === 'text') {
+    // Only allow interactions (panning, item dragging) if in 'measure' mode.
+    if (interactionMode !== 'measure') {
+        // console.log(`[Interaction] Mode is '${interactionMode}', not 'measure'. Interaction start ignored.`);
         return;
     }
 

@@ -22,11 +22,12 @@ const PathElementComponent = ({
   const handleClick = useCallback((event) => {
     event.stopPropagation(); // Prevent click from bubbling to parent cell
 
-    if (interactionMode === 'snap' && onSnapClick) {
-      // In snap mode, call onSnapClick, passing the event and viewInstanceId
+    // Call onSnapClick if mode is 'snap' OR 'customLine'
+    if ((interactionMode === 'snap' || interactionMode === 'customLine') && onSnapClick) {
+      // In snap or customLine mode, call onSnapClick, passing the event and viewInstanceId
       // The main snap handler in TechnicalDrawingCanvas will use event.target
-      // to identify the clicked path and its geometry.
-      console.log(`[PathElement ${path.id}] Clicked in snap mode. Calling onSnapClick.`);
+      // to identify the clicked path and its geometry if needed.
+      console.log(`[PathElement ${path.id}] Clicked in ${interactionMode} mode. Calling onSnapClick.`);
       onSnapClick(event, viewInstanceId);
     } else if (interactionMode === 'measure' && onPathClick) {
       // In measure mode, call onPathClick as before
