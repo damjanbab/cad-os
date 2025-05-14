@@ -55,6 +55,8 @@ export default function TechnicalDrawingCanvas({
   // State for active measurements, keyed by uniquePathId (measurement group ID)
   const [activeMeasurements, setActiveMeasurements] = useState({});
   const [userTexts, setUserTexts] = useState({}); // State for user-added text objects
+  // State for tracking which custom line endpoint is being dragged
+  const [draggingEndpointInfo, setDraggingEndpointInfo] = useState({ lineId: null, pointType: null }); // New state
   // State for interaction mode: 'measure', 'snap', 'customLine', or 'text'
   const [interactionMode, setInteractionMode] = useState('measure');
   // State for snap sub-type: 'point-to-point' or 'point-to-line'
@@ -67,6 +69,8 @@ export default function TechnicalDrawingCanvas({
   const getMeasurementState = useCallback(() => activeMeasurements, [activeMeasurements]);
   // Function for the interaction hook to get the current user texts state
   const getUserTextState = useCallback(() => userTexts, [userTexts]);
+  // Function for the interaction hook to get the current custom lines state
+  const getCustomLinesState = useCallback(() => Object.values(activeMeasurements).filter(m => m.type === 'customLine'), [activeMeasurements]);
 
   // Use the updated hook with viewboxes, activeMeasurements and userTexts
   const { exportPdf } = useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, userTexts);
@@ -82,10 +86,19 @@ export default function TechnicalDrawingCanvas({
     setPanOffset,
     // Hook setters for callbacks
     setOnMeasurementDrag,
-    setOnUserTextDrag, // Destructure the new setter
-    // setInteractionSvgRef, // Not setting SVG ref directly here for now
-    // Removed snapPoint from hook return value
-  } = useCanvasInteraction(containerRef, getMeasurementState, getUserTextState, interactionMode); // Pass state getters and interactionMode
+    setOnUserTextDrag,
+    // Destructure new endpoint setters
+    setOnEndpointInteractionStart,
+    setOnEndpointDrag,
+    setOnEndpointInteractionEnd,
+    // setInteractionSvgRef, // Internal use mostly
+  } = useCanvasInteraction(
+      containerRef,
+      getMeasurementState,
+      getUserTextState,
+      getCustomLinesState, // Pass the new getter
+      interactionMode
+  );
 
 
   // Handler to update measurement text position (called by the hook via setOnMeasurementDrag)
@@ -99,6 +112,38 @@ export default function TechnicalDrawingCanvas({
       }
     }));
   }, []);
+
+
+  // --- Endpoint Drag Handlers ---
+  const handleEndpointInteractionStart = useCallback((lineId, pointType, startPos) => {
+    console.log(`[Canvas] Endpoint drag start: Line ${lineId}, Point ${pointType}`);
+    setDraggingEndpointInfo({ lineId, pointType });
+  }, []); // No dependencies needed
+
+  const handleEndpointDrag = useCallback((newPos) => {
+    setActiveMeasurements(prev => {
+      const { lineId, pointType } = draggingEndpointInfo;
+      if (!lineId || !pointType || !prev[lineId] || prev[lineId].type !== 'customLine') {
+        // console.warn(`[Canvas Endpoint Drag] Invalid state:`, { lineId, pointType, measurement: prev[lineId] });
+        return prev;
+      }
+
+      const updatedLine = JSON.parse(JSON.stringify(prev[lineId])); // Deep copy to avoid mutation issues
+      const endpointIndex = pointType === 'start' ? 0 : 1;
+
+      // Update the specific endpoint's coordinates
+      updatedLine.geometry.endpoints[endpointIndex] = [newPos.x, newPos.y];
+
+      // console.log(`[Canvas Endpoint Drag] Updating ${lineId} ${pointType} to:`, newPos); // Debug
+
+      return { ...prev, [lineId]: updatedLine };
+    });
+  }, [draggingEndpointInfo]); // Depends on the dragging info state
+
+  const handleEndpointInteractionEnd = useCallback(() => {
+    console.log(`[Canvas] Endpoint drag end: Line ${draggingEndpointInfo.lineId}`);
+    setDraggingEndpointInfo({ lineId: null, pointType: null }); // Reset state
+  }, [draggingEndpointInfo.lineId]); // Dependency needed to log the correct ID on end
 
 
   // Handler to update user text (content, position, etc.)
@@ -137,7 +182,7 @@ export default function TechnicalDrawingCanvas({
   }, []);
 
 
-  // --- Effect to set the measurement drag handler in the hook ---
+  // --- Effect to set the interaction hook callbacks ---
   useEffect(() => {
     if (setOnMeasurementDrag) {
       setOnMeasurementDrag(handleMeasurementUpdate);
@@ -148,7 +193,23 @@ export default function TechnicalDrawingCanvas({
         handleUserTextUpdate(textId, { position: newPosition });
       });
     }
-  }, [setOnMeasurementDrag, handleMeasurementUpdate, setOnUserTextDrag, handleUserTextUpdate]);
+    // Set endpoint drag handlers
+    if (setOnEndpointInteractionStart) {
+      setOnEndpointInteractionStart(handleEndpointInteractionStart);
+    }
+    if (setOnEndpointDrag) {
+      setOnEndpointDrag(handleEndpointDrag);
+    }
+    if (setOnEndpointInteractionEnd) {
+      setOnEndpointInteractionEnd(handleEndpointInteractionEnd);
+    }
+  }, [
+      setOnMeasurementDrag, handleMeasurementUpdate,
+      setOnUserTextDrag, handleUserTextUpdate,
+      setOnEndpointInteractionStart, handleEndpointInteractionStart,
+      setOnEndpointDrag, handleEndpointDrag,
+      setOnEndpointInteractionEnd, handleEndpointInteractionEnd
+  ]);
 
 
   // Function to create a distance measurement between two snapped points

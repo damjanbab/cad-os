@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'; // Added useEffect, useState
 import { jsPDF } from "jspdf";
 import 'svg2pdf.js'; // Side-effect import
-import { UI_CONTENT_VIEWBOX_SCALE_FACTOR } from '../config/drawingConstants.js'; // Import shared constant
+// REMOVED: UI_CONTENT_VIEWBOX_SCALE_FACTOR import
 // Import the font file - assuming Vite provides a URL/path
 import DejaVuSansFont from '../../assets/fonts/DejaVuSans.ttf'; // Use DejaVu Sans
 import { parseViewBox } from '../utils/svgUtils.js';
@@ -587,43 +587,41 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
 
         // --- 1. Calculate Grid and Unscaled View Dimensions ---
         const [gridRows, gridCols] = parseLayout(viewbox.layout);
-        const colWidths = Array(gridCols).fill(0); // Max unscaled width per column
-        const rowHeights = Array(gridRows).fill(0); // Max unscaled height per row
-        const itemData = []; // Store { item, itemVB } for valid items
+        const colWidths = Array(gridCols).fill(0); // Max unscaled tight geometry width per column
+        const rowHeights = Array(gridRows).fill(0); // Max unscaled tight geometry height per row
+        const itemData = []; // Store { item, geomBox } for valid items
 
-        // First pass: Find max unscaled width per column and max height per row
+        // First pass: Find max unscaled tight geometry width per column and max height per row
         for (let cellIndex = 0; cellIndex < gridRows * gridCols; cellIndex++) {
           const item = viewbox.items[cellIndex];
-          if (!item || !item.svgData || !item.svgData.viewBox) {
-            itemData[cellIndex] = null; // Mark cell as empty
+          // Ensure item and necessary geometry data exist
+          if (!item || !item.svgData || !item.svgData.geometryBoundingBox) {
+            itemData[cellIndex] = null; // Mark cell as empty or invalid
+            console.warn(`${LOG_PREFIX}   Item at cellIndex ${cellIndex} is missing or has no geometryBoundingBox. Skipping.`);
             continue;
           }
 
-          // item variable is already declared at the start of the loop.
-          // The following duplicate declaration and if-block were erroneously inserted.
-          // const item = viewbox.items[cellIndex]; // Reverted
-          // if (!item || !item.svgData || !item.svgData.viewBox) {
-          //   itemData[cellIndex] = null; // Mark cell as empty
-          //   continue;
-          // }
+          const geomBox = item.svgData.geometryBoundingBox;
+          const geomWidth = geomBox.maxX - geomBox.minX;
+          const geomHeight = geomBox.maxY - geomBox.minY;
 
-          const itemVB = parseViewBox(item.svgData.viewBox); // Reverted: use itemVB directly
-          if (!itemVB || itemVB.width <= 0 || itemVB.height <= 0) {
-            itemData[cellIndex] = null; // Mark cell as invalid
+          if (geomWidth <= 1e-6 || geomHeight <= 1e-6) {
+            itemData[cellIndex] = null; // Mark cell as invalid if geometry has no size
+            console.warn(`${LOG_PREFIX}   Item at cellIndex ${cellIndex} (ID: ${item.id}) has zero or negative geometry dimensions. Skipping.`);
             continue;
           }
 
-          // Store the original itemVB from worker (which is padded for UI)
-          itemData[cellIndex] = { item, itemVB }; // Reverted
+          // Store the item and its tight geometry bounding box
+          itemData[cellIndex] = { item, geomBox };
 
           const colIndex = cellIndex % gridCols;
           const rowIndex = Math.floor(cellIndex / gridCols);
-          // Layout calculations are based on these worker-provided (padded) dimensions
-          colWidths[colIndex] = Math.max(colWidths[colIndex], itemVB.width); // Reverted
-          rowHeights[rowIndex] = Math.max(rowHeights[rowIndex], itemVB.height); // Reverted
+          // Layout calculations are based on these tight geometry dimensions
+          colWidths[colIndex] = Math.max(colWidths[colIndex], geomWidth);
+          rowHeights[rowIndex] = Math.max(rowHeights[rowIndex], geomHeight);
         }
 
-        // Calculate total unscaled dimensions of *only* the views
+        // Calculate total unscaled dimensions of the tight geometry
         const totalUnscaledViewsWidth = colWidths.reduce((sum, w) => sum + w, 0);
         const totalUnscaledViewsHeight = rowHeights.reduce((sum, h) => sum + h, 0);
 
@@ -655,8 +653,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
         // --- 3. Calculate Available Space, View Scale, and Final Layout ---
         let availableWidth, availableHeight;
         let spaceForViewsWidth, spaceForViewsHeight;
-        let viewScale; // This will be the scale for the padded viewBox
-        let correctedViewScale; // This will be viewScale / WORKER_UI_CONTENT_SCALE_FACTOR
+        let viewScale; // This will be the scale for the tight geometry
+        // REMOVED: correctedViewScale
         let finalScaledViewsWidth, finalScaledViewsHeight;
         let finalTotalLayoutWidth, finalTotalLayoutHeight;
         let originX, originY; // Top-left corner of the entire layout block
@@ -712,19 +710,15 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
         if (parsedUserScaleRatio !== null) {
           console.log(`${LOG_PREFIX}   Using Custom Scale Override: "${settings.customScaleOverride}" -> Parsed User Ratio=${parsedUserScaleRatio.toFixed(4)}`);
 
-          // parsedUserScaleRatio is the desired "true scale" (Drawing Units on Paper / Real World Units).
-          // correctedViewScale is Drawing Units on Paper (mm) / Real World Units (cm from worker geometry).
-          // So, correctedViewScale = parsedUserScaleRatio * 10.
-          correctedViewScale = parsedUserScaleRatio * 10;
-          console.log(`${LOG_PREFIX}     Calculated Corrected View Scale (for geometry): ${correctedViewScale.toFixed(4)}`);
-
-          // viewScale is for the padded worker viewBox (dimensions also in cm-equivalent units).
-          // We know: correctedViewScale = viewScale / UI_CONTENT_VIEWBOX_SCALE_FACTOR
-          // So, viewScale = correctedViewScale * UI_CONTENT_VIEWBOX_SCALE_FACTOR
-          viewScale = correctedViewScale * UI_CONTENT_VIEWBOX_SCALE_FACTOR;
-          console.log(`${LOG_PREFIX}     Calculated View Scale (for padded VB): ${viewScale.toFixed(4)}`);
+          // parsedUserScaleRatio is "Drawing Units on Paper (mm) / Real World Units (model units, e.g., cm)".
+          // viewScale is "mm on paper / worker_units (model units, e.g., cm)".
+          // If worker units are cm, then viewScale = parsedUserScaleRatio * 10.
+          // Assuming worker units (used for geometryBoundingBox) are cm.
+          viewScale = parsedUserScaleRatio * 10;
+          console.log(`${LOG_PREFIX}     Calculated View Scale (for tight geometry, from custom): ${viewScale.toFixed(4)}`);
           
           // Optional: Add a check/warning if this scale makes content exceed available space
+          // totalUnscaledViewsWidth is now sum of tight geometry widths.
           const checkWidth = totalUnscaledViewsWidth * viewScale + totalFixedGapWidth;
           const checkHeight = totalUnscaledViewsHeight * viewScale + totalFixedGapHeight;
           if (checkWidth > availableWidth + 1e-6 || checkHeight > availableHeight + 1e-6) { // Add tolerance
@@ -734,26 +728,19 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
           // No valid override, calculate automatically
           const scaleX = spaceForViewsWidth / totalUnscaledViewsWidth;
           const scaleY = spaceForViewsHeight / totalUnscaledViewsHeight;
-          viewScale = Math.min(scaleX, scaleY); // Scale for the worker-provided (padded) viewBox
-          console.log(`${LOG_PREFIX}   Calculated Auto View Scale (for padded VB): ${viewScale.toFixed(4)} (based on available space W=${spaceForViewsWidth.toFixed(2)}, H=${spaceForViewsHeight.toFixed(2)})`);
-          
-          correctedViewScale = viewScale / UI_CONTENT_VIEWBOX_SCALE_FACTOR;
-          console.log(`${LOG_PREFIX}   Corrected View Scale (for actual content, using factor ${UI_CONTENT_VIEWBOX_SCALE_FACTOR}): ${correctedViewScale.toFixed(4)}`);
+          viewScale = Math.min(scaleX, scaleY); // Scale for the tight geometry
+          console.log(`${LOG_PREFIX}   Calculated Auto View Scale (for tight geometry): ${viewScale.toFixed(4)} (based on available space W=${spaceForViewsWidth.toFixed(2)}, H=${spaceForViewsHeight.toFixed(2)})`);
+          // REMOVED: correctedViewScale calculation
         }
 
         if (viewScale <= 1e-6) {
-           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative initial view scale (override or auto).`);
+           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative view scale (override or auto).`);
             continue;
         }
-        // Note: correctedViewScale is derived after viewScale, so this check might be redundant if viewScale is already checked.
-        // However, keeping it for safety, especially if custom scale logic changes.
-        if (correctedViewScale <= 1e-6) {
-           console.warn(`${LOG_PREFIX}   Skipping Viewbox ${viewbox.id} due to zero or negative corrected view scale (derived from viewScale or custom override).`);
-           continue;
-        }
+        // REMOVED: correctedViewScale check
 
-        // Calculate final dimensions of the scaled views and the total layout block
-        // These are based on the original (padded) totalUnscaledViewsWidth/Height and the original viewScale
+        // Calculate final dimensions of the scaled views (tight geometry) and the total layout block
+        // These are based on the totalUnscaledViewsWidth/Height (sum of tight geometry dimensions) and viewScale
         finalScaledViewsWidth = totalUnscaledViewsWidth * viewScale;
         finalScaledViewsHeight = totalUnscaledViewsHeight * viewScale;
         finalTotalLayoutWidth = finalScaledViewsWidth + totalFixedGapWidth;
@@ -826,33 +813,34 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
             const storedItemData = itemData[cellIndex];
 
             if (storedItemData) {
-              const { item, itemVB } = storedItemData; // itemVB is the worker's (padded) viewBox
+              const { item, geomBox } = storedItemData; // geomBox is item.svgData.geometryBoundingBox
 
-              // The size of the content being drawn in this cell, using correctedViewScale
-              const drawnContentWidth = itemVB.width * correctedViewScale;
-              const drawnContentHeight = itemVB.height * correctedViewScale;
+              // Width/height of the current item's tight geometry, scaled by viewScale.
+              const itemScaledGeomWidth = (geomBox.maxX - geomBox.minX) * viewScale;
+              const itemScaledGeomHeight = (geomBox.maxY - geomBox.minY) * viewScale;
 
               // Calculate alignment offset within the cell.
-              // cellWidth/Height is the space allocated for this cell based on max padded item in col/row, scaled by uncorrected viewScale.
-              const cellWidth = scaledColWidths[colIndex]; // This is max_padded_width_for_col * viewScale
-              const cellHeight = scaledRowHeights[rowIndex]; // This is max_padded_height_for_row * viewScale
+              // cellWidth/Height is the space allocated for this cell based on max tight geometry in col/row, scaled by viewScale.
+              const cellWidth = scaledColWidths[colIndex];
+              const cellHeight = scaledRowHeights[rowIndex];
               
-              const alignOffsetX = (cellWidth - drawnContentWidth) / 2;
-              const alignOffsetY = (cellHeight - drawnContentHeight) / 2;
+              // Align the item's scaled tight geometry within the cell allocation.
+              const alignOffsetX = (cellWidth - itemScaledGeomWidth) / 2;
+              const alignOffsetY = (cellHeight - itemScaledGeomHeight) / 2;
 
-              // Item's top-left position on the page
+              // Item's top-left position on the page (for its tight geometry box)
               const itemPosX = currentX + alignOffsetX;
               const itemPosY = currentY + alignOffsetY;
 
               console.log(`${LOG_PREFIX}     Rendering Item ${item.id} in Cell[${rowIndex},${colIndex}] at page pos [${itemPosX.toFixed(2)}, ${itemPosY.toFixed(2)}] (Origin was [${originX.toFixed(2)}, ${originY.toFixed(2)}])`);
-              console.log(`${LOG_PREFIX}       Cell Alloc W: ${cellWidth.toFixed(2)}, H: ${cellHeight.toFixed(2)}. DrawnContent W: ${drawnContentWidth.toFixed(2)}, H: ${drawnContentHeight.toFixed(2)}. AlignOffset X: ${alignOffsetX.toFixed(2)}, Y: ${alignOffsetY.toFixed(2)}`);
+              console.log(`${LOG_PREFIX}       Cell Alloc W: ${cellWidth.toFixed(2)}, H: ${cellHeight.toFixed(2)}. ItemScaledGeom W: ${itemScaledGeomWidth.toFixed(2)}, H: ${itemScaledGeomHeight.toFixed(2)}. AlignOffset X: ${alignOffsetX.toFixed(2)}, Y: ${alignOffsetY.toFixed(2)}`);
 
-              // Create item group: Translate item's internal origin (itemVB.x, itemVB.y) *after scaling with correctedViewScale*
+              // Create item group. Paths are defined relative to padded viewBox origin.
+              // We need to translate so that (geomBox.minX * viewScale, geomBox.minY * viewScale) lands on (itemPosX, itemPosY)
               const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-              // Translation maps the scaled origin of the item's viewBox to the calculated itemPosX, itemPosY
-              const itemTranslate = `translate(${itemPosX - itemVB.x * correctedViewScale}, ${itemPosY - itemVB.y * correctedViewScale})`;
+              const itemTranslate = `translate(${itemPosX - (geomBox.minX * viewScale)}, ${itemPosY - (geomBox.minY * viewScale)})`;
               itemGroup.setAttribute('transform', itemTranslate);
-              svgPageGroup.appendChild(itemGroup); // Add directly to page group, scaling happens inside render functions
+              svgPageGroup.appendChild(itemGroup);
 
               // Separate paths into hidden and visible
               const hiddenPathObjects = [];
@@ -870,11 +858,11 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
               const renderAndAppendPath = (path, targetGroup) => {
                 const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
 
-                // Apply correctedViewScale to path data directly
+                // Apply viewScale to path data directly
                 try {
                     const parsedData = parsePathData(path.data);
-                    // Scale the parsed data in place using the new function
-                    scalePathData(parsedData, correctedViewScale); // Use correctedViewScale
+                    // Scale the parsed data in place using viewScale
+                    scalePathData(parsedData, viewScale); // Use viewScale
                     // Serialize the scaled data
                     pathEl.setAttribute('d', serializePathData(parsedData));
                 } catch (e) {
@@ -922,17 +910,16 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                 .sort((a, b) => a.creationTimestamp - b.creationTimestamp); // Sort by creation time
 
               // Check for bounding box within item.svgData
-              if (itemMeasurements.length > 0 && item.svgData && item.svgData.geometryBoundingBox) {
-                const bbox = item.svgData.geometryBoundingBox; // Access from item.svgData
-                // Scale the bounding box to mm for calculations using correctedViewScale
+              if (itemMeasurements.length > 0 && item.svgData && item.svgData.geometryBoundingBox) { // geomBox is already item.svgData.geometryBoundingBox
+                // Scale the bounding box to mm for calculations using viewScale
                 const scaledBBox = {
-                  minX: bbox.minX * correctedViewScale,
-                  minY: bbox.minY * correctedViewScale,
-                  maxX: bbox.maxX * correctedViewScale,
-                  maxY: bbox.maxY * correctedViewScale,
+                  minX: geomBox.minX * viewScale,
+                  minY: geomBox.minY * viewScale,
+                  maxX: geomBox.maxX * viewScale,
+                  maxY: geomBox.maxY * viewScale,
                 };
-                // console.log(`${LOG_PREFIX}         Item BBox (unscaled):`, bbox); // Less verbose logging
-                // console.log(`${LOG_PREFIX}         Item BBox (scaled with correctedViewScale, mm):`, scaledBBox);
+                // console.log(`${LOG_PREFIX}         Item BBox (unscaled worker units):`, geomBox);
+                // console.log(`${LOG_PREFIX}         Item BBox (scaled with viewScale, mm on PDF):`, scaledBBox);
 
                 // Group measurements by side and orientation
                 const groups = {
@@ -956,9 +943,10 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                 // Render Circle, Radius, and CustomLine measurements first (no auto-positioning needed for custom lines)
                 itemMeasurements.forEach(measurement => {
                   if (measurement.type === 'customLine' && measurement.geometry?.type === 'line' && measurement.geometry.endpoints) {
-                    const [usp1, usp2] = measurement.geometry.endpoints; // Unscaled points
-                    const p1 = scaleCoord(usp1, correctedViewScale); // Use correctedViewScale
-                    const p2 = scaleCoord(usp2, correctedViewScale); // Use correctedViewScale
+                    const [usp1, usp2] = measurement.geometry.endpoints; // Unscaled points (relative to geomBox origin or padded origin?)
+                                                                      // Assuming they are relative to what geomBox is relative to (padded origin).
+                    const p1 = scaleCoord(usp1, viewScale); // Use viewScale
+                    const p2 = scaleCoord(usp2, viewScale); // Use viewScale
 
                     const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                     lineEl.setAttribute('x1', p1[0]);
@@ -978,7 +966,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                     console.log(`${LOG_PREFIX}           Rendered customLine ${measurement.pathId}`);
 
                   } else if (measurement.type === 'circle' || measurement.type === 'radius') {
-                    const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, correctedViewScale, null, settings); // Use correctedViewScale
+                    // Measurement geometry coordinates are also relative to the same system as geomBox.
+                    const measurementSvgGroup = renderMeasurementToSvg(measurement, measurement.geometry, viewScale, null, settings); // Use viewScale
                     if (measurementSvgGroup) {
                       itemGroup.appendChild(measurementSvgGroup);
                     } else {
@@ -991,9 +980,9 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                 // Now group and position only the LINE measurements (excluding customLine, circle, radius)
                 const actualLineMeasurements = itemMeasurements.filter(m => m.type === 'line' && m.geometry?.endpoints);
                 actualLineMeasurements.forEach(m => {
-                    const [usp1, usp2] = m.geometry.endpoints;
-                    const p1 = scaleCoord(usp1, correctedViewScale); // Use correctedViewScale
-                    const p2 = scaleCoord(usp2, correctedViewScale); // Use correctedViewScale
+                    const [usp1, usp2] = m.geometry.endpoints; // These are relative to the same origin as geomBox.
+                    const p1 = scaleCoord(usp1, viewScale); // Use viewScale
+                    const p2 = scaleCoord(usp2, viewScale); // Use viewScale
                     const midX = (p1[0] + p2[0]) / 2;
                     const midY = (p1[1] + p2[1]) / 2;
                     const isHorizontal = Math.abs(p2[0] - p1[0]) > Math.abs(p2[1] - p1[1]);
@@ -1068,8 +1057,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                       const measurementSvgGroup = renderMeasurementToSvg(
                         measurement,
                         measurement.geometry,
-                        correctedViewScale, // Use correctedViewScale
-                        useManualPos ? null : autoTargetPosition, // Key change: Pass null for manual
+                        viewScale, // Use viewScale
+                        useManualPos ? null : autoTargetPosition,
                         settings
                       );
                       if (measurementSvgGroup) {
@@ -1089,8 +1078,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                   itemMeasurements.forEach(measurement => {
                     if (measurement.type === 'customLine' && measurement.geometry?.type === 'line' && measurement.geometry.endpoints) {
                         const [usp1, usp2] = measurement.geometry.endpoints;
-                        const p1 = scaleCoord(usp1, correctedViewScale); // Use correctedViewScale
-                        const p2 = scaleCoord(usp2, correctedViewScale); // Use correctedViewScale
+                        const p1 = scaleCoord(usp1, viewScale); // Use viewScale
+                        const p2 = scaleCoord(usp2, viewScale); // Use viewScale
                         const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                         lineEl.setAttribute('x1', p1[0]);
                         lineEl.setAttribute('y1', p1[1]);
@@ -1118,7 +1107,8 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
                 if (itemViewUserTexts.length > 0) {
                   console.log(`${LOG_PREFIX}       Processing ${itemViewUserTexts.length} user texts for item ${item.id}...`);
                   itemViewUserTexts.forEach(textData => {
-                    const userTextSvgElement = renderUserTextToSvg(textData, correctedViewScale, settings); // Use correctedViewScale
+                    // User text positions are also relative to the same origin as geomBox.
+                    const userTextSvgElement = renderUserTextToSvg(textData, viewScale, settings); // Use viewScale
                     if (userTextSvgElement) {
                       itemGroup.appendChild(userTextSvgElement);
                     } else {
@@ -1164,32 +1154,54 @@ export function useTechnicalDrawingPdfExport(viewboxes, activeMeasurements, user
             pageLayout.orientation, PAPER_SIZES, paperSizeKey
         );
 
-        // Calculate the true scale ratio: Drawing Size (mm) / Real Size (mm)
+        // Calculate the true scale ratio: Drawing Size (mm) / Real Size (model units, e.g., cm)
+        // viewScale is "mm on paper / model_units (cm)"
+        // So, true scale ratio "mm_paper / mm_real" = viewScale / 10 (if model units are cm)
         let titleBlockTrueScaleRatio;
         if (parsedUserScaleRatio !== null) {
-            // If user provided an override, that IS the true scale ratio for the title block
+            // If user provided an override "X_paper_mm : Y_model_units", parsedUserScaleRatio is X/Y.
+            // This is already the "mm_paper / model_units_real" ratio.
             titleBlockTrueScaleRatio = parsedUserScaleRatio;
         } else {
-            // Otherwise, calculate from the auto-derived correctedViewScale
-            // correctedViewScale = Drawing Size (mm) / Real Size (cm)
-            // titleBlockTrueScaleRatio = correctedViewScale / 10
-            titleBlockTrueScaleRatio = correctedViewScale / 10;
+            // viewScale is "mm_paper / model_units_cm"
+            // We need "mm_paper / mm_real". If model units are cm, this is viewScale / 10.
+            titleBlockTrueScaleRatio = viewScale / 10; // Assuming model units are cm
         }
-        console.log(`${LOG_PREFIX}       True Scale Ratio for Title Block: ${titleBlockTrueScaleRatio.toFixed(4)}`);
+        // The titleBlockTrueScaleRatio here is effectively "mm on paper / cm in model" if parsedUserScaleRatio is used directly,
+        // or derived from viewScale (which is also mm_paper / cm_model).
+        // For a "1:N" display where N is in model units, this is fine.
+        // If we want "1mm paper : N mm real", then titleBlockTrueScaleRatio (which is mm_paper / cm_model) needs to be divided by 10.
+        // Let's adjust the scaleString formatting to assume titleBlockTrueScaleRatio is mm_paper / cm_model.
+        // No, the existing scaleString logic expects titleBlockTrueScaleRatio to be a unitless ratio (mm_paper / mm_real).
+        // So, if viewScale is mm_paper / cm_model, then titleBlockTrueScaleRatio for the string should be (viewScale / 10).
+        // If parsedUserScaleRatio is mm_paper / cm_model, then it also needs /10 for the string.
+
+        // Let's redefine: titleBlockDisplayScaleRatio = mm_paper / mm_real
+        let titleBlockDisplayScaleRatio;
+        if (parsedUserScaleRatio !== null) {
+            // parsedUserScaleRatio is mm_paper / model_units_cm (if user enters 1:1, it's 1mm paper / 1cm model)
+            // For display "1:N" where N is in model units, use parsedUserScaleRatio directly.
+            titleBlockDisplayScaleRatio = parsedUserScaleRatio; 
+        } else {
+            // viewScale is mm_paper / model_units_cm
+            // For display "1:N" where N is in model units, use viewScale / 10 to get mm_paper / mm_model_unit_if_cm_was_mm
+            titleBlockDisplayScaleRatio = viewScale / 10; // Convert to mm_paper / mm_real (assuming model units are cm)
+        }
+        console.log(`${LOG_PREFIX}       Display Scale Ratio for Title Block (mm_paper/mm_real for formatting): ${titleBlockDisplayScaleRatio.toFixed(4)}`);
         
         let scaleString = "NTS"; // Default if calculation fails
-        if (titleBlockTrueScaleRatio > 1e-6) { // Avoid division by zero or tiny scales
-            if (Math.abs(titleBlockTrueScaleRatio - 1) < 1e-6) {
+        if (titleBlockDisplayScaleRatio > 1e-6) { // Avoid division by zero or tiny scales
+            if (Math.abs(titleBlockDisplayScaleRatio - 1) < 1e-6) {
                 scaleString = "1 : 1"; // Exactly 1:1
-            } else if (titleBlockTrueScaleRatio < 1) {
+            } else if (titleBlockDisplayScaleRatio < 1) {
                 // Reduction scale (e.g., 1 : 8.5 becomes 1 : 9)
-                const reductionFactor = 1 / titleBlockTrueScaleRatio;
+                const reductionFactor = 1 / titleBlockDisplayScaleRatio;
                 let integerY = Math.round(reductionFactor); // Round Y to nearest integer
                 integerY = Math.max(1, integerY); // Ensure Y is at least 1
                 scaleString = `1 : ${integerY}`; // Format as 1 : Integer
             } else {
                 // Enlargement scale (e.g., 2.3 : 1 becomes 2 : 1)
-                const enlargementFactor = titleBlockTrueScaleRatio;
+                const enlargementFactor = titleBlockDisplayScaleRatio;
                 let integerX = Math.round(enlargementFactor); // Round X to nearest integer
                 integerX = Math.max(1, integerX); // Ensure X is at least 1
                 scaleString = `${integerX} : 1`; // Format as Integer : 1

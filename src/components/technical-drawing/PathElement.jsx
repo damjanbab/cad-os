@@ -62,6 +62,9 @@ const PathElementComponent = ({
   }
 
   // Use vector-effect to keep stroke width consistent regardless of SVG scaling
+  const isCustomLine = path.type === 'customLine' && path.geometry?.type === 'line' && Array.isArray(path.geometry.endpoints) && path.geometry.endpoints.length === 2;
+  const handleRadius = 2 / (strokeWidth > 0 ? Math.sqrt(strokeWidth) : 1); // Adjust handle size based on zoom/stroke, ensure strokeWidth > 0
+
   return (
     <g>
       {/* Visible Path */}
@@ -84,6 +87,31 @@ const PathElementComponent = ({
         onClick={handleClick} // Click handler on the click target
         {...dataAttributes} // Spread the data attributes onto the element
       />
+      {/* Endpoint Handles for Custom Lines */}
+      {isCustomLine && (
+        <>
+          <circle
+            cx={path.geometry.endpoints[0][0]}
+            cy={path.geometry.endpoints[0][1]}
+            r={handleRadius}
+            fill="dodgerblue"
+            stroke="white"
+            strokeWidth={0.5 / (strokeWidth > 0 ? Math.sqrt(strokeWidth) : 1)} // Scale stroke too
+            className="line-endpoint-handle line-endpoint-handle-start"
+            style={{ pointerEvents: 'none' }} // Handles shouldn't block clicks on the line itself
+          />
+          <circle
+            cx={path.geometry.endpoints[1][0]}
+            cy={path.geometry.endpoints[1][1]}
+            r={handleRadius}
+            fill="dodgerblue"
+            stroke="white"
+            strokeWidth={0.5 / (strokeWidth > 0 ? Math.sqrt(strokeWidth) : 1)} // Scale stroke too
+            className="line-endpoint-handle line-endpoint-handle-end"
+            style={{ pointerEvents: 'none' }}
+          />
+        </>
+      )}
     </g>
   );
 };
