@@ -64,6 +64,27 @@ export default function TechnicalDrawingCanvas({
   // State for the currently selected points (up to 2 for snap or customLine)
   const [snapPoints, setSnapPoints] = useState([]); // Renaming to selectedPoints might be clearer later
 
+  // --- Helper function to calculate the square of the distance between two points ---
+  const distSq = (p1, p2) => {
+    return Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2);
+  };
+
+  // --- Helper function to calculate the distance from a point to a line segment ---
+  const distanceToLineSegment = (p, v, w) => {
+    // p: the point
+    // v: start point of the line segment
+    // w: end point of the line segment
+    const l2 = distSq(v, w);
+    if (l2 === 0) return Math.sqrt(distSq(p, v)); // v == w case
+    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+    t = Math.max(0, Math.min(1, t)); // Clamp t to the [0, 1] range
+    const projection = {
+      x: v.x + t * (w.x - v.x),
+      y: v.y + t * (w.y - v.y)
+    };
+    return Math.sqrt(distSq(p, projection));
+  };
+
   // --- Use Hooks ---
   // Function for the interaction hook to get the current measurement state
   const getMeasurementState = useCallback(() => activeMeasurements, [activeMeasurements]);
@@ -371,6 +392,57 @@ export default function TechnicalDrawingCanvas({
     console.log("[Canvas] snapPoints state updated:", snapPoints);
   }, [snapPoints]);
 
+  // --- Handler to toggle manual positioning for a measurement ---
+  const handleToggleManualPosition = useCallback((measurementId) => {
+    setActiveMeasurements(prev => {
+      if (!prev[measurementId]) {
+        console.warn(`[Canvas] Attempted to toggle manual position for non-existent measurement ID: ${measurementId}`);
+        return prev;
+      }
+      const currentFlag = prev[measurementId].isManuallyPositioned ?? false;
+      console.log(`[Canvas] Toggling manual position for ${measurementId} from ${currentFlag} to ${!currentFlag}`);
+      return {
+        ...prev,
+        [measurementId]: {
+          ...prev[measurementId],
+          isManuallyPositioned: !currentFlag, // Toggle the flag
+        }
+      };
+    });
+  }, [setActiveMeasurements]);
+
+  // --- Handler to update the override value for a measurement ---
+  const handleUpdateOverrideValue = useCallback((measurementId, newValue) => {
+    setActiveMeasurements(prev => {
+      if (!prev[measurementId]) {
+        console.warn(`[Canvas] Attempted to update override for non-existent measurement ID: ${measurementId}`);
+        return prev;
+      }
+      console.log(`[Canvas] Updating override value for ${measurementId} to: "${newValue}"`);
+      return {
+        ...prev,
+        [measurementId]: {
+          ...prev[measurementId],
+          overrideValue: newValue, // Update the override value
+        }
+      };
+    });
+  }, [setActiveMeasurements]); // Dependency on the state setter
+
+  // --- Handler to delete a measurement ---
+  const handleDeleteMeasurement = useCallback((measurementId) => {
+    setActiveMeasurements(prev => {
+      const newMeasurements = { ...prev };
+      if (newMeasurements[measurementId]) {
+        console.log(`[Canvas] Deleting measurement: ${measurementId}`);
+        delete newMeasurements[measurementId];
+      } else {
+        console.warn(`[Canvas] Attempted to delete non-existent measurement ID: ${measurementId}`);
+      }
+      return newMeasurements;
+    });
+  }, [setActiveMeasurements]); // Dependency on the state setter
+
 
   // --- New Unified Snap Click Handler ---
   // This function is called directly by SvgView's onClick when in snap or customLine mode
@@ -380,9 +452,63 @@ export default function TechnicalDrawingCanvas({
         console.log(`[Canvas] Click in text mode, ignoring snap/customLine logic.`);
         return;
     }
-    console.log(`[Canvas] handleSnapClick triggered for view: ${viewInstanceId} in mode: ${interactionMode}`);
+    // Also, if in measure mode and not specifically clicking a path (handled by handlePathClick), do nothing.
+  // This check prevents snap logic from running unnecessarily when just trying to pan/drag in measure mode.
+  if (interactionMode === 'measure' && !event.target.closest('path[data-geometry-type]')) {
+      // console.log(`[Canvas] Click in measure mode (not on a path), ignoring snap/customLine/delete logic.`);
+      return;
+  }
 
-    const svgElement = event.target.closest('svg');
+  // --- Custom Line Deletion Logic ---
+  if (interactionMode === 'deleteLine') {
+    console.log(`[Canvas DeleteLine] Clicked in view ${viewInstanceId}`);
+    const svgElementForDelete = event.target.closest('svg');
+    if (!svgElementForDelete) {
+      console.warn("[Canvas DeleteLine] Could not find parent SVG for delete click.");
+      return;
+    }
+    const screenXForDelete = event.clientX;
+    const screenYForDelete = event.clientY;
+    const svgCoordsForDelete = getSvgCoordinates(screenXForDelete, screenYForDelete, svgElementForDelete);
+
+    if (!svgCoordsForDelete) {
+      console.warn("[Canvas DeleteLine] Could not get SVG coordinates for delete click.");
+      return;
+    }
+
+    const currentCustomLines = getCustomLinesState();
+    // Adjust threshold based on zoom level for consistent screen pixel tolerance
+    const threshold = zoomLevel > 0 ? SNAP_THRESHOLD / zoomLevel : SNAP_THRESHOLD;
+    let lineToDelete = null;
+
+    for (const line of currentCustomLines) {
+      if (line.viewInstanceId !== viewInstanceId) continue; // Only consider lines in the clicked view
+
+      const p1 = { x: line.geometry.endpoints[0][0], y: line.geometry.endpoints[0][1] };
+      const p2 = { x: line.geometry.endpoints[1][0], y: line.geometry.endpoints[1][1] };
+      const dist = distanceToLineSegment(svgCoordsForDelete, p1, p2);
+
+      if (dist < threshold) {
+        lineToDelete = line;
+        break; // Found a line to delete
+      }
+    }
+
+    if (lineToDelete) {
+      console.log(`[Canvas DeleteLine] Deleting line: ${lineToDelete.pathId}`);
+      handleDeleteMeasurement(lineToDelete.pathId);
+    } else {
+      console.log(`[Canvas DeleteLine] No custom line found near click.`);
+    }
+    // Reset snap points if any were accidentally selected before switching to delete mode
+    setSnapPoints([]);
+    return; // IMPORTANT: Return early to prevent other interaction mode logic
+  }
+  // --- End Custom Line Deletion Logic ---
+
+  console.log(`[Canvas] handleSnapClick triggered for view: ${viewInstanceId} in mode: ${interactionMode}`);
+
+  const svgElement = event.target.closest('svg');
     if (!svgElement) {
       console.warn("[Canvas] Could not find parent SVG for snap click.");
       return;
@@ -630,14 +756,13 @@ export default function TechnicalDrawingCanvas({
           return updatedPoints; // Only one point selected
         }
       });
-    }
-  }, [interactionMode, snapSubType, zoomLevel, getMeasurementState, setSnapPoints, createMeasurementFromSnapPoints, createPointToLineMeasurement, setActiveMeasurements]); // Added setActiveMeasurements and interactionMode
-
+    } // Closes: else if (interactionMode === 'customLine')
+  }, [interactionMode, snapSubType, zoomLevel, getMeasurementState, getCustomLinesState, setSnapPoints, createMeasurementFromSnapPoints, createPointToLineMeasurement, setActiveMeasurements, handleDeleteMeasurement]); // End of handleSnapClick useCallback
 
   // Handle path click - ONLY toggle measurement display
   const handlePathClick = useCallback((event, uniquePathId, path, partName, partIndex, viewInstanceId) => {
-    // If in snap, customLine, or text mode, do nothing here (handled by other handlers)
-    if (interactionMode === 'snap' || interactionMode === 'customLine' || interactionMode === 'text') {
+    // If in snap, customLine, text, or deleteLine mode, do nothing here (handled by other handlers)
+    if (interactionMode === 'snap' || interactionMode === 'customLine' || interactionMode === 'text' || interactionMode === 'deleteLine') {
       return;
     }
 
@@ -722,57 +847,6 @@ export default function TechnicalDrawingCanvas({
      });
    }, [interactionMode, setActiveMeasurements]); // Removed snap-related dependencies
  
- 
-   // --- Handler to toggle manual positioning for a measurement ---
-   const handleToggleManualPosition = useCallback((measurementId) => {
-     setActiveMeasurements(prev => {
-       if (!prev[measurementId]) {
-         console.warn(`[Canvas] Attempted to toggle manual position for non-existent measurement ID: ${measurementId}`);
-         return prev;
-       }
-       const currentFlag = prev[measurementId].isManuallyPositioned ?? false;
-       console.log(`[Canvas] Toggling manual position for ${measurementId} from ${currentFlag} to ${!currentFlag}`);
-       return {
-         ...prev,
-         [measurementId]: {
-           ...prev[measurementId],
-           isManuallyPositioned: !currentFlag, // Toggle the flag
-         }
-       };
-     });
-   }, [setActiveMeasurements]);
- 
-   // --- Handler to update the override value for a measurement ---
-  const handleUpdateOverrideValue = useCallback((measurementId, newValue) => {
-    setActiveMeasurements(prev => {
-      if (!prev[measurementId]) {
-        console.warn(`[Canvas] Attempted to update override for non-existent measurement ID: ${measurementId}`);
-        return prev;
-      }
-      console.log(`[Canvas] Updating override value for ${measurementId} to: "${newValue}"`);
-      return {
-        ...prev,
-        [measurementId]: {
-          ...prev[measurementId],
-          overrideValue: newValue, // Update the override value
-        }
-      };
-    });
-  }, [setActiveMeasurements]); // Dependency on the state setter
-
-  // --- Handler to delete a measurement ---
-  const handleDeleteMeasurement = useCallback((measurementId) => {
-    setActiveMeasurements(prev => {
-      const newMeasurements = { ...prev };
-      if (newMeasurements[measurementId]) {
-        console.log(`[Canvas] Deleting measurement: ${measurementId}`);
-        delete newMeasurements[measurementId];
-      } else {
-        console.warn(`[Canvas] Attempted to delete non-existent measurement ID: ${measurementId}`);
-      }
-      return newMeasurements;
-    });
-  }, [setActiveMeasurements]); // Dependency on the state setter
 
   // --- Effect for Escape key to cancel snap or custom line drawing ---
   useEffect(() => {
@@ -812,7 +886,7 @@ export default function TechnicalDrawingCanvas({
     setSnapSubType('point-to-point'); // Also reset snap sub-type
     setUserTexts({}); // Also reset user texts
     // setInteractionMode('measure'); // Optionally reset interaction mode to default
-  }, [resetInteraction, setSnapSubType, setActiveMeasurements, setSnapPoints, setUserTexts]);
+  }, [resetInteraction, setSnapSubType, setActiveMeasurements, setSnapPoints, setUserTexts]); // Removed setInteractionMode
 
   // --- Handler for placing text ---
   const handleTextPlacementClick = useCallback((event, viewInstanceId) => {

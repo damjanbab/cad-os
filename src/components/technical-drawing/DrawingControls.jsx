@@ -263,6 +263,23 @@ export default function DrawingControls({
         >
           Text
         </button>
+        <button
+          title="Switch to Delete Line Mode"
+          style={{
+            flex: 1,
+            padding: isMobile ? '5px 10px' : '2px 8px',
+            cursor: 'pointer',
+            fontSize: isMobile ? '14px' : 'inherit',
+            backgroundColor: interactionMode === 'deleteLine' ? '#f44336' : '#bdbdbd', // Red when active
+            color: 'white',
+            border: 'none',
+            borderRadius: '3px',
+            textAlign: 'center',
+          }}
+          onClick={() => onInteractionModeChange('deleteLine')}
+        >
+          Delete
+        </button>
       </div>
 
       {/* Snap Sub-Type Selection (Only visible in Snap mode) */}

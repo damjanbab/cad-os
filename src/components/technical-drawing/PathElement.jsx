@@ -20,9 +20,17 @@ const PathElementComponent = ({
 
   // Internal handler to call the correct prop based on mode and stop propagation
   const handleClick = useCallback((event) => {
-    event.stopPropagation(); // Prevent click from bubbling to parent cell
+    if (interactionMode === 'deleteLine') {
+      // In deleteLine mode, we want SvgView's onClick to handle the deletion.
+      // Do not stop propagation here, and do not call any local handlers from PathElement.
+      // The event will bubble to SvgView, which calls TechnicalDrawingCanvas.handleSnapClick.
+      console.log(`[PathElement ${path.id}] Clicked in deleteLine mode. Allowing event to bubble to SvgView.`);
+      return; // Let SvgView handle it
+    }
 
-    // Call onSnapClick if mode is 'snap' OR 'customLine'
+    // For other modes (measure, snap, customLine), stop propagation and handle locally.
+    event.stopPropagation(); // Prevent click from bubbling to parent cell/SvgView for these modes.
+
     if ((interactionMode === 'snap' || interactionMode === 'customLine') && onSnapClick) {
       // In snap or customLine mode, call onSnapClick, passing the event and viewInstanceId
       // The main snap handler in TechnicalDrawingCanvas will use event.target
@@ -34,7 +42,9 @@ const PathElementComponent = ({
       console.log(`[PathElement ${path.id}] Clicked in measure mode. Calling onPathClick.`);
       onPathClick(event, path.id, path, partName, partIndex, viewInstanceId);
     } else {
-      console.warn(`[PathElement ${path.id}] Clicked with unhandled mode or missing handler. Mode: ${interactionMode}`);
+      // This case should ideally not be reached if interactionMode is one of the handled ones.
+      // If interactionMode is 'text', SvgView handles it, and PathElement shouldn't get a click for text placement.
+      console.warn(`[PathElement ${path.id}] Clicked with unhandled mode ('${interactionMode}') or missing handler.`);
     }
   }, [interactionMode, onPathClick, onSnapClick, path, partName, partIndex, viewInstanceId]); // Add dependencies
 

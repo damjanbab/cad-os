@@ -72,31 +72,29 @@ function SvgViewComponent({
   // Log the filtered points for this view
   console.log(`[SvgView ${viewId}] Relevant snapPoints for rendering:`, relevantSnapPoints);
 
-  // Click handler for the SVG element itself, used in snap or customLine mode
+  // Click handler for the SVG element itself
   const handleSvgClick = (event) => {
-    // Check if the click was on a measurement, custom line, or text display element
-    const clickedOnInteractiveElement = event.target.closest('.measurement-group') ||
-                                      event.target.closest('.custom-line-element') ||
-                                      event.target.closest('.text-display-group');
+    // If the click is on a child element that already handled it and stopped propagation 
+    // (e.g., PathElement in measure/snap/customLine mode when clicking a path),
+    // this handler might still run if the click was on the SVG background, or if PathElement allowed propagation (e.g., for deleteLine).
 
-    if (clickedOnInteractiveElement) {
-      console.log(`[SvgView ${viewId}] Clicked on an interactive element (${event.target.tagName}, class: ${event.target.className}), specific handlers should take over.`);
-      return; // Let specific element handlers (like double-click on TextDisplay) manage this
-    }
-
-    // If in snap or customLine mode and the click wasn't on a path element (already handled by PathElement)
-    if ((interactionMode === 'snap' || interactionMode === 'customLine') && event.target.tagName !== 'path' && onSnapClick) {
-      console.log(`[SvgView ${viewId}] SVG background clicked in ${interactionMode} mode.`);
+    if ((interactionMode === 'snap' || interactionMode === 'customLine' || interactionMode === 'deleteLine') && onSnapClick) {
+      // For these modes, TechnicalDrawingCanvas.handleSnapClick is the main orchestrator.
+      // It will determine if it's a click on a path, background, or a line to be deleted.
+      // PathElement's onClick stops propagation for 'snap'/'customLine' when a path is clicked,
+      // so this primarily catches background clicks for 'snap'/'customLine', 
+      // or any click in 'deleteLine' mode (as PathElement allows propagation).
+      console.log(`[SvgView ${viewId}] Click in '${interactionMode}' mode. Calling onSnapClick. Target: ${event.target.tagName}`);
       onSnapClick(event, viewId);
-    }
-    // If in text mode, call the text placement handler
-    else if (interactionMode === 'text' && onTextPlacementClick) {
-      console.log(`[SvgView ${viewId}] SVG background clicked in text mode.`);
+    } else if (interactionMode === 'text' && onTextPlacementClick) {
+      // For text mode, this handles clicks on the SVG background for text placement.
+      console.log(`[SvgView ${viewId}] Click in 'text' mode. Calling onTextPlacementClick. Target: ${event.target.tagName}`);
       onTextPlacementClick(event, viewId);
-    } else if (interactionMode === 'snap' || interactionMode === 'customLine') {
-      // This case might be redundant if PathElement's onClick for snap/customLine stops propagation
-      // or if the above conditions correctly handle it.
-      console.log(`[SvgView ${viewId}] Clicked path element in ${interactionMode} mode, PathElement's onClick should handle.`);
+    } else {
+      // This might occur if in 'measure' mode and clicking the SVG background (not a path),
+      // or if a mode is unhandled by the above conditions, or if a required handler (onSnapClick/onTextPlacementClick) is missing.
+      // Clicks on paths in 'measure' mode are handled by PathElement.handleClick and propagation is stopped.
+      console.log(`[SvgView ${viewId}] Click in '${interactionMode}' mode. No specific action taken by SvgView.onClick. Target: ${event.target.tagName}`);
     }
   };
 
